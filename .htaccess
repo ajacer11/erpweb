@@ -1,0 +1,3 @@
+<FilesMatch "^menu(1|2|_excluidos)\.json$">
+    Require all denied
+</FilesMatch>

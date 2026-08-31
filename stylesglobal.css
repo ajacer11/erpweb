@@ -1,0 +1,834 @@
+/**
+ * WEST IT ERP - DESIGN SYSTEM & UI KIT (v4.3 - DEFINITIVE THEME OVERRIDES)
+ * --------------------------------------------------------------------------
+ * Este archivo controla TODA la apariencia del sistema en Modo Oscuro y Claro.
+ * menu.php y los módulos dependen de estas clases.
+ */
+
+:root {
+    /* --- PALETA DE COLORES (DARK MODE - DEFAULT) --- */
+    --bg-escritorio: #000714;    /* Fondo principal (Azul Profundo) */
+    --bg-navbar: #000020;       /* Fondo Menú */
+    --bg-card: rgba(255, 255, 255, 0.03); /* Fondo Paneles y Tarjetas */
+    --bg-modal: #001020;        /* Fondo de Modales y Swals */
+    --bg-table-header: #0d2b45; /* Fondo de encabezados de tabla */
+    
+    --accent: #00ffffdc;          /* Cian: Identidad Visual */
+    --accent-hover: #00ccccda;
+    --accent-soft: rgba(0, 255, 255, 0.1);
+    
+    --text-main: #ffffffbd;     /* Texto general */
+    --text-titles: #ffffff;     /* Títulos brillantes */
+    --text-muted: #cfd8dc;      /* Gris perla brillante para alta legibilidad */
+    
+    --border-color: rgba(255, 255, 255, 0.1); /* Bordes sutiles */
+    
+    /* FORMULARIOS */
+    --input-bg: #000a1a;
+    --input-border: #445566;
+
+    /* SEMÁNTICA */
+    --success: #28a745;
+    --danger: #dc3545;
+    --warning: #ffc107;
+    --info: #17a2b8;
+
+    /* ------------------------------------------------------------------
+       ALIAS DE VARIABLES INTERNAS DE BOOTSTRAP 5
+       Bootstrap define su propia paleta vía variables (--bs-body-color,
+       --bs-secondary-color, etc.) con valores FIJOS (oscuros), que NO
+       heredan el "color" que seteamos en body. Muchos componentes de
+       Bootstrap (.card, .text-muted, .text-body-secondary, bordes, etc.)
+       usan esas variables directamente en vez de heredar el color del
+       texto — por eso aparecía texto negro/ilegible en modo oscuro dentro
+       de cualquier .card, o en labels con .text-muted, aunque el resto de
+       la página sí respetaba el tema. Al redefinirlas acá (una sola vez;
+       se resuelven en el momento de uso, así que ya toman el valor de
+       modo claro/oscuro que corresponda) quedan sincronizadas con el
+       resto del sistema, sin tener que parchear cada componente suelto.
+       ------------------------------------------------------------------ */
+    --bs-body-color: var(--text-main);
+    --bs-body-bg: var(--bg-escritorio);
+    --bs-secondary-color: var(--text-muted);
+    --bs-tertiary-color: var(--text-muted);
+    --bs-border-color: var(--border-color);
+    --bs-emphasis-color: var(--text-titles);
+    --bs-heading-color: var(--text-titles);
+    --bs-link-color: var(--accent);
+    --bs-link-hover-color: var(--accent-hover);
+}
+
+[data-theme="light"] {
+    /* --- PALETA DE COLORES (LIGHT MODE) --- */
+    --bg-escritorio: #f4f7f6;    /* Gris muy claro o blanco */
+    --bg-navbar: #ffffff;       /* Navbar blanca */
+    --bg-card: #ffffff;         /* Cards blancas */
+    --bg-modal: #ffffff;        /* Fondo de Modales */
+    --bg-table-header: #e9ecef; /* Encabezado de tabla gris claro */
+    
+    --accent: #007575;          /* Cian oscuro (Teal) para contraste en blanco */
+    --accent-hover: #005a5a;
+    --accent-soft: rgba(0, 117, 117, 0.1);
+    
+    --text-main: #212529;       /* Texto casi negro */
+    --text-titles: #000000;     /* Títulos negros */
+    --text-muted: #6c757d;      /* Gris de Bootstrap */
+    
+    --border-color: #dee2e6;    /* Bordes de tablas y tarjetas claros */
+    
+    /* FORMULARIOS */
+    --input-bg: #ffffff;
+    --input-border: #ced4da;
+
+    /* SEMÁNTICA ADAPTADA PARA FONDOS CLAROS (Mayor contraste) */
+    --success: #198754; 
+    --danger: #dc3545; 
+    --warning: #d39e00; /* Amarillo oscuro / mostaza */
+    --info: #0aa2c0;    /* Cian oscurecido */
+}
+
+/* =========================================================================
+   ANTI-HARDCODE & BOOTSTRAP OVERRIDES (LA MAGIA)
+   ========================================================================= */
+
+/* 1. ANIQUILADOR DE ESTILOS INLINE (Divs con style="background-color: #000a1a") */
+.table-responsive, .erp-table-wrap, 
+[style*="#000a1a" i], [style*="#000A1A" i] {
+    background-color: var(--bg-card) !important;
+}
+
+/* 2. SECUESTRO DE TABLAS OSCURAS (Soluciona celdas grises de Bootstrap) */
+.table-dark {
+    --bs-table-bg: transparent !important;
+    --bs-table-color: var(--text-main) !important;
+    --bs-table-border-color: var(--border-color) !important;
+    --bs-table-striped-bg: var(--accent-soft) !important;
+    --bs-table-striped-color: var(--text-main) !important;
+    --bs-table-active-bg: var(--accent-soft) !important;
+    --bs-table-active-color: var(--accent) !important;
+    --bs-table-hover-bg: var(--accent-soft) !important;
+    --bs-table-hover-color: var(--text-main) !important;
+    background-color: transparent !important;
+    color: var(--text-main) !important;
+}
+.table-dark th, .table-dark td {
+    background-color: transparent !important;
+    border-color: var(--border-color) !important;
+    color: inherit !important;
+}
+
+/* 3. TEXTOS BLANCOS: Los volvemos adaptativos (excepto botones y fondos color sólido) */
+.text-white:not(.btn):not(.badge):not(.bg-success):not(.bg-danger):not(.bg-warning):not(.bg-info):not(.bg-primary) {
+    color: var(--text-titles) !important;
+}
+.text-white-50 { color: var(--text-muted) !important; }
+
+/* 4. FONDOS OSCUROS: Convertimos bg-dark en fondos de panel adaptativos */
+.bg-dark, .bg-dark[style] { background-color: var(--bg-table-header) !important; }
+
+/* 5. INPUTS OSCUROS: Forzamos bg-dark a usar el color del panel correspondiente */
+input.bg-dark, select.bg-dark, textarea.bg-dark, .input-group-text.bg-dark {
+    background-color: var(--input-bg) !important;
+    color: var(--text-main) !important;
+}
+
+/* 6. UTILIDADES SEMÁNTICAS Y BORDES */
+.border-secondary { border-color: var(--border-color) !important; }
+.text-accent { color: var(--accent) !important; }
+
+.text-success { color: var(--success) !important; }
+.text-danger { color: var(--danger) !important; }
+.text-warning { color: var(--warning) !important; }
+.text-info { color: var(--info) !important; }
+
+/* 7. EXCEPCIONES: Botones y Badges */
+.btn-outline-light {
+    color: var(--text-titles) !important;
+    border-color: var(--border-color) !important;
+}
+.btn-outline-light:hover {
+    background-color: var(--accent) !important;
+    color: #ffffff !important;
+    border-color: var(--accent) !important;
+}
+
+.badge.bg-dark { 
+    background-color: var(--input-bg) !important; 
+    color: var(--text-main) !important; 
+    border: 1px solid var(--border-color) !important; 
+}
+.btn.text-white { color: #ffffff !important; }
+
+/* =========================================================================
+   1. ESTRUCTURA BASE
+   ========================================================================= */
+body { 
+    background-color: var(--bg-escritorio) !important; 
+    color: var(--text-main); 
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    overflow: hidden; 
+    
+    /* EVITA QUE LA WEB SE META DEBAJO DEL NOTCH O CÁMARA DEL CELULAR */
+    padding-top: env(safe-area-inset-top); 
+}
+
+.fade-in { animation: fadeIn 0.4s ease-out; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* =========================================================================
+   2. ESTILOS DEL MENÚ
+   ========================================================================= */
+.status-bar {
+    background: var(--bg-navbar);
+    color: var(--text-muted);
+    font-size: 11px;
+    padding: 4px 15px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    line-height: 1.2;
+}
+.status-bar strong { color: var(--text-titles); }
+#clock-small { color: var(--accent); font-weight: bold; }
+
+.status-context,
+.status-actions {
+    flex: 0 0 auto;
+}
+
+.status-company {
+    min-width: 0;
+    flex: 1 1 auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    padding: 2px 20px;
+    color: var(--text-main);
+}
+
+.status-company img {
+    width: 72px;
+    height: 38px;
+    object-fit: contain;
+    flex: 0 0 72px;
+}
+
+.status-company-placeholder {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    color: var(--accent);
+}
+
+.status-company-copy {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+    line-height: 1.15;
+}
+
+.status-company-copy strong,
+.status-company-copy small {
+    max-width: 48vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.status-company-copy strong {
+    font-size: 15px;
+    font-weight: 800;
+    text-transform: uppercase;
+}
+
+.status-company-copy small {
+    margin-top: 3px;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.btn-exit-fast {
+    background: var(--danger); color: white; border: none; font-size: 9px; 
+    padding: 2px 8px; margin-left: 10px; border-radius: 2px; text-decoration: none; font-weight: bold;
+}
+.btn-exit-fast:hover { background: #b02a37; color: #fff; }
+
+.navbar-erp {
+    background: var(--bg-navbar);
+    padding: 0;
+    border-bottom: 1px solid var(--border-color);
+    min-height: 40px; 
+    position: relative;
+    z-index: 1050;
+}
+.navbar-brand {
+    font-size: 14px; font-weight: bold; padding: 0 12px; margin: 0; 
+    border-right: 1px solid var(--border-color); 
+    line-height: 40px; 
+    color: var(--text-titles) !important;
+}
+.navbar-erp .nav-link {
+    font-size: 11px; font-weight: 600; text-transform: uppercase; 
+    padding: 0 10px !important; 
+    line-height: 40px; 
+    color: var(--text-main) !important; transition: 0.1s;
+}
+.navbar-erp .nav-link:hover, .navbar-erp .nav-item.show .nav-link {
+    color: var(--accent) !important; background: var(--accent-soft);
+}
+.navbar-erp .navbar-toggler {
+    width: 42px;
+    height: 36px;
+    margin-right: 8px;
+    padding: 0;
+    line-height: 34px;
+    text-align: center;
+    color: var(--text-titles);
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+    box-shadow: none;
+}
+.navbar-erp .navbar-toggler:focus {
+    box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.navbar-erp .navbar-toggler .fa-bars {
+    color: currentColor;
+    font-size: 20px;
+}
+
+/* Dropdowns */
+.dropdown-menu {
+    background: var(--bg-modal);
+    border: 1px solid var(--input-border);
+    border-radius: 0;
+    padding: 2px 0;
+    min-width: 200px;
+    margin: 0;
+    z-index: 9999;
+}
+.dropdown-item {
+    color: var(--text-main); font-size: 11px; padding: 6px 12px; 
+    border-bottom: 1px solid var(--border-color);
+}
+.dropdown-item i { width: 14px; margin-right: 5px; color: var(--accent); font-size: 10px; text-align: center; }
+.dropdown-item:hover { background: var(--accent); color: #fff !important; }
+.dropdown-item:hover i { color: #fff !important; }
+
+/* Submenús */
+.dropdown-submenu { position: relative; }
+.dropdown-submenu > .dropdown-menu { top: 0; left: 100%; margin-top: -1px; display: none; }
+.dropdown-submenu:hover > .dropdown-menu { display: block; }
+.dropdown-toggle::after { display: none !important; }
+
+/* Menú contextual del router SPA */
+#custom-context-menu {
+    position: fixed;
+    display: none;
+    min-width: 230px;
+    overflow: hidden;
+    background: var(--bg-modal);
+    color: var(--text-main);
+    border: 1px solid var(--input-border);
+    border-radius: 4px;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+    z-index: 3000;
+}
+.context-menu-item {
+    width: 100%;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    background: transparent;
+    color: var(--text-main);
+    border: 0;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+}
+.context-menu-item:last-child { border-bottom: 0; }
+.context-menu-item i {
+    width: 18px;
+    color: var(--accent);
+    text-align: center;
+}
+.context-menu-item:hover,
+.context-menu-item:focus-visible {
+    background: var(--accent-soft);
+    color: var(--text-titles);
+    outline: 0;
+}
+
+/* =========================================================================
+   3. FORMULARIOS
+   ========================================================================= */
+label, .form-label-custom {
+    color: var(--text-titles) !important;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    margin-bottom: 4px; display: block; letter-spacing: 0.5px;
+}
+/* Override directo: Bootstrap define .text-muted como
+   "color: var(--bs-secondary-color) !important" (clase, especificidad 0,0,1,0),
+   que le gana al selector "label" de arriba (elemento, especificidad 0,0,0,1)
+   aunque ambos sean !important — por eso un <label class="text-muted"> se
+   quedaba con el gris oscuro fijo de Bootstrap (rgba(33,37,41,.75), pensado
+   para fondo claro) en vez de adaptarse al tema. Iguala la especificidad
+   para que gane el valor del tema. */
+.text-muted { color: var(--text-muted) !important; }
+.form-control, .form-select, .input-sm-custom {
+    background-color: var(--input-bg) !important;
+    border: 1px solid var(--input-border) !important;
+    color: var(--text-main) !important;
+    font-size: 13px; border-radius: 4px; padding: 6px 12px;
+}
+.form-control:focus, .form-select:focus {
+    border-color: var(--accent) !important;
+    box-shadow: 0 0 0 0.25rem var(--accent-soft) !important;
+}
+::placeholder { color: var(--text-muted) !important; opacity: 0.6; }
+
+/* --- TOGGLES (SWITCHES) ALTO CONTRASTE --- */
+.form-check-input {
+    background-color: var(--input-border) !important; 
+    border-color: var(--text-muted) !important;
+    cursor: pointer;
+}
+.form-check-input:checked {
+    background-color: var(--accent) !important;
+    border-color: var(--accent) !important;
+}
+.form-check-input:focus {
+    box-shadow: 0 0 0 0.25rem var(--accent-soft) !important;
+}
+
+/* =========================================================================
+   4. TABLAS GLOBALES
+   ========================================================================= */
+.table { 
+    --bs-table-bg: transparent; 
+    --bs-table-color: var(--text-main);
+    color: var(--text-main); 
+    margin-bottom: 0; 
+}
+
+/* Encabezado dinámico y Aniquilador de Theads Hardcodeados */
+.table thead, .table thead[style], .table tfoot, .table tfoot[style], tr[id*="rowTotales"],
+[style*="#0d2b45" i], [style*="#0D2B45" i] {
+    background-color: var(--bg-table-header) !important;
+    border-bottom: 2px solid var(--accent);
+}
+
+.table thead th {
+    color: var(--accent) !important; 
+    font-size: 11px; 
+    text-transform: uppercase; 
+    padding: 12px 10px;
+    font-weight: 800;
+    vertical-align: middle;
+    border: none;
+    letter-spacing: 0.5px;
+}
+
+.table tbody tr { border-bottom: 1px solid var(--border-color); }
+.table-hover tbody tr:hover { background-color: var(--accent-soft) !important; }
+.table-hover tbody tr:hover > * { background-color: transparent !important; box-shadow: none; }
+
+.table-active, .table-active > td, .table-active > th {
+    background-color: var(--accent-soft) !important;
+    color: var(--accent) !important;
+    font-weight: bold;
+}
+
+/* =========================================================================
+   5. TABS
+   ========================================================================= */
+.nav-tabs { border-bottom: 1px solid var(--input-border); }
+.nav-tabs .nav-link { 
+    color: var(--text-muted); border: none; font-size: 11px; font-weight: bold; 
+    text-transform: uppercase; padding: 12px 24px; background: var(--bg-card);
+}
+.nav-tabs .nav-link:hover { color: var(--text-main); background: var(--accent-soft); }
+.nav-tabs .nav-link.active { 
+    color: var(--accent) !important; background: var(--accent-soft) !important; 
+    border-bottom: 3px solid var(--accent) !important; 
+}
+
+/* =========================================================================
+   6. UTILS
+   ========================================================================= */
+.card-filtros { background: var(--bg-card); border: 1px solid var(--border-color) !important; border-radius: 8px; }
+.badge-status { font-size: 10px; padding: 4px 8px; border-radius: 20px; }
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--bg-escritorio); }
+::-webkit-scrollbar-thumb { background: var(--input-border); border-radius: 10px; }
+
+/* =========================================================================
+   7. SELECT2 THEME (ADAPTATIVO WEST IT)
+   ========================================================================= */
+.select2-container--default .select2-selection--single {
+    background-color: var(--input-bg) !important;
+    border: 1px solid var(--input-border) !important;
+    height: 36px !important;
+    border-radius: 4px !important;
+}
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+    color: var(--text-main) !important;
+    line-height: 34px !important;
+    padding-left: 12px;
+    font-size: 13px;
+    text-transform: uppercase;
+}
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 34px !important;
+}
+.select2-container--default .select2-selection--single .select2-selection__arrow b {
+    border-color: var(--text-muted) transparent transparent transparent !important;
+}
+.select2-dropdown {
+    background-color: var(--bg-modal) !important;
+    border: 1px solid var(--accent) !important;
+    z-index: 9999 !important;
+}
+.select2-search__field {
+    background-color: var(--input-bg) !important;
+    color: var(--text-main) !important;
+    border: 1px solid var(--input-border) !important;
+    text-transform: uppercase;
+    font-family: 'Segoe UI', sans-serif !important;
+}
+.select2-results__option {
+    color: var(--text-muted) !important;
+    font-size: 12px;
+    padding: 8px 10px;
+    text-transform: uppercase;
+}
+.select2-container--default .select2-results__option--highlighted[aria-selected] {
+    background-color: var(--accent) !important;
+    color: #ffffff !important;
+    font-weight: bold;
+}
+.select2-container--default .select2-results__option--selected {
+    background-color: var(--accent-soft) !important;
+    color: var(--accent) !important;
+}
+
+/* =========================================================================
+   8. MODALES Y SWEETALERT2
+   ========================================================================= */
+/* Obliga al modal a ser adaptativo aunque JS le pase estilos oscuros en linea */
+.modal-content, 
+.swal2-popup,
+[style*="#001020" i] {
+    background-color: var(--bg-modal) !important;
+    color: var(--text-main) !important;
+    border: 1px solid var(--border-color) !important;
+    box-shadow: 0 0 30px rgba(0,0,0,0.5) !important;
+}
+.swal2-container.swal2-backdrop-show {
+    background: rgba(0, 0, 0, 0.85) !important;
+}
+.swal2-title, .swal2-html-container, .swal2-content, .swal2-validation-message {
+    color: var(--text-titles) !important;
+}
+.swal2-html-container table {
+    color: var(--text-main) !important;
+    background-color: transparent !important;
+    border-collapse: collapse !important;
+    width: 100% !important;
+    margin-top: 10px !important;
+}
+.swal2-html-container thead th {
+    background-color: var(--bg-table-header) !important;
+    color: var(--accent) !important;
+    text-transform: uppercase !important;
+    font-size: 11px !important;
+    padding: 10px !important;
+    border-bottom: 2px solid var(--accent) !important;
+}
+.swal2-html-container td {
+    padding: 8px !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    font-size: 12px !important;
+}
+.swal2-confirm {
+    background-color: var(--accent) !important;
+    color: #ffffff !important;
+    font-weight: bold !important;
+    text-transform: uppercase !important;
+    font-size: 12px !important;
+    padding: 10px 25px !important;
+    border-radius: 4px !important;
+    box-shadow: none !important;
+}
+.swal2-cancel {
+    background-color: var(--danger) !important;
+    color: #ffffff !important;
+    text-transform: uppercase !important;
+    font-size: 12px !important;
+    padding: 10px 25px !important;
+    border-radius: 4px !important;
+}
+.swal2-icon.swal2-info { border-color: var(--accent) !important; color: var(--accent) !important; }
+.swal2-icon.swal2-warning { border-color: var(--warning) !important; color: var(--warning) !important; }
+.swal2-icon.swal2-error { border-color: var(--danger) !important; color: var(--danger) !important; }
+.swal2-icon.swal2-success { border-color: var(--success) !important; color: var(--success) !important; }
+.swal2-success-circular-line, .swal2-success-fix, .swal2-success-fix-left, .swal2-success-fix-right { background-color: transparent !important; }
+
+/* =========================================================================
+   9. SISTEMA RESPONSIVE: TARJETAS MOBILE + PAGINACIÓN REUTILIZABLE
+   ========================================================================= */
+
+/* ---- Barra de paginación ---- */
+.erp-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 4px;
+    border-top: 1px solid var(--border-color);
+    margin-top: 4px;
+}
+.erp-pagination .erp-pag-info {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+.erp-pagination .erp-pag-info strong {
+    color: var(--accent);
+}
+.erp-pagination .erp-pag-controls {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.erp-pag-btn {
+    background: transparent;
+    border: 1px solid var(--input-border);
+    color: var(--text-main);
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-weight: 600;
+}
+.erp-pag-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+.erp-pag-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+.erp-pag-btn.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: bold;
+}
+.erp-pag-select {
+    background: var(--input-bg) !important;
+    border: 1px solid var(--input-border) !important;
+    color: var(--text-main) !important;
+    font-size: 11px;
+    padding: 4px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+.erp-pag-jump {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: var(--text-muted);
+}
+.erp-pag-jump input {
+    width: 44px;
+    background: var(--input-bg);
+    border: 1px solid var(--input-border);
+    color: var(--text-main);
+    font-size: 11px;
+    padding: 3px 6px;
+    border-radius: 3px;
+    text-align: center;
+}
+.erp-pag-jump input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+/* ---- Tarjetas Mobile ---- */
+.erp-cards-wrap {
+    display: none; /* oculto en desktop */
+}
+.erp-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    position: relative;
+    transition: border-color 0.15s;
+}
+.erp-card:hover {
+    border-color: var(--accent);
+}
+.erp-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
+}
+.erp-card-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-titles);
+    line-height: 1.3;
+}
+.erp-card-code {
+    font-size: 10px;
+    color: var(--accent);
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+    margin-left: 8px;
+    background: var(--accent-soft);
+    border: 1px solid var(--accent);
+    border-radius: 3px;
+    padding: 2px 7px;
+}
+.erp-card-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    padding: 3px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+.erp-card-row:last-of-type {
+    border-bottom: none;
+}
+.erp-card-label {
+    color: var(--text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 10px;
+    letter-spacing: 0.3px;
+}
+.erp-card-value {
+    color: var(--text-main);
+    text-align: right;
+    font-size: 12px;
+}
+.erp-card-value.price {
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 14px;
+}
+.erp-card-value.stock-ok  { color: var(--success); font-weight: 700; }
+.erp-card-value.stock-low { color: var(--danger);  font-weight: 700; }
+.erp-card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-color);
+}
+.erp-card-actions .btn {
+    flex: 1;
+    font-size: 11px;
+    padding: 6px 4px;
+    font-weight: 600;
+}
+.erp-card-badge {
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 20px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+/* ---- Breakpoint: mobile (<= 768px) ---- */
+@media (max-width: 991.98px) {
+    .navbar-erp .navbar-toggler {
+        display: grid;
+        place-items: center;
+    }
+    .navbar-erp .navbar-collapse {
+        border-top: 1px solid var(--border-color);
+    }
+    .navbar-erp .nav-link {
+        min-height: 44px;
+        padding: 12px 14px !important;
+        font-size: 15px;
+        line-height: 20px;
+    }
+    .navbar-erp .dropdown-menu {
+        min-width: 100%;
+    }
+    .navbar-erp .dropdown-item {
+        min-height: 44px;
+        padding: 12px 18px;
+        font-size: 15px;
+        line-height: 20px;
+        white-space: normal;
+    }
+    .navbar-erp .dropdown-item i {
+        width: 20px;
+        font-size: 14px;
+    }
+}
+
+@media (max-width: 768px) {
+    .status-bar { padding: 4px 8px; flex-wrap: wrap; row-gap: 4px; }
+    /* En mobile no entra en la misma fila que el logo/empresa: pasa a una
+       segunda fila propia, angosta, para no perder el acceso a caja/depósito
+       (antes se ocultaba del todo y no había forma de ver ni cambiar el
+       depósito de trabajo desde el celular). */
+    .status-context {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 4px;
+        order: 3;
+        flex: 1 1 100%;
+        justify-content: center;
+    }
+    .status-context .status-date { display: none; }
+    .status-company { justify-content: flex-start; padding: 0 8px 0 0; }
+    .status-company img { width: 24px; height: 24px; flex-basis: 24px; }
+    .status-company-copy strong { max-width: 46vw; font-size: 10px; }
+    .status-company-copy small { display: none; }
+
+    /* Mostrar cards, ocultar tabla */
+    .erp-table-wrap { display: none !important; }
+    .erp-cards-wrap { display: block; }
+    
+    /* Flexibilizamos el alto del navbar para móviles */
+    .navbar-brand, .navbar-erp .nav-link { 
+        line-height: normal; 
+        padding-top: 10px !important; 
+        padding-bottom: 10px !important; 
+    }
+    
+    /* Paginación apilada en mobile */
+    .erp-pagination { flex-direction: column; align-items: stretch; }
+    .erp-pagination .erp-pag-controls { justify-content: center; flex-wrap: wrap; }
+    .erp-pag-jump { justify-content: center; }
+    .erp-pagination .erp-pag-info { text-align: center; }
+
+    /* Ajustes generales en mobile */
+    .container-fluid { padding-left: 10px !important; padding-right: 10px !important; }
+    h4 { font-size: 16px !important; }
+    .card-filtros .row { gap: 6px 0; }
+}

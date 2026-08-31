@@ -1,0 +1,291 @@
+[
+  {
+    "id": "facturacion",
+    "text": "Facturación",
+    "url": "",
+    "icon": "fa-solid fa-file-invoice-dollar",
+    "children": [
+      { "id": "fac_emit", "text": "Facturar", "url": "newfactura.php" },
+      { "id": "fac_comp", "text": "Comprobantes Emitidos", "url": "comprobantes_emitidos.php" }
+    ]
+  },  
+  {
+      "id": "productos",
+      "text": "Productos",
+      "url": "",
+      "icon": "fa-solid fa-box",
+      "children": [
+        { "id": "prod_adm", "text": "Administrar Productos", "url": "productos_admin.php" },
+        {
+          "id": "prod_rubros",
+          "text": "Rubros",
+          "url": "",
+          "children": [
+            { "id": "rub_adm", "text": "Administrar Rubros", "url": "rubros_admin.php" }
+          ]
+        },
+        {
+          "id": "prod_marcas",
+          "text": "Marcas",
+          "url": "",
+          "children": [
+            { "id": "mar_adm", "text": "Administrar Marcas", "url": "marcas_admin.php" }
+          ]
+        },
+        {
+          "id": "prod_precios",
+          "text": "Precios",
+          "url": "",
+          "children": [
+            { "id": "prc_edit", "text": "Editar Listas de Precios", "url": "precios_edit.php" },
+            { "id": "prc_aum", "text": "Aumentos Masivos", "url": "precios_aumento.php" }
+          ]
+        },
+        { "id": "prod_imp", "text": "Importar Productos", "url": "productos_import.php" },
+        {
+          "id": "prod_inventario_sub",
+          "text": "Inventario",
+          "url": "",
+          "children": [
+            { "id": "inv_mov", "text": "Movimientos de Stock", "url": "stock_movimientos.php" },
+            { "id": "inv_ing", "text": "Ingreso de Stock", "url": "stock_ingreso.php" },
+            { "id": "inv_aji", "text": "Ajuste De Stock", "url": "stock_ajuste_indiv.php" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "depositos",
+      "text": "Depósitos",
+      "url": "",
+      "icon": "fa-solid fa-warehouse",
+      "children": [
+        { "id": "dep_adm", "text": "Administrar Depósitos", "url": "depositos_admin.php" },
+        { "id": "dep_trans", "text": "Transferencias entre Depósitos", "url": "depositos_transferencia.php" },
+        { "id": "dep_trans_hist", "text": "Historial de Transferencias", "url": "depositos_transferencias_admin.php" },
+        { "id": "dep_recepciones", "text": "Recepciones Pendientes", "url": "depositos_recepciones.php" },
+        { "id": "dep_stock", "text": "Stock por Depósito", "url": "reporte_stock_por_deposito.php" }
+      ]
+    },
+    {
+      "id": "clientes",
+      "text": "Clientes",
+      "url": "",
+      "icon": "fa-solid fa-users",
+      "children": [
+        { "id": "cli_adm", "text": "Administrar Clientes", "url": "clientes_admin.php" },
+        { "id": "cli_ramas", "text": "Administrar Ramas", "url": "clientes_ramas.php" },
+        {
+          "id": "cli_cobros",
+          "text": "Cobranzas",
+          "url": "",
+          "children": [
+            { "id": "cob_fac", "text": "Cobrar Facturas", "url": "cobrar_facturas.php" }
+          ]
+        },
+        {
+          "id": "cli_informes",
+          "text": "Informes",
+          "url": "",
+          "children": [
+            { "id": "inf_pend", "text": "Facturas Pendientes", "url": "facturas_pend_cli.php" },
+            { "id": "inf_res", "text": "Resumen de Cuentas", "url": "clientes_cuenta_corriente.php" },
+            { "id": "inf_rec", "text": "Recibos Emitidos", "url": "recibos_emitidos.php" }
+          ]
+        },
+        { "id": "cli_import", "text": "Importar Clientes", "url": "clientes_import.php" }
+      ]
+    },
+    {
+      "id": "proveedores",
+      "text": "Proveedores",
+      "url": "",
+      "icon": "fa-solid fa-truck-field",
+      "children": [
+        { "id": "prv_adm", "text": "Administrar Proveedores", "url": "proveedores_admin.php" },
+        {
+          "id": "prv_pagos",
+          "text": "Pagos",
+          "url": "",
+          "children": [
+            { "id": "pag_fac", "text": "Pagar Facturas", "url": "proveedores_pagar_facturas.php" }
+          ]
+        },
+        {
+          "id": "prv_consultas",
+          "text": "Consultas",
+          "url": "",
+          "children": [
+            { "id": "prv_inf_pend", "text": "Facturas Pendientes", "url": "proveedores_facturas_pend.php" },
+            { "id": "prv_inf_res", "text": "Resumen de Cuentas", "url": "proveedores_cuentas_corrientes.php" },
+            { "id": "prv_inf_pag", "text": "Ver Pagos Realizados", "url": "proveedores_ver_pagos_realizados.php" }
+          ]
+        },
+        { "id": "prv_conceptos", "text": "Administrar Conceptos de Compra", "url": "proveedores_conceptos_compra.php" },
+        {
+          "id": "fcompra_principal",
+          "text": "Facturas de Compra",
+          "url": "",
+          "children": [
+            { "id": "fccompra_new", "text": "Cargar Factura de Compra", "url": "proveedores_facturas_add.php" },
+            { "id": "fccompra_admin", "text": "Ver Facturas Cargadas", "url": "proveedores_facturas_administrar.php" }
+          ]
+        },
+        { "id": "prv_import", "text": "Importar Proveedores", "url": "proveedores_import.php" }
+      ]
+    },
+    {
+      "id": "fondos",
+      "text": "Fondos",
+      "url": "",
+      "icon": "fa-solid fa-vault",
+      "children": [
+        {
+          "id": "fnd_bancos",
+          "text": "Bancos y Cuentas Bancarias",
+          "url": "",
+          "children": [
+            { "id": "bnc_adm", "text": "Administrar Cuentas Bancarias", "url": "bancos_admin.php" },
+            { "id": "bnc_entidades_adm", "text": "Administrar Entidades Bancarias", "url": "bancos_entidades.php" }
+          ]
+        },
+        {
+          "id": "fnd_puestos_cobro",
+          "text": "Administrar Puestos de Cobro (Cajas)",
+          "url": "puestos_cobro.php"
+        },
+        { "id": "fnd_teso", 
+        "text": "Cuentas de Tesorería", 
+        "url": "", 
+        "children": [
+            { "id": "fondos_admcuentas", "text": "Administrar Cuentas", "url": "tesoreria_admin_cuentas.php" },
+            { "id": "fondos_nuevacta", "text": "Crear Nueva Cuenta", "url": "tesoreria_nueva_cuenta.php" }
+          ] 
+        },
+        {
+          "id": "fnd_inf",
+          "text": "Informes de Fondos",
+          "url": "",
+          "children": [
+            { "id": "inf_tes", "text": "Cuentas de Tesorería (Resúmenes)", "url": "informe_tesoreria.php" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "reportes",
+      "text": "Reportes",
+      "url": "",
+      "icon": "fa-solid fa-chart-line",
+      "children": [
+        {
+          "id": "rep_ventas",
+          "text": "Ventas",
+          "url": "",
+          "children": [
+            { "id": "rv_inf", "text": "Informe de Ventas", "url": "reporte_ventas_informe.php" },
+            { "id": "rv_com", "text": "Comprobantes Emitidos", "url": "reporte_ventas_comprobantes.php" }
+          ]
+        },
+        {
+          "id": "rep_medios",
+          "text": "Medios de Cobro y Pago",
+          "url": "",
+          "children": [
+            { "id": "rm_ventas", "text": "Ventas por Medio de Pago", "url": "reporte_medios_ventas.php" },
+            { "id": "rm_cobros", "text": "Cobros por Medio de Pago", "url": "reporte_medios_cobros.php" },
+            { "id": "rm_pagos", "text": "Pagos por Medio de Pago", "url": "reporte_medios_pagos.php" }
+          ]
+        },
+        {
+          "id": "rep_compras",
+          "text": "Compras",
+          "url": "",
+          "children": [
+            {
+              "id": "rc_facturas",
+              "text": "Facturas de Compra",
+              "url": "",
+              "children": [
+                { "id": "rc_f_ver", "text": "Ver Facturas de Compra", "url": "reporte_compras_facturas.php" },
+                { "id": "rc_f_pend", "text": "Facturas Pendientes de Pago", "url": "reporte_compras_pendientes.php" }
+              ]
+            },
+            { "id": "rc_conc", "text": "Ver Movimientos por Concepto", "url": "reporte_compras_conceptos.php" }
+          ]
+        },
+        {
+          "id": "rep_cajas",
+          "text": "Cajas y movimientos de Usuarios",
+          "url": "",
+          "children": [
+            { "id": "rcj_usr", "text": "Movimientos de Cajas", "url": "reporte_cajas_usuarios.php" },
+            { "id": "rcj_ctrl", "text": "Movimientos por Usuarios", "url": "reporte_movimientos_usuarios.php" },
+            { "id": "rcj_mov", "text": "Ver usuarios en cada puesto", "url": "reporte_cajas_usuariosporpuesto.php" },
+            { "id": "rcj_cnt", "text": "Movimientos de Caja Central", "url": "reporte_cajas_central.php" }
+          ]
+        },
+        {
+          "id": "rep_listados",
+          "text": "Listados",
+          "url": "",
+          "children": [
+            { "id": "rl_cli", "text": "Listado de Clientes", "url": "reporte_listado_clientes.php" },
+            { "id": "rl_prod", "text": "Listado de Productos", "url": "reporte_listado_productos.php" },
+            { "id": "rl_prv", "text": "Listado de Proveedores", "url": "reporte_listado_proveedores.php" }
+          ]
+        },
+        {
+          "id": "rep_stock",
+          "text": "Stock",
+          "url": "",
+          "children": [
+            { "id": "rs_mov", "text": "Movimientos de Stock", "url": "reporte_stock_movimientos.php" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "administrador",
+      "text": "Administrador",
+      "url": "",
+      "icon": "fa-solid fa-user-shield",
+      "children": [
+        {
+      "id": "adm_menu_usuarios",
+      "text": "Usuarios",
+      "url": "",
+      "icon": "",
+      "children": [
+        { "id": "adm_usr", "text": "Administrar Usuarios", "url": "usuarios_admin.php" },
+        { "id": "adm_new", "text": "Nuevo Usuario", "url": "usuarios_new.php" }
+      ]
+      },
+        { "id": "adm_cod", "text": "Modificar Códigos", "url": "codigos_mod.php" },
+        { "id": "adm_ajuste_excel", "text": "Ajuste de Stock por Excel", "url": "stock_ajuste_excel.php" },
+        {
+          "id": "adm_config_sub",
+          "text": "Configuración",
+          "url": "",
+          "children": [
+            { "id": "cfg_emp", "text": "Datos de la Empresa", "url": "empresa_datos.php" },
+            { "id": "cfg_gral", "text": "Configuración General", "url": "config_general.php" },
+            { "id": "cfg_solicitar_cert", "text": "Descargar Certificado para ARCA", "url": "certificado_descargar.php" },
+            { "id": "cfg_subir_cert", "text": "Subir Certificado Generado en ARCA", "url": "certificado_subir.php" }
+          ]
+        }
+      ]
+    },
+    
+    {
+      "id": "cajas",
+      "text": "Cajas",
+      "url": "",
+      "icon": "fa-solid fa-address-book",
+      "children": [
+        { "id": "caja_abr", "text": "Abrir Caja", "url": "cajas_abrir.php" },
+        { "id": "caja_cerr", "text": "Cerrar Caja", "url": "cajas_cerrar.php" },
+        { "id": "caja_reti", "text": "Retiros a Caja Central", "url": "cajas_retirar_a_central.php" }
+      ]
+    }
+  ]

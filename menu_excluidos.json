@@ -1,0 +1,39 @@
+[
+{
+      "id": "sucursales",
+      "text": "Sucursales",
+      "url": "",
+      "icon": "fa-solid fa-store",
+      "children": [
+        { "id": "suc_adm", "text": "Administrar Sucursales", "url": "sucursales_admin.php" },
+        { "id": "suc_env", "text": "Envío de Mercadería", "url": "sucursales_envio.php" },
+        { "id": "suc_dev", "text": "Devolución de Mercadería", "url": "sucursales_devolucion.php" },
+        { "id": "suc_ing", "text": "Ingresar Mercadería Recibida", "url": "sucursales_ingreso.php" },
+        {
+          "id": "suc_ver",
+          "text": "Consultas Sucursales",
+          "url": "",
+          "children": [
+            { "id": "suc_v_env", "text": "Ver Mercadería Enviada", "url": "suc_ver_enviada.php" },
+            { "id": "suc_v_rec", "text": "Ver Mercadería Recibida", "url": "suc_ver_recibida.php" },
+            { "id": "suc_v_rem_e", "text": "Ver Remitos de Envío", "url": "suc_ver_remitos_envio.php" },
+            { "id": "suc_v_rem_r", "text": "Ver Remitos de Recepción", "url": "suc_ver_remitos_recep.php" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "recursos_humanos",
+      "text": "RR HH",
+      "url": "",
+      "icon": "fa-solid fa-address-book",
+      "children": [
+        { "id": "rh_adm", "text": "Administrar Recursos Humanos", "url": "rrhh_admin.php" },
+        { "id": "rh_new", "text": "Nuevo Recurso Humano", "url": "rrhh_new.php" },
+        { "id": "rh_mov", "text": "Nuevo Movimiento", "url": "rrhh_mov_new.php" },
+        { "id": "rh_res", "text": "Resumen de Cuenta", "url": "rrhh_resumen.php" },
+        { "id": "rh_typ", "text": "Administrar Tipos de Movimientos", "url": "rrhh_tipos_mov.php" },
+        { "id": "rh_typ_new", "text": "Nuevo Tipo de Movimiento", "url": "rrhh_tipos_mov_new.php" }
+      ]
+    }
+]

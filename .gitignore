@@ -1,0 +1,22 @@
+# Certificados y claves fiscales (ARCA/AFIP) - nunca versionar
+ARCA/
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Credenciales de base de datos externa hardcodeadas / dumps con datos reales
+coego.php
+coegotest.sql
+config_db_master.php
+*.sql
+!sql/*.sql
+
+# Claves de proveedores de IA / servicios externos
+config_ia.php
+
+# Dependencias (se reinstalan con composer install)
+vendor/
+
+# Archivos subidos por usuarios / generados con datos reales de clientes (fotos, informes, PDFs)
+img/

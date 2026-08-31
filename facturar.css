@@ -1,0 +1,126 @@
+    /* Estilos de Formulario Compacto de Escritorio */
+  .win-form {
+    background-color: var(--bg-escritorio); /* ANTES DECÍA #020617 */
+    height: calc(100vh - 65px);
+    display: flex;
+    flex-direction: column;
+    color: var(--text-main); /* ANTES DECÍA #cbd5e1 */
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    font-size: 11px;
+}
+
+    /* Paneles Reducidos */
+    .win-panel {
+        border: 1px solid #1e293b;
+        border-radius: 4px;
+        padding: 6px 10px;
+        margin-bottom: 4px;
+        background: #0f172a55;
+    }
+
+    .win-panel-title {
+        font-size: 9px;
+        font-weight: 800;
+        color: #64748b;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    /* Grilla Central Compacta */
+    .win-grid-wrapper {
+        flex-grow: 1;
+        overflow-y: auto;
+        border: 1px solid var(--border-color); /* ANTES DECÍA #1e293b */
+        background: var(--bg-card); /* ANTES DECÍA #000 */
+        margin: 0 10px;
+    }
+
+    .win-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .win-table thead th {
+        background: var(--bg-header); /* ANTES DECÍA #111827 */
+        color: var(--text-muted); /* ANTES DECÍA #94a3b8 */
+        padding: 6px 8px;
+        text-align: left;
+        border-bottom: 2px solid var(--border-color); /* ANTES DECÍA #1e293b */
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        font-size: 10px;
+    }
+
+    .win-table tbody td {
+        padding: 4px 8px;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-main);
+        font-size: 11px;
+    }
+
+    .win-table tbody tr:hover { background: #1e293b; }
+
+    /* Inputs y Controles Compactos */
+    .win-input {
+        background: var(--input-bg) !important;
+        border: 1px solid var(--border-color) !important;
+        color: var(--text-main) !important;
+        font-size: 11px !important;
+        padding: 3px 6px !important;
+        border-radius: 3px !important;
+    }
+
+    .win-input:focus { border-color: #0ea5e9 !important; outline: none; }
+    .win-input[readonly] { background: var(--input-bg) !important; color: var(--text-muted) !important; border-color: var(--border-color) !important; }
+
+    /* Pie de Página (Totales Compactos) */
+    .win-footer-compact {
+        background: var(--bg-footer); /* ANTES DECÍA #000 */
+        padding: 8px 15px;
+        border-top: 2px solid var(--border-color); /* ANTES DECÍA #1e293b */
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .totals-summary { display: flex; gap: 15px; align-items: center; }
+    .totals-item { display: flex; flex-direction: column; }
+    .totals-label { font-size: 9px; color: #64748b; font-weight: 700; }
+    .totals-val { font-size: 13px; font-weight: 600; color: #fff; }
+
+    .main-total-box {
+        background: #0ea5e911;
+        border: 1px solid #0ea5e933;
+        padding: 5px 20px;
+        border-radius: 6px;
+        text-align: right;
+    }
+
+    .total-big {
+        font-size: 24px;
+        font-weight: 900;
+        color: #0ea5e9;
+        line-height: 1;
+    }
+
+    .btn-action {
+        height: 36px;
+        font-weight: 700;
+        font-size: 11px;
+        text-transform: uppercase;
+        border-radius: 4px;
+        padding: 0 20px;
+    }
+
+    /* Modal de Cobro */
+    .modal-cobro .modal-content { background: #0f172a; border: 1px solid #334155; color: #fff; }
+    .modal-cobro .modal-header { border-bottom: 1px solid #1e293b; padding: 10px 15px; }
+    .modal-cobro .modal-footer { border-top: 1px solid #1e293b; }
+    .payment-row { background: #020617; border-radius: 6px; padding: 12px; border: 1px solid #1e293b; margin-bottom: 10px; }
+
+    .text-accent { color: #0ea5e9 !important; }
+    .cursor-pointer { cursor: pointer; }
