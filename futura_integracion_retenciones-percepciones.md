@@ -8,6 +8,15 @@ Se planea ofrecer como módulo adicional (no incluido por defecto en ninguna lic
 
 Que el sistema contemple el caso en que la empresa (el tenant) es **agente de retención y/o de percepción** de IVA y/o Ganancias ante AFIP/ARCA, aplicando lo que corresponda al pagar a proveedores y al cobrar/facturar a clientes.
 
+## Condición previa: la empresa se autodefine como agente
+
+No todas las empresas son agentes de retención/percepción — AFIP designa esa condición puntualmente (por resolución, generalmente a "grandes contribuyentes" o por régimen específico), y no todos los tenants del sistema la van a tener. Por eso **todo este mecanismo (consulta al Padrón, cálculo, certificado) solo se activa si la propia empresa lo configura explícitamente**, en vez de intentar correr siempre "por las dudas".
+
+- Se agregan 4 banderas independientes en Configuración (no una sola): "Soy agente de retención de IVA", "Soy agente de retención de Ganancias", "Soy agente de percepción de IVA", "Soy agente de percepción de Ganancias" — independientes porque AFIP puede designar a una empresa para un régimen y no para otro.
+- Si **ninguna** bandera está activa, el sistema no consulta el Padrón nunca, no calcula nada, no le agrega fricción a pagar un proveedor o cobrar un cliente — se comporta exactamente igual que hoy.
+- Si hay alguna activa, cada flujo (retención en pagos, percepción en ventas) solo corre para los impuestos marcados — ej. si solo está tildado "agente de retención de IVA", pagar a un proveedor dispara el chequeo de IVA pero no el de Ganancias.
+- Guardar también, junto a cada bandera, la fecha de designación y el número de resolución de AFIP que la origina — es un dato de referencia útil para auditoría, no algo que el sistema use para decidir nada.
+
 ## Estado actual del sistema (relevado antes de diseñar)
 
 Ya existen campos `retiva` / `retgan` / `retiibb` en el código, pero **no son este caso** — son escenarios distintos, ya construidos:
@@ -50,6 +59,7 @@ No hay problema de performance con este enfoque: a diferencia de una venta de mo
 
 ## Modelo de datos (borrador conceptual)
 
+- **`config_agente_retencion_percepcion`**: las 4 banderas (retención IVA, retención Ganancias, percepción IVA, percepción Ganancias) por tenant, cada una con fecha de designación y número de resolución de AFIP de referencia. Es el gate de todo lo demás.
 - **`padron_afip_cache`**: cuit, categoría IVA, categoría Ganancias, actividad principal, fecha de última consulta exitosa. Es el respaldo para cuando AFIP no responde en el momento, no la fuente primaria.
 - **`retenciones_percepciones_regimenes`**: impuesto (IVA/GANANCIAS), tipo (RETENCION/PERCEPCION), categoría del sujeto, alícuota, monto mínimo no sujeto, vigente_desde/hasta. Se carga y actualiza a mano cuando AFIP cambia algo por resolución — no se hardcodea en código.
 - **`retenciones_practicadas`**: fecha, proveedor_id, impuesto, base de cálculo, alícuota aplicada, importe retenido, pago asociado, número de certificado, estado (pendiente de reportar / reportado a SICORE).
@@ -66,14 +76,16 @@ La `condicionfiscal` que ya se guarda en `alb_clientes` y `Proveedores` (Respons
 ## Flujo por caso
 
 **Retención (al pagar a un proveedor, en `proveedores_pagar_facturas.php`):**
-1. Consulta en vivo (o caché de respaldo con aviso) de la categoría del proveedor.
+0. Chequeo de bandera: ¿la empresa es agente de retención de IVA y/o Ganancias? Si ninguna está activa, no se hace nada de lo siguiente.
+1. Para cada impuesto con la bandera activa: consulta en vivo (o caché de respaldo con aviso) de la categoría del proveedor.
 2. Cálculo con la tabla de alícuotas + mínimo acumulado del mes.
 3. Se muestra el monto calculado al operador antes de confirmar el pago (con opción de ajuste manual justificado).
 4. Se descuenta del pago, se genera el certificado de retención en PDF, se registra en `retenciones_practicadas`.
 5. Reporte batch mensual a AFIP (SICORE/SIRE) con todo lo acumulado en `retenciones_practicadas` del período — proceso aparte, no atado a cada pago.
 
 **Percepción (al facturar/cobrar a un cliente, en `newfactura.php` / `cobrar_facturas.php`):**
-1. Consulta en vivo (o caché de respaldo con aviso) de la categoría del cliente.
+0. Chequeo de bandera: ¿la empresa es agente de percepción de IVA y/o Ganancias? Si ninguna está activa, no se hace nada de lo siguiente.
+1. Para cada impuesto con la bandera activa: consulta en vivo (o caché de respaldo con aviso) de la categoría del cliente.
 2. Cálculo con la tabla de alícuotas + mínimo acumulado del mes.
 3. Se suma al total del comprobante.
 4. Se declara como campo `Tributos` en el mismo llamado a ARCA que ya se hace para pedir el CAE — no es una llamada nueva a ARCA, son datos extra en la que ya existe.
@@ -81,12 +93,13 @@ La `condicionfiscal` que ya se guarda en `alb_clientes` y `Proveedores` (Respons
 
 ## Orden de implementación sugerido
 
-1. Integración con el Padrón de AFIP (`ws_sr_padron_a13`), reutilizando `arca_obtener_ta()` — prerrequisito de todo lo demás, y ya sirve por sí sola para la alerta de condición fiscal desactualizada.
-2. Tabla de regímenes/alícuotas + carga manual inicial de los valores vigentes.
-3. Retención en pagos a proveedores (no toca facturación electrónica, más aislado).
-4. Percepción en ventas/cobros (sí toca el llamado a ARCA existente, requiere más cuidado por el riesgo fiscal de tocar `api_facturar.php`).
-5. Certificado de retención en PDF.
-6. Reporte batch mensual (SICORE/SIRE).
+1. Pantalla de configuración con las 4 banderas de agente — el gate de todo, y lo más simple de construir.
+2. Integración con el Padrón de AFIP (`ws_sr_padron_a13`), reutilizando `arca_obtener_ta()`, y ya sirve por sí sola para la alerta de condición fiscal desactualizada.
+3. Tabla de regímenes/alícuotas + carga manual inicial de los valores vigentes.
+4. Retención en pagos a proveedores (no toca facturación electrónica, más aislado).
+5. Percepción en ventas/cobros (sí toca el llamado a ARCA existente, requiere más cuidado por el riesgo fiscal de tocar `api_facturar.php`).
+6. Certificado de retención en PDF.
+7. Reporte batch mensual (SICORE/SIRE).
 
 ## Pendiente de decidir cuando se arranque a construir
 
