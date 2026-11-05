@@ -63,6 +63,13 @@ try {
             $_POST['comisionesvend'], $_POST['chequesrechazados']
         ]);
 
+        // Opcional: solo existe con sql/2026-10-15_tarjetas_cupones.sql y solo hace falta
+        // para registrar liquidaciones de tarjeta con aranceles.
+        if (array_key_exists('comisionestarjetas', $_POST)) {
+            $pdo->prepare("UPDATE cuentaspredeterminadas SET comisionestarjetas = ? WHERE id = 1")
+                ->execute([trim((string) $_POST['comisionestarjetas']) !== '' ? $_POST['comisionestarjetas'] : null]);
+        }
+
         echo json_encode(['success' => true, 'message' => 'Configuración actualizada correctamente.']);
         exit;
     }

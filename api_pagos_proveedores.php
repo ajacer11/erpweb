@@ -6,6 +6,7 @@
 require_once 'check_api_access.php';
 require_once 'fiscal_imputacion_helpers.php';
 require_once 'contabilidad_cuentas_helpers.php';
+require_once 'retper_helpers.php';
 
 $action = $_GET['action'] ?? '';
 $usuario = $_SESSION['usuario_nombre'];
@@ -109,6 +110,17 @@ try {
             echo json_encode(['success' => true, 'data' => $pdo->query($sql)->fetchAll()]);
             break;
 
+        case 'calcular_retenciones':
+            // Vista previa para la pantalla de pago: con 'efectivo' vacío calcula sobre el total
+            // pendiente de las facturas elegidas y sugiere cuánto pagar por los medios.
+            $d = json_decode(file_get_contents('php://input'), true) ?: [];
+            $efectivo = (isset($d['efectivo']) && $d['efectivo'] !== '' && $d['efectivo'] !== null && (float) $d['efectivo'] > 0) ? round((float) $d['efectivo'], 2) : null;
+            $fechaCalc = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($d['fecha'] ?? '')) ? $d['fecha'] : date('Y-m-d');
+            $res = calcularRetencionesPago($pdo, (int) ($d['proveedor_id'] ?? 0), array_map('intval', (array) ($d['facturas'] ?? [])), $efectivo, $fechaCalc);
+            echo json_encode(['success' => true, 'lineas' => $res['lineas'], 'total' => $res['total'], 'cancelado' => $res['cancelado'],
+                              'a_pagar' => round($res['cancelado'] - $res['total'], 2)]);
+            break;
+
         case 'save_pago':
             $data = json_decode(file_get_contents('php://input'), true);
             $fechaPago = $data['fecha']; // Esta es la fecha del movimiento
@@ -166,6 +178,16 @@ try {
             $facturaIds = idsSeleccionados($facturasSeleccionadas);
             $fiscal = $data['fiscal'] ? 1 : 0;
 
+            // Retenciones como agente (retper_helpers.php): lo cancelado es lo que sale por los
+            // medios más lo retenido. El servidor recalcula y exige que coincida con lo que se
+            // le mostró al usuario, para no retener un importe distinto del que vio.
+            $calcRet = calcularRetencionesPago($pdo, (int) $data['proveedor_id'], $facturaIds, $totalPago, $fechaPago);
+            $totalRetenciones = $calcRet['total'];
+            if (abs($totalRetenciones - (float) ($data['retenciones_total'] ?? 0)) > 0.01) {
+                throw new Exception('Las retenciones a practicar cambiaron ($' . number_format($totalRetenciones, 2, ',', '.') . '). Vuelva a calcularlas antes de grabar el pago.');
+            }
+            $totalCancelado = round($totalPago + $totalRetenciones, 2);
+
             if ($facturaIds) {
                 $sqlFiscal = "SELECT id, fiscal FROM facturasdecompra WHERE proveedorid = ? AND id IN (" . placeholdersSql($facturaIds) . ")";
                 $stmtFiscal = $pdo->prepare($sqlFiscal);
@@ -183,11 +205,12 @@ try {
                     VALUES (?, ?, CURDATE(), ?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', '', 0, 0, 0, ?)";
             $stmtP = $pdo->prepare($sqlP);
             $stmtP->execute([
-                $data['numcomp'], $data['proveedor_id'], $fechaPago, $usuario, $totalPago,
+                $data['numcomp'], $data['proveedor_id'], $fechaPago, $usuario, $totalCancelado,
                 $data['mp1'], $data['mp1imp'], $mp2, $mp2imp,
                 $fiscal, $data['nota'], 0
             ]);
             $idTicket = $pdo->lastInsertId();
+            registrarRetenciones($pdo, $calcRet['lineas'], (int) $idTicket, (int) $data['proveedor_id'], $fechaPago, $usuario);
 
             // 2. OBTENER NUMERADOR TESORERÍA (Secuencial Global)
             $stmtTesoNum = $pdo->query("SELECT MAX(numerodeasiento) FROM cccuentastesoreria FOR UPDATE");
@@ -218,7 +241,7 @@ try {
             // 5. MOVIMIENTOS CC PROVEEDORES
             $pdo->prepare("INSERT INTO moviemientosccproveedores (proveedor, facturas, pagos, fecha, compasoc, mpago1, mpago1imp, mpago2, mpago2imp, tabla, fiscal, usuario, idpago) 
                            VALUES (?, 0, ?, ?, ?, ?, ?, ?, ?, 'pagoaproveedores', ?, ?, ?)")
-                ->execute([$data['proveedor_id'], $totalPago, $fechaPago, $data['numcomp'], $data['mp1'], $data['mp1imp'], $mp2, $mp2imp, $fiscal, $usuario, $idTicket]);
+                ->execute([$data['proveedor_id'], $totalCancelado, $fechaPago, $data['numcomp'], $data['mp1'], $data['mp1imp'], $mp2, $mp2imp, $fiscal, $usuario, $idTicket]);
 
             // 6. GESTIÓN DE MEDIOS DE PAGO (BANCOS / CAJAS)
             // Procesar MP1 y MP2
@@ -270,8 +293,9 @@ try {
             // Endosos (Terceros)
             if (!empty($data['endosos'])) {
                 foreach ($data['endosos'] as $chqId) {
-                    $pdo->prepare("UPDATE chequesterceros SET estado = 2, endosadoa = ?, fachaendoso = ?, tabla = 'pagos', compasoc = ? WHERE id = ?")
-                        ->execute([$data['proveedor_id'], $fechaPago, $idTicket, $chqId]);
+                    $stmtEndoso = $pdo->prepare("UPDATE chequesterceros SET recibo_origen_id = COALESCE(recibo_origen_id, CASE WHEN tabla = 'pagos' AND endosadoa = 0 THEN compasoc ELSE NULL END), estado = 2, endosadoa = ?, fachaendoso = ?, pago_endoso_id = ? WHERE id = ? AND estado = 0");
+                    $stmtEndoso->execute([$data['proveedor_id'], $fechaPago, $idTicket, $chqId]);
+                    if ($stmtEndoso->rowCount() !== 1) throw new Exception("El cheque seleccionado ya no está disponible en cartera.");
                 }
             }
             // Propios
@@ -291,7 +315,7 @@ try {
             }
 
             // 8. IMPUTACIÓN DE FACTURAS
-            $saldoAImputar = $totalPago;
+            $saldoAImputar = $totalCancelado;
             foreach ($data['facturas_seleccionadas'] as $f) {
                 if ($saldoAImputar <= 0) break;
                 $monto = min(floatval($f['pendiente']), $saldoAImputar);
@@ -344,11 +368,19 @@ try {
                 grabarLineaAsiento($pdo, $num_asiento_contable, $fechaPago, $cta_mp2, 0, $mp2imp, $idTicket, 'pagoaproveedores', $fiscal, $usuario, $detalleAsiento, $ejercicio_id, $periodoActual);
             }
 
-            // C3. Asiento Proveedor (Debe - Cancelación de deuda)
-            grabarLineaAsiento($pdo, $num_asiento_contable, $fechaPago, $cta_contable_proveedor, $totalPago, 0, $idTicket, 'pagoaproveedores', $fiscal, $usuario, $detalleAsiento, $ejercicio_id, $periodoActual);
+            // C3. Retenciones practicadas (Haber - pasivo a depositar)
+            foreach ($calcRet['lineas'] as $ret) {
+                if ($ret['importe'] > 0) {
+                    grabarLineaAsiento($pdo, $num_asiento_contable, $fechaPago, retperCuenta($pdo, $ret), 0, $ret['importe'], $idTicket, 'pagoaproveedores', $fiscal, $usuario, $detalleAsiento, $ejercicio_id, $periodoActual);
+                }
+            }
+
+            // C4. Asiento Proveedor (Debe - Cancelación de deuda: medios + retenciones)
+            grabarLineaAsiento($pdo, $num_asiento_contable, $fechaPago, $cta_contable_proveedor, $totalCancelado, 0, $idTicket, 'pagoaproveedores', $fiscal, $usuario, $detalleAsiento, $ejercicio_id, $periodoActual);
 
             $pdo->commit();
-            echo json_encode(['success' => true, 'id' => $idTicket, 'nro_asiento' => $num_asiento_contable]);
+            echo json_encode(['success' => true, 'id' => $idTicket, 'nro_asiento' => $num_asiento_contable,
+                              'retenciones' => array_values(array_filter($calcRet['lineas'], static fn($r) => $r['importe'] > 0))]);
             break;
 
         default:

@@ -14,7 +14,8 @@ try {
         // CONSULTA DE AUDITORÍA (Fiel a controldecobrosaclicentes.vb)
         // Lógica: 
         // 1. ccclientes: Saldo contable (Debe - Haber)
-        // 2. tickets (Facturas): Total - Pagado (en cobrosfacturasclientes)
+        // 2. tickets (Facturas): Importe enviado a CC - Pagado (en cobrosfacturasclientes).
+        //    importectacte NULL = comprobante anterior a esa columna: se toma el total.
         // 3. Comparación y filtro por diferencia > 0.1
         // 4. Exclusión tipos comp: 3 (NC A), 8 (NC B), 13 (NC C), 101 (Presupuesto/Remito según implement.)
 
@@ -32,7 +33,7 @@ try {
                 GROUP BY cliente
             ) cc ON cc.cliente=c.id 
             LEFT JOIN (
-                SELECT t.cliente, SUM(t.total-IFNULL(p.pagado,0)) saldo_facturas 
+                SELECT t.cliente, SUM(COALESCE(t.importectacte, t.total)-IFNULL(p.pagado,0)) saldo_facturas 
                 FROM tickets t 
                 LEFT JOIN (
                     SELECT idfactura, SUM(importepagado) pagado 

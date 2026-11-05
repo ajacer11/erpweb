@@ -21,9 +21,39 @@ window.bill = (function () {
     /**
      * FUNCIÓN DE REDONDEO CONTABLE (Regla 1 y 6 Manual)
      * Asegura consistencia con el redondeo de VB.NET a 2 decimales.
+     *
+     * Number.EPSILON (2.22e-16) solo alcanza para compensar el error de
+     * representación de punto flotante en números cercanos a 1 — para importes
+     * más grandes (cientos, miles) el error real ronda 1e-14 o más, así que
+     * EPSILON no corrige nada y un valor exactamente en el borde de medio
+     * centavo (ej. 152.145, guardado como 152.144999999999982) redondea mal,
+     * para abajo, mientras PHP round() sí lo detecta y redondea a 152.15. Esto
+     * generaba "Error de integridad en totales" al facturar carritos grandes:
+     * el navegador y el servidor terminaban en un centavo distinto por línea,
+     * multiplicado por la cantidad. Se limpia el ruido de flotante redondeando
+     * primero a 6 decimales (de sobra para una cadena de cuentas de 2
+     * decimales) antes de redondear al centavo.
      */
     function r(val) {
-        return Math.round((val + Number.EPSILON) * 100) / 100;
+        const limpio = Math.round(val * 1e6) / 1e6;
+        return Math.round((limpio + Number.EPSILON) * 100) / 100;
+    }
+
+    /**
+     * Redondeo a 3 decimales para el NETO unitario de lista. El neto se guarda y se
+     * recalcula con 3 decimales (api_facturar_gets.php, normalizarListasParaVenta):
+     * redondearlo a 2 antes de sumarle el IVA hacía que un precio de lista de $4.000
+     * se cobrara $4.000,01 (4000/1,21 = 3305,785 -> 3305,79 -> x1,21 = 4000,01).
+     */
+    function r3(val) {
+        const limpio = Math.round(val * 1e7) / 1e7;
+        return Math.round((limpio + Number.EPSILON) * 1000) / 1000;
+    }
+
+    // Notas de crédito (A/B/C y ticket de crédito): son devoluciones, la
+    // mercadería vuelve al stock, así que no se valida disponibilidad.
+    function esNotaCredito() {
+        return [3, 8, 13, 101].includes(parseInt($('#sel_tipo').val()));
     }
 
     function esTicketSinIva() {
@@ -40,7 +70,7 @@ window.bill = (function () {
         const effectivePoriva = tktsiniva ? 0 : it.poriva;
 
         // 1. Base de cálculo original (Neto de lista o manual)
-        const netounitario = r(it.precio_base);
+        const netounitario = r3(it.precio_base);
         const impint = r(it.imp_int_unit);
 
         // 2. Precio Final Unitario ANTES del descuento
@@ -67,14 +97,11 @@ window.bill = (function () {
             } else {
 
                 // IVA normal
-                netoUnitEfectivo = r(
-                    (base_neto_iva_unit - total_discount_money_unit) /
-                    (1 + effectivePoriva / 100)
-                );
+                const brutoUnit = r(base_neto_iva_unit - total_discount_money_unit);
+                netoUnitEfectivo = r(brutoUnit / (1 + effectivePoriva / 100));
 
-                ivaUnitEfectivo = r(
-                    netoUnitEfectivo * (effectivePoriva / 100)
-                );
+                // El IVA es la diferencia: así neto + IVA = precio final exacto (sin centavos de más o de menos).
+                ivaUnitEfectivo = r(brutoUnit - netoUnitEfectivo);
             }
         } else {
             // Caso B: El descuento agota el Neto+IVA y pasa a los Impuestos Internos
@@ -104,6 +131,25 @@ window.bill = (function () {
     /**
      * Inicialización del Módulo
      */
+    async function advertirDatosEmisor(validacion) {
+        if (!validacion?.requerida || validacion.completo) return false;
+        const faltan = (validacion.faltantes || []).join(', ');
+        const deposito = validacion.deposito ? ` para ${validacion.deposito}` : '';
+        const aviso = await Swal.fire({
+            icon: 'warning',
+            title: 'Faltan datos para facturar',
+            text: `Complete${deposito}: ${faltan}. Puede cargarlos en Datos de la Empresa o en el depósito; la fecha de inicio de actividades se carga en Datos de la Empresa.`,
+            showCancelButton: true,
+            showDenyButton: true,
+            confirmButtonText: 'DATOS DE LA EMPRESA',
+            denyButtonText: 'DEPÓSITOS',
+            cancelButtonText: 'CERRAR'
+        });
+        if (aviso.isConfirmed) { loadModule('empresa_datos.php'); return true; }
+        if (aviso.isDenied) { loadModule('depositos_admin.php'); return true; }
+        return false;
+    }
+
     async function init() {
         const h = { 'X-Requested-With': 'XMLHttpRequest' };
         try {
@@ -123,6 +169,8 @@ window.bill = (function () {
             if (res.success) {
                 maestros = res;
                 config = res.config || res.configuracion;
+
+                if (await advertirDatosEmisor(res.emisor_validacion)) return;
 
                 renderCombos();
                 renderGrid();
@@ -163,12 +211,20 @@ window.bill = (function () {
                 ajax: {
                     url: 'api_facturar_gets.php?action=buscar_productos',
                     dataType: 'json',
+                    cache: false,
                     delay: 300,
                     headers: h,
                     data: params => ({ q: params.term }),
                     processResults: res => ({ results: res.data.map(p => ({ id: p.codigo, text: p.descripcion, full: p })) })
                 }
             }).on('select2:select', e => setProducto(e.params.data.full));
+
+            $('#pay_m1, #pay_m2').select2({
+                dropdownParent: $('#mod_pay'),
+                width: '65%',
+                placeholder: 'BUSCAR MEDIO...',
+                minimumResultsForSearch: 0
+            });
 
             setupEvents();
             renderGrid();
@@ -467,7 +523,7 @@ window.bill = (function () {
                     const resRef = await fetch(`api_referencias.php?action=resolve&code=${encodeURIComponent(code)}`, { headers: h }).then(r => r.json());
                     const realCode = resRef.data?.codigo_real || code;
 
-                    const res = await fetch(`api_facturar_gets.php?action=buscar_codigo_producto&q=${encodeURIComponent(realCode)}`, { headers: h }).then(r => r.json());
+                    const res = await fetch(`api_facturar_gets.php?action=buscar_codigo_producto&q=${encodeURIComponent(realCode)}`, { headers: h, cache: 'no-store' }).then(r => r.json());
                     if (res.success && res.data.length > 0) {
                         setProducto(res.data[0]);
                         addItemInternal();
@@ -501,7 +557,33 @@ window.bill = (function () {
                     }
                 }
             }
+            actualizarAyudaEfectivo();
         });
+        $('#pay_i1, #pay_i2, #pay_entrega_efectivo').on('input change', actualizarAyudaEfectivo);
+    }
+
+    function actualizarAyudaEfectivo() {
+        const numero = valor => {
+            const n = parseFloat(String(valor ?? '').replace(/\s/g, '').replace(',', '.'));
+            return Number.isFinite(n) ? n : 0;
+        };
+        const esEfectivo = id => {
+            const medio = maestros.medios_pago.find(m => m.id == id);
+            return medio && (medio.tipodecuenta === 'Caja de Usuarios' || /efectivo/i.test(medio.medio || ''));
+        };
+        const efectivo1 = esEfectivo($('#pay_m1').val());
+        const efectivo2 = esEfectivo($('#pay_m2').val());
+        $('#pay_efectivo_helper').toggleClass('d-none', !efectivo1 && !efectivo2);
+        if (!efectivo1 && !efectivo2) {
+            $('#pay_entrega_efectivo').val('');
+            $('#pay_vuelto').text('$ 0,00');
+            $('#pay_falta').text('$ 0,00');
+            return;
+        }
+        const aplicado = (efectivo1 ? numero($('#pay_i1').val()) : 0) + (efectivo2 ? numero($('#pay_i2').val()) : 0);
+        const entrega = numero($('#pay_entrega_efectivo').val());
+        $('#pay_vuelto').text('$ ' + m(Math.max(0, r(entrega - aplicado))));
+        $('#pay_falta').text('$ ' + m(Math.max(0, r(aplicado - entrega))));
     }
 
     async function buscarClienteModal(q) {
@@ -570,7 +652,7 @@ window.bill = (function () {
     }
 
     async function buscarArticuloModal(q) {
-        const res = await fetch(`api_facturar_gets.php?action=buscar_productos&q=${encodeURIComponent(q)}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } }).then(r => r.json());
+        const res = await fetch(`api_facturar_gets.php?action=buscar_productos&q=${encodeURIComponent(q)}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store' }).then(r => r.json());
         const $b = $('#tbody_mod_art').empty();
         const lista = parseInt($('#in_lista').val()) || 1;
         const col = lista === 1 ? 'siniva' : 'siniva' + lista;
@@ -618,7 +700,7 @@ window.bill = (function () {
         const existIdx = cart.findIndex(x => x.codigo.toString().trim() === curProd.codigo.toString().trim());
         const cantEnGrilla = existIdx !== -1 ? cart[existIdx].cantidad : 0;
 
-        if (parseInt(config?.stocknegativo) === 0 && stockActual < (cant + cantEnGrilla)) {
+        if (parseInt(config?.stocknegativo) === 0 && !esNotaCredito() && stockActual < (cant + cantEnGrilla)) {
             Swal.fire({
                 title: 'Stock Insuficiente',
                 text: `El producto no permite stock negativo. Disponible: ${stockActual}.`,
@@ -794,9 +876,11 @@ window.bill = (function () {
         $('#tx_reca_g').html(m(globalAdj.reca));
         $('#tx_neto_f').html(m(s21 + s105 + s0)).css('color', 'var(--accent)');
         $('#tx_total_f').html(m(totalConAjustes)).css({ 'color': 'var(--accent)', 'text-shadow': '0 0 15px rgba(0,255,255,0.3)' });
+        $('#tx_total_unidades').text(m(cart.reduce((acc, it) => acc + (parseFloat(it.cantidad) || 0), 0)));
 
         $('#mod_pay_total').text('$ ' + m(totalConAjustes));
         $('#pay_i1').val(totalConAjustes.toFixed(2));
+        actualizarAyudaEfectivo();
     }
 
     function renderCombos() {
@@ -826,18 +910,18 @@ window.bill = (function () {
             if (clienteEsRIMono) {
                 tiposPermitidos = [{ id: 1, n: 'FACTURA A' }, { id: 100, n: 'TICKET' }];
                 if (parseInt(config?.admitendc) == 1 && !pedidoOrigenId && !presupuestoOrigenId) {
-                    tiposPermitidos.push({ id: 2, n: 'N. CRÉDITO A' }, { id: 3, n: 'N. CRÉDITO A (ASOC)' });
+                    tiposPermitidos.push({ id: 2, n: 'N. DÉBITO A' }, { id: 3, n: 'N. CRÉDITO A' });
                 }
             } else {
                 tiposPermitidos = [{ id: 6, n: 'FACTURA B' }, { id: 100, n: 'TICKET' }];
                 if (parseInt(config?.admitendc) == 1 && !pedidoOrigenId && !presupuestoOrigenId) {
-                    tiposPermitidos.push({ id: 7, n: 'N. CRÉDITO B' }, { id: 8, n: 'N. CRÉDITO B (ASOC)' });
+                    tiposPermitidos.push({ id: 7, n: 'N. DÉBITO B' }, { id: 8, n: 'N. CRÉDITO B' });
                 }
             }
         } else {
             tiposPermitidos = [{ id: 11, n: 'FACTURA C' }, { id: 100, n: 'TICKET' }];
             if (parseInt(config?.admitendc) == 1 && !pedidoOrigenId && !presupuestoOrigenId) {
-                tiposPermitidos.push({ id: 12, n: 'N. CRÉDITO C' }, { id: 13, n: 'N. CRÉDITO C (ASOC)' });
+                tiposPermitidos.push({ id: 12, n: 'N. DÉBITO C' }, { id: 13, n: 'N. CRÉDITO C' });
             }
         }
 
@@ -848,6 +932,12 @@ window.bill = (function () {
         // REGLA 2: Si es PEDIDO o PRESUPUESTO, excluir Notas de Crédito/Débito
         if (pedidoOrigenId || presupuestoOrigenId) {
             tiposPermitidos = tiposPermitidos.filter(t => [1, 6, 11, 100, 101].includes(t.id));
+        }
+
+        // Las notas de débito (2/7/12) solo se ofrecen si están habilitadas en
+        // Configuración General (por defecto no).
+        if (parseInt(config?.admitenotasdebito) !== 1) {
+            tiposPermitidos = tiposPermitidos.filter(t => ![2, 7, 12].includes(t.id));
         }
 
         fillSelect('#sel_tipo', tiposPermitidos, 'n');
@@ -878,7 +968,7 @@ window.bill = (function () {
 
         if (field === 'cant') {
             const stockActual = parseFloat(it.precios_cache.stock || it.precios_cache.Stock || 0);
-            if (parseInt(config?.stocknegativo) === 0 && val > stockActual) {
+            if (parseInt(config?.stocknegativo) === 0 && !esNotaCredito() && val > stockActual) {
                 Swal.fire('Stock Insuficiente', `No puede superar las ${stockActual} unidades disponibles.`, 'error');
                 renderGrid(); return;
             }
@@ -909,7 +999,7 @@ window.bill = (function () {
                 }
 
                 const nuevoBase = (val - it.imp_int_unit) / (1 + alicuota);
-                it.precio_base = r(Math.max(0, nuevoBase));
+                it.precio_base = r3(Math.max(0, nuevoBase));
                 it.pordesc = 0;
                 it.promo_label = null; it.promo_id = null;
             }
@@ -1157,7 +1247,7 @@ window.bill = (function () {
         if (isNaN(cant) || cant <= 0) cant = 1;
 
         const alicuota = esTicketSinIva() ? 0 : poriva;
-        const netoU = r(totalFinalU / (1 + alicuota / 100));
+        const netoU = r3(totalFinalU / (1 + alicuota / 100));
 
         cart.push({
             codigo: 'LM',
@@ -1197,7 +1287,7 @@ window.bill = (function () {
         abrirBuscadorArticulo: () => { $('#mod_search_art').modal('show'); buscarArticuloModal(''); },
         seleccionarDesdeModal: (type, obj) => { if (type === 'CLI') { setCliente(obj); $('#mod_search_cli').modal('hide'); } else { setProducto(obj); addItemInternal(); $('#mod_search_art').modal('hide'); } },
         toggleTheme: () => { $('body').toggleClass('light-mode'); const isL = $('body').hasClass('light-mode'); $('#btnThemeToggle').html(isL ? '<i class="fas fa-moon"></i>MODO OSCURO' : '<i class="fas fa-sun"></i>MODO CLARO'); },
-        modalGlobal: modalGlobalInternal, intentarCobro: () => { if (cart.length === 0) return; $('#mod_pay').modal('show'); },
+        modalGlobal: modalGlobalInternal, intentarCobro: () => { if (cart.length === 0) return; $('#pay_entrega_efectivo').val(''); actualizarAyudaEfectivo(); $('#mod_pay').modal('show'); },
         abrirAsociar: abrirAsociarInternal,
         confirmarAsociacion: confirmarAsociacionInternal,
         abrirLineaManual: abrirLineaManualInternal,

@@ -51,7 +51,7 @@ require_once 'check_access.php';
 </div>
 
 <div class="modal fade" id="modalDeposito" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content border-info shadow-lg">
             <div class="modal-header py-2 border-secondary bg-navbar">
                 <h6 class="modal-title text-white" id="tituloModalDeposito">NUEVO DEPÓSITO</h6>
@@ -62,6 +62,16 @@ require_once 'check_access.php';
                 <div class="mb-3">
                     <label class="form-label-custom mb-1">NOMBRE</label>
                     <input type="text" id="depNombre" class="form-control" maxlength="100" placeholder="Ej: Depósito Sucursal Norte">
+                </div>
+                <div class="row g-2 mb-3">
+                    <div class="col-md-8"><label class="form-label-custom mb-1">DOMICILIO</label><input type="text" id="depDomicilio" class="form-control" maxlength="255"></div>
+                    <div class="col-md-4"><label class="form-label-custom mb-1">CÓDIGO POSTAL</label><input type="text" id="depCodigoPostal" class="form-control" maxlength="20"></div>
+                    <div class="col-md-6"><label class="form-label-custom mb-1">LOCALIDAD</label><input type="text" id="depLocalidad" class="form-control" maxlength="100"></div>
+                    <div class="col-md-6"><label class="form-label-custom mb-1">PROVINCIA</label><input type="text" id="depProvincia" class="form-control" maxlength="100"></div>
+                    <div class="col-md-6"><label class="form-label-custom mb-1">TELÉFONO</label><input type="text" id="depTelefono" class="form-control" maxlength="100"></div>
+                    <div class="col-md-6"><label class="form-label-custom mb-1">E-MAIL</label><input type="email" id="depEmail" class="form-control" maxlength="150"></div>
+                    <div class="col-md-4"><label class="form-label-custom mb-1">PUNTO DE VENTA</label><input type="number" id="depPuntoVenta" class="form-control" min="1" max="99999"></div>
+                    <div class="col-md-8"><label class="form-label-custom mb-1">LOGO DE COMPROBANTES</label><input type="file" id="depLogo" class="form-control" accept="image/png,image/jpeg,image/webp"><small id="depLogoEstado" class="text-white-50"></small></div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label-custom mb-1">DESCRIPCIÓN</label>
@@ -155,6 +165,12 @@ require_once 'check_access.php';
         document.getElementById('depPermiteNegativo').checked = d ? parseInt(d.permitenegativo) === 1 : false;
         document.getElementById('depEsTransito').checked = d ? parseInt(d.estransito) === 1 : false;
         document.getElementById('depEsTransito').disabled = d ? parseInt(d.esprincipal) === 1 : false;
+        ['Domicilio','Localidad','Provincia','Telefono','Email','CodigoPostal','PuntoVenta'].forEach(c => {
+            const key = c === 'PuntoVenta' ? 'puntodeventa' : c.toLowerCase();
+            document.getElementById('dep' + c).value = d ? (d[key] || '') : '';
+        });
+        document.getElementById('depLogo').value = '';
+        document.getElementById('depLogoEstado').textContent = d && parseInt(d.tiene_logo) === 1 ? 'Logo asignado (elegir otro para reemplazarlo)' : 'Sin logo asignado';
         modalDeposito.show();
     };
 
@@ -165,9 +181,24 @@ require_once 'check_access.php';
             descripcion: document.getElementById('depDescripcion').value.trim(),
             permitenegativo: document.getElementById('depPermiteNegativo').checked ? 1 : 0,
             estransito: document.getElementById('depEsTransito').checked ? 1 : 0,
+            domicilio: document.getElementById('depDomicilio').value.trim(),
+            localidad: document.getElementById('depLocalidad').value.trim(),
+            provincia: document.getElementById('depProvincia').value.trim(),
+            telefono: document.getElementById('depTelefono').value.trim(),
+            email: document.getElementById('depEmail').value.trim(),
+            codigopostal: document.getElementById('depCodigoPostal').value.trim(),
+            puntodeventa: parseInt(document.getElementById('depPuntoVenta').value) || 0,
         };
         if (!payload.nombre) {
             return Swal.fire({ title: 'Atención', text: 'El nombre es obligatorio.', icon: 'warning', background: '#001020', color: '#fff' });
+        }
+        if (!payload.estransito && payload.puntodeventa < 1) {
+            return Swal.fire({ title: 'Atención', text: 'El punto de venta es obligatorio.', icon: 'warning', background: '#001020', color: '#fff' });
+        }
+        const logoFile = document.getElementById('depLogo').files[0];
+        if (logoFile) {
+            if (logoFile.size > 2 * 1024 * 1024) return Swal.fire({ title: 'Atención', text: 'El logo no puede superar los 2 MB.', icon: 'warning', background: '#001020', color: '#fff' });
+            payload.logo = await new Promise((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.onerror = reject; fr.readAsDataURL(logoFile); });
         }
         if (id) payload.id = parseInt(id);
 

@@ -8,11 +8,35 @@
 // Incluye: Session start, Validación AJAX estricta, Conexión DB ($pdo)
 require_once 'check_api_access.php';
 require_once 'permisos_helpers.php';
+require_once 'stock_deposito_helpers.php';
+
+// Log de auditoría ARCA por cliente (ARCA/<cuit>/log_arca_audit.txt), separado del de las
+// demás empresas — mismo criterio que en api_facturar.php.
+function logArcaCliente($linea)
+{
+    $cuit = preg_replace('/[^0-9]/', '', (string) ($_SESSION['cliente_cuit'] ?? ''));
+    if ($cuit === '')
+        $cuit = 'sin_cuit';
+    $dir = __DIR__ . "/ARCA/{$cuit}";
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+    @file_put_contents("{$dir}/log_arca_audit.txt", date('Y-m-d H:i:s') . ' ' . $linea . "\n", FILE_APPEND);
+}
 
 $action = $_GET['action'] ?? '';
 
 try {
     switch ($action) {
+        case 'get_depositos':
+            $habilitado = multidepositoHabilitado($pdo);
+            echo json_encode([
+                'success' => true,
+                'habilitado' => $habilitado,
+                'data' => $habilitado ? depositosPermitidosUsuario($pdo, $_SESSION['usuario_nombre'] ?? '') : []
+            ]);
+            break;
+
         case 'list':
         case 'export':
             // Lógica de parámetros (Mantenemos compatibilidad con tu código anterior)
@@ -33,6 +57,18 @@ try {
             $where = " WHERE t.$tipoFecha BETWEEN ? AND ? ";
             $params = [$desde, $hasta];
 
+            if (multidepositoHabilitado($pdo) && !empty($input['deposito_id'])) {
+                $idDeposito = (int) $input['deposito_id'];
+                $permitidos = array_map('intval', array_column(depositosPermitidosUsuario($pdo, $_SESSION['usuario_nombre'] ?? ''), 'id'));
+                if (!in_array($idDeposito, $permitidos, true)) throw new Exception('No tiene acceso al depósito seleccionado.');
+                $stPvDep = $pdo->prepare('SELECT puntodeventa FROM depositos WHERE id = ?');
+                $stPvDep->execute([$idDeposito]);
+                $pvDeposito = (int) $stPvDep->fetchColumn();
+                $where .= " AND (t.id_deposito = ? OR (t.id_deposito IS NULL AND t.PtoVta = ?)) ";
+                $params[] = $idDeposito;
+                $params[] = $pvDeposito;
+            }
+
             // PERMISO ESPECIAL: un usuario restringido a "un solo vendedor" solo puede
             // ver sus propios comprobantes, sin importar qué filtro haya elegido en pantalla.
             if (esVendedorRestringido()) {
@@ -45,6 +81,10 @@ try {
             if (!empty($input['cliente_id'])) {
                 $where .= " AND t.cliente = ? ";
                 $params[] = $input['cliente_id'];
+            }
+            if (!empty($input['usuario_txt'])) {
+                $where .= " AND UPPER(t.usuario) = UPPER(?) ";
+                $params[] = $input['usuario_txt'];
             }
             if (!empty($input['tipo_comp'])) {
                 switch($input['tipo_comp']) {
@@ -162,6 +202,13 @@ try {
 
                 $cuit = (string)($_SESSION['cliente_cuit'] ?? $_SESSION['tenant_cuit'] ?? '');
                 $modo = (int)($_SESSION['modo'] ?? 0);
+                // No se usa $_SESSION['condicion_iva_empresa']: esa clave solo se hidrata al
+                // visitar Facturar (api_facturar_gets.php::get_maestros). Si el usuario re-emite
+                // el CAE desde Comprobantes Emitidos sin haber pasado antes por Facturar en esta
+                // sesión, queda vacía y el emisor cae por defecto en "Consumidor Final" (5), un
+                // valor que el motor ARCA no sabe mapear a ningún tipo de comprobante — de ahí el
+                // "No se pudo determinar el tipo de comprobante". Se consulta directo de la DB.
+                $condicionIvaEmpresa = $pdo->query("SELECT condicioniva FROM datosempresa WHERE id = 1 LIMIT 1")->fetchColumn();
                 $pv = (int)$ticket['PtoVta'];
                 $tipoComp = (int)$ticket['tipocomp'];
                 $numComp = (int)$ticket['numcomp'];
@@ -264,7 +311,7 @@ try {
                     $payload = [
                         'tipo' => $tipoOperacion,
                         'emisorCuit' => $cuit,
-                        'emisorCondicionIva' => $mapCond($_SESSION['condicion_iva_empresa'] ?? ''),
+                        'emisorCondicionIva' => $mapCond($condicionIvaEmpresa ?? ''),
                         'docTipo' => $condReceptor === 5 ? 99 : 80,
                         'docNro' => $condReceptor === 5 ? 0 : (int)($ticket['cliente_numdoc'] ?? $ticket['NumdocCli'] ?? 0),
                         'puntoVenta' => $pv,
@@ -276,15 +323,21 @@ try {
                         'iva' => $iva,
                         'produccion' => $modo
                     ];
+                    // Percepciones practicadas al grabarlo (agente de percepción): se vuelven a
+                    // declarar como Tributos para que ARCA reciba el mismo total que se cobró.
+                    try {
+                        $stPerc = $pdo->prepare("SELECT r.codigo_tributo_arca AS id, r.nombre AS `desc`, ABS(p.base) AS base, p.alicuota AS alic, ABS(p.importe) AS importe
+                                                 FROM percepciones_practicadas p JOIN regimenes_retper r ON r.id = p.idregimen WHERE p.idticket = ? AND p.estado <> 1000");
+                        $stPerc->execute([(int)$ticket['id']]);
+                        $percRetry = $stPerc->fetchAll(PDO::FETCH_ASSOC);
+                        if ($percRetry) $payload['percepciones'] = $percRetry;
+                    } catch (PDOException $e) {
+                        // base sin el módulo de percepciones
+                    }
                     if ($comprobanteAsociado !== null) {
                         $payload['comprobanteAsociado'] = $comprobanteAsociado;
                     }
                     $afip = $requestJson('https://erp.westit.com.ar/ARCA/new_fe_cae_api.php', $payload, false, 'solicitud de CAE');
-
-                    // La API sincroniza numeración. Nunca vinculamos al ticket un CAE de otro número.
-                    if (isset($afip['numeroComprobante']) && (int)$afip['numeroComprobante'] !== $numComp) {
-                        throw new Exception('ARCA espera el comprobante N° ' . $afip['numeroComprobante'] . ', pero el registro local es el N° ' . $numComp . '. No se vinculó el CAE para evitar una inconsistencia fiscal.');
-                    }
                 }
 
                 if (($afip['resultado'] ?? '') !== 'A' || empty($afip['cae'])) {
@@ -292,13 +345,51 @@ try {
                     throw new Exception($detalle);
                 }
 
+                // El CAE YA está autorizado por AFIP en este punto: eso no se puede "devolver".
+                // Antes, si ARCA aprobaba un número distinto al local, se tiraba una excepción
+                // ACÁ sin haber grabado nada — el CAE real quedaba solo en la respuesta de ARCA,
+                // perdido para el sistema apenas se cerraba el diálogo de error. Ahora se graba
+                // siempre primero, y la corrección de numeración es un paso aparte y best-effort
+                // (mismo criterio que en api_facturar.php).
                 $vtoRaw = preg_replace('/[^0-9]/', '', (string)($afip['vencimiento'] ?? ''));
                 $vto = strlen($vtoRaw) === 8 ? $vtoRaw : '';
                 $upd = $pdo->prepare("UPDATE tickets SET cae = ?, fechacae = ? WHERE id = ? AND (cae IS NULL OR cae = '')");
                 $upd->execute([(string)$afip['cae'], $vto, $ticketId]);
-                file_put_contents('log_arca_audit.txt', date('Y-m-d H:i:s') . " CAE RE-SOLICITADO | TICKET {$ticketId} | {$pv}-{$numComp} | CAE {$afip['cae']} | USUARIO " . ($_SESSION['usuario_nombre'] ?? '') . "\n", FILE_APPEND);
+                logArcaCliente("CAE RE-SOLICITADO | TICKET {$ticketId} | {$pv}-{$numComp} | CAE {$afip['cae']} | USUARIO " . ($_SESSION['usuario_nombre'] ?? ''));
 
-                echo json_encode(['success' => true, 'cae' => (string)$afip['cae'], 'vencimiento' => $vto]);
+                $numeroAprobadoArca = isset($afip['numeroComprobante']) ? (int)$afip['numeroComprobante'] : $numComp;
+                $renumeracionFallida = false;
+                $avisoNumeracion = null;
+                if ($numeroAprobadoArca > 0 && $numeroAprobadoArca !== $numComp) {
+                    try {
+                        $pdo->beginTransaction();
+                        // AND numcomp = $numComp de más: solo toca filas que TODAVÍA muestran el
+                        // número que se le pidió a ARCA, no cualquier fila que caiga en el rango
+                        // de IDs (evita pisar líneas de otro comprobante si ya fueron corregidas
+                        // por otro proceso mientras tanto).
+                        if ((int)$ticket['lvhasta'] > 0) {
+                            $pdo->prepare("UPDATE Lineadeventa SET numcomp=? WHERE id BETWEEN ? AND ? AND pdv=? AND Tipocomp=? AND numcomp=?")
+                                ->execute([$numeroAprobadoArca, $ticket['lvdesde'], $ticket['lvhasta'], $pv, $tipoComp, $numComp]);
+                        }
+                        $pdo->prepare("UPDATE tickets SET numcomp=? WHERE id=?")->execute([$numeroAprobadoArca, $ticketId]);
+                        $pdo->commit();
+                        $numComp = $numeroAprobadoArca;
+                        logArcaCliente("RENUMERACION EN REINTENTO TICKET {$ticketId}: reserva local={$numComp} -> aprobado por ARCA={$numeroAprobadoArca}");
+                    } catch (Throwable $reconEx) {
+                        if ($pdo->inTransaction()) $pdo->rollBack();
+                        $renumeracionFallida = true;
+                        $avisoNumeracion = "CAE grabado correctamente, pero ARCA aprobó el comprobante {$numeroAprobadoArca} y localmente sigue figurando como {$numComp} (no se pudo renumerar: {$reconEx->getMessage()}). Verificar en AFIP si el número {$numeroAprobadoArca} quedó duplicado.";
+                        logArcaCliente("ERROR RENUMERACION EN REINTENTO TICKET {$ticketId}: " . $reconEx->getMessage());
+                    }
+                }
+
+                echo json_encode([
+                    'success' => true,
+                    'cae' => (string)$afip['cae'],
+                    'vencimiento' => $vto,
+                    'renumeracion_fallida' => $renumeracionFallida,
+                    'aviso_numeracion' => $avisoNumeracion
+                ]);
             } finally {
                 $stUnlock = $pdo->prepare('SELECT RELEASE_LOCK(?)');
                 $stUnlock->execute([$lockName]);

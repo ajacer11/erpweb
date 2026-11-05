@@ -92,7 +92,7 @@ try {
         if ($inc_vencidos) {
             // A Cobrar (Tickets + Cheques)
             $data['resumen']['arrastre_cobros'] += safeQueryValue($pdo, "
-                SELECT SUM(total - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0)) 
+                SELECT SUM(COALESCE(importectacte, total) - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0)) 
                 FROM tickets WHERE pagada = 0 AND tipocomp NOT IN (3, 8, 13, 101) AND vencimiento < ?
             ", [$desde]);
             
@@ -120,7 +120,7 @@ try {
                 'FACTURA' as origen,
                 CONCAT('Fac. ', LPAD(PtoVta, 4, '0'), '-', LPAD(numcomp, 8, '0'), ' (', COALESCE((SELECT razon FROM alb_clientes WHERE id = tickets.cliente), 'Consumidor Final'), ')') as descripcion,
                 DATE_FORMAT(vencimiento, '%Y-%m-%d') as fecha,
-                (total - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0)) as monto
+                (COALESCE(importectacte, total) - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0)) as monto
             FROM tickets 
             WHERE pagada = 0 AND tipocomp NOT IN (3, 8, 13, 101) 
               AND vencimiento BETWEEN ? AND ?

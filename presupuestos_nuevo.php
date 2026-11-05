@@ -5,8 +5,12 @@
  */
 // SEGURIDAD CENTRALIZADA (Check Access)
 require_once 'check_access.php';
+require_once 'permisos_helpers.php';
 $hoy = date('Y-m-d');
 $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
+
+$configRow = $pdo->query("SELECT permitireditardescripcion FROM configuracion ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+$puedeEditarDescPresupuestos = ((int) ($configRow['permitireditardescripcion'] ?? 0) === 1) && puedeEditarDescripcionPresupuestos();
 ?>
 
 <style>
@@ -18,11 +22,20 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
     .grid-container { flex-grow: 1; overflow-y: auto; background: #000a1a; border: 1px solid #445566; border-radius: 6px; }
 
     /* Totales Panel */
-    .card-totales { 
-        background-color: #0d1b2a !important; 
-        border: 1px solid #445566; 
+    .card-totales {
+        background-color: #0d1b2a !important;
+        border: 1px solid #445566;
         color: white;
-        margin-top: auto; 
+        margin-top: auto;
+    }
+    /* En modo claro este panel quedaba ilegible: stylesglobal.css adapta
+       .text-white y .text-white-50 al tema (pasan a texto oscuro), pero el fondo
+       de acá estaba clavado con !important, así que daba texto oscuro sobre
+       fondo oscuro. Sólo se corrige el tema claro; el oscuro queda igual. */
+    [data-theme="light"] .card-totales {
+        background-color: var(--bg-card) !important;
+        border-color: var(--border-color);
+        color: var(--text-main);
     }
     .lbl-total-main { font-size: 1.4rem; color: var(--accent); }
 
@@ -54,6 +67,10 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
             border-top: 2px solid var(--accent);
             padding: 15px; padding-bottom: 20px;
             margin-top: 0;
+        }
+        /* Mismo caso que arriba: en mobile el panel fija otro fondo oscuro. */
+        [data-theme="light"] .card-totales {
+            background-color: var(--bg-card) !important;
         }
         .lbl-total-main { font-size: 1.5rem; text-align: right; display: block; }
     }
@@ -153,6 +170,9 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
             </div>
             <div class="col-12 col-md-6 col-lg-1">
                 <button class="btn btn-sm btn-info w-100 fw-bold" onclick="agregarItem()" id="btnAgregarItem">AGREGAR</button>
+            </div>
+            <div class="col-12 col-md-6 col-lg-1">
+                <button type="button" class="btn btn-sm btn-warning w-100 fw-bold" onclick="abrirLineaManual()"><i class="fas fa-keyboard"></i> MANUAL</button>
             </div>
         </div>
         <input type="hidden" id="hdnProdId"><input type="hidden" id="hdnProdImpInt">
@@ -292,12 +312,55 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
     </div>
 </div>
 
+<!-- Modal Línea Manual -->
+<div class="modal fade" id="mod_manual_line" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-warning border-opacity-50" style="background-color: #001020;">
+            <div class="modal-header bg-warning bg-opacity-10">
+                <h6 class="modal-title fw-bold text-warning"><i class="fas fa-keyboard me-2"></i>AGREGAR FILA MANUAL</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label-custom">CANTIDAD</label>
+                        <input type="number" id="ml_cant" class="form-control bg-dark text-white border-secondary fw-bold text-center" value="1" min="1">
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label-custom">ALÍCUOTA DE IVA</label>
+                        <select id="ml_iva" class="form-select bg-dark text-white border-secondary">
+                            <option value="0">0%</option>
+                            <option value="10.5">10.5%</option>
+                            <option value="21" selected>21%</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label-custom">DETALLE / DESCRIPCIÓN</label>
+                        <input type="text" id="ml_det" class="form-control bg-dark text-white border-secondary" placeholder="Ingrese descripción del ítem...">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label-custom text-accent">IMPORTE (IVA INCLUIDO)</label>
+                        <input type="number" step="0.01" id="ml_total" class="form-control bg-dark text-white border-secondary text-end fw-bold fs-5" placeholder="0.00">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer d-flex gap-2">
+                <button class="btn btn-danger fw-bold px-3" data-bs-dismiss="modal">CANCELAR</button>
+                <button class="btn btn-success fw-bold flex-grow-1" onclick="confirmarLineaManual()">
+                    <i class="fas fa-plus me-2"></i>AGREGAR
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 (function() {
     let items = [];
     let searchTimeout = null;
     let pagActual = 1, pagTotal = 1, pagTam = 20;
     const pedidoId = parseInt($('#hdnEditPedidoId').val());
+    const PUEDE_EDITAR_DESC = <?php echo $puedeEditarDescPresupuestos ? 'true' : 'false'; ?>;
 
     window.pagActual = 1; window.pagTotal = 1;
 
@@ -453,6 +516,44 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
         $('#txtProdCodigo').focus();
     }
 
+    window.abrirLineaManual = function() {
+        if (!$('#cmbCliente').val()) return Swal.fire('Atención', 'Seleccione un cliente primero.', 'warning');
+        $('#ml_cant').val(1);
+        $('#ml_det').val('');
+        $('#ml_total').val('');
+        $('#ml_iva').val(21);
+        $('#mod_manual_line').modal('show');
+        setTimeout(() => $('#ml_cant').focus().select(), 500);
+    }
+
+    window.confirmarLineaManual = function() {
+        const prod = $('#ml_det').val().trim();
+        const totalFinalU = parseFloat($('#ml_total').val());
+        const alicuota = parseFloat($('#ml_iva').val());
+        let cant = parseFloat($('#ml_cant').val());
+
+        if (!prod || isNaN(totalFinalU) || totalFinalU <= 0) {
+            return Swal.fire('Error', 'Complete descripción e importe mayor a cero.', 'warning');
+        }
+        if (isNaN(cant) || cant <= 0) cant = 1;
+
+        const netoU = totalFinalU / (1 + alicuota / 100);
+        const lista = parseInt($('#cmbListaGlobal').val()) || 1;
+
+        items.push({
+            codigo: 'LM', descripcion: prod, rubro: 'Otros',
+            cantidad: cant, precio: netoU, descuento: 0, lista: lista,
+            iva_pct: alicuota, impint_unit: 0,
+            precios_cache: { siniva: netoU, siniva2: netoU, siniva3: netoU, siniva4: netoU, siniva5: netoU, siniva6: netoU, siniva7: netoU, siniva8: netoU },
+            promo_label: null, promo_id: null
+        });
+        pagTotal = Math.max(1, Math.ceil(items.length / pagTam));
+        pagActual = pagTotal;
+
+        renderPagina();
+        $('#mod_manual_line').modal('hide');
+    }
+
     /**
      * Llama al motor de evaluación de promociones y actualiza el descuento
      * de cada ítem si una promo lo supera. Solo aplica si no hay desc. manual mayor.
@@ -557,7 +658,9 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
             tb.append(`
                 <tr>
                     <td class="ps-2 text-white fw-bold align-middle">${it.codigo}</td>
-                    <td class="text-white-50 text-truncate align-middle" style="max-width: 200px;">${it.descripcion}${promoBadge}</td>
+                    <td class="text-white-50 text-truncate align-middle" style="max-width: 200px;">${(PUEDE_EDITAR_DESC && it.codigo !== 'LM')
+                    ? `<input type="text" class="input-grid text-white-50" style="width:100%;" value="${it.descripcion}" onchange="cambiarDescripcionProductoItem(${i}, this.value)">`
+                    : it.descripcion}${promoBadge}</td>
                     <td class="p-0 align-middle">${selectLista}</td>
                     <td class="text-end text-muted border-start border-secondary bg-dark bg-opacity-25">$ ${formatMoney(pLista)}</td>
                     <td class="text-end text-warning bg-dark bg-opacity-25">$ ${formatMoney(pNetoU)}</td>
@@ -577,7 +680,9 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
                 <div class="erp-card mb-2">
                     <div class="erp-card-header mb-1">
                         <div>
-                            <div class="erp-card-title text-white" style="font-size: 13px; max-width: 250px;">${it.descripcion}</div>
+                            <div class="erp-card-title text-white" style="font-size: 13px; max-width: 250px;">${(PUEDE_EDITAR_DESC && it.codigo !== 'LM')
+                    ? `<input type="text" class="form-control form-control-sm bg-dark text-white border-secondary" value="${it.descripcion}" onchange="cambiarDescripcionProductoItem(${i}, this.value)">`
+                    : it.descripcion}</div>
                             <small class="text-accent" style="font-size: 11px;">CÓDIGO: ${it.codigo}</small>
                             ${promoBadgeMobile}
                         </div>
@@ -666,6 +771,7 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
     window.cambiarListaItem = (i, v) => { items[i].lista = parseInt(v); items[i].precio = parseFloat(items[i].precios_cache[v==1?'siniva':'siniva'+v]||0); renderPagina(); };
     window.cambiarCantItem  = (i, v) => { items[i].cantidad = parseFloat(v) || 1; evaluarPromociones().then(() => renderPagina()); };
     window.cambiarDescItem  = (i, v) => { items[i].descuento = parseFloat(v) || 0; items[i].promo_label = null; items[i].promo_id = null; renderPagina(); };
+    window.cambiarDescripcionProductoItem = (i, v) => { if (!PUEDE_EDITAR_DESC) return; items[i].descripcion = String(v).trim() || items[i].descripcion; renderPagina(); };
     window.remItem = (i) => { items.splice(i,1); renderPagina(); };
 
     window.abrirModalProductos = (q = '') => { $('#txtBusquedaProd').val(q); buscarEnModal(q); $('#modalBuscarProd').modal('show'); setTimeout(() => $('#txtBusquedaProd').focus(), 500); }
@@ -700,8 +806,9 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
             observaciones: $('#txtObsPedido').val(), descuento_gral: $('#txtDescGral').val(), 
             items: items.map(i => ({
                 codigo: i.codigo, descripcion: i.descripcion, cantidad: i.cantidad, 
-                precio_unitario: i.precio, descuento: i.descuento, lista: i.lista, 
+                precio_unitario: i.precio, descuento: i.descuento, lista: i.lista,
                 imp_int_unit: i.impint_unit, iva_pct: i.iva_pct,
+                poriva: i.codigo === 'LM' ? i.iva_pct : null,
                 promo_id: i.promo_id || null
             }))
         };

@@ -25,6 +25,35 @@ try {
     // 2. Definir ruta dinámica estricta según requerimiento: ARCA/{cuit}/prod/
     $directorio_destino = __DIR__ . '/ARCA/' . $cuit_tenant . '/prod/';
 
+    /**
+     * Deja la clave privada en la carpeta de la empresa, que es donde la busca la facturación
+     * electrónica (ARCA/ArcaFunctions.php). Si la empresa ya tiene su clave no se toca:
+     * reemplazarla invalidaría el certificado vigente. Si no la tiene, se copia la clave de la
+     * raíz del sistema (la misma con la que se genera la solicitud).
+     */
+    $asegurarClaveEmpresa = function () use ($directorio_destino): string {
+        $claveEmpresa = $directorio_destino . 'privada.key';
+        if (is_file($claveEmpresa) && filesize($claveEmpresa) > 0) {
+            return $claveEmpresa;
+        }
+        // Clave común: en ARCA/ (su .htaccess impide descargarla); la de la raíz queda por compatibilidad.
+        $claveRaiz = '';
+        foreach ([__DIR__ . '/ARCA/privada.key', __DIR__ . '/privada.key'] as $candidata) {
+            if (is_file($candidata) && filesize($candidata) > 0) { $claveRaiz = $candidata; break; }
+        }
+        if ($claveRaiz === '') {
+            throw new Exception("Falta el archivo de clave privada en el servidor. Contacte a soporte.");
+        }
+        if (!is_dir($directorio_destino) && !mkdir($directorio_destino, 0755, true)) {
+            throw new Exception("No se pudo crear el directorio de destino ARCA.");
+        }
+        if (!copy($claveRaiz, $claveEmpresa)) {
+            throw new Exception("No se pudo copiar la clave privada a la carpeta de la empresa. Verifique los permisos.");
+        }
+        @chmod($claveEmpresa, 0600);
+        return $claveEmpresa;
+    };
+
     switch ($action) {
         
         case 'generate_csr':
@@ -38,15 +67,10 @@ try {
                 throw new Exception("El CUIT y el Alias son obligatorios.");
             }
 
-            // La llave privada debería estar idealmente en la misma carpeta ARCA del tenant. 
-            // Buscamos ahí primero, si no, hacemos fallback a la raíz por compatibilidad.
-            $ruta_clave_privada = $directorio_destino . 'privada.key';
-            if (!file_exists($ruta_clave_privada)) {
-                $ruta_clave_privada = __DIR__ . '/privada.key';
-                if (!file_exists($ruta_clave_privada)) {
-                    throw new Exception("Falta el archivo de clave privada en el servidor. Contacte a soporte.");
-                }
-            }
+            // La solicitud se firma con la clave de la carpeta de la empresa; si todavía no
+            // tiene, primero se le copia la de la raíz (así el certificado que devuelva ARCA
+            // corresponde a la clave que después usa la facturación).
+            $ruta_clave_privada = $asegurarClaveEmpresa();
 
             // Sanitizar nombre de archivo final
             $info = pathinfo($nombre_salida);
@@ -85,7 +109,7 @@ try {
             }
 
             $file = $_FILES['certificado'];
-            $ext = 'pem';
+            $ext = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
 
             if (!in_array($ext, ['crt', 'pem'])) {
                 throw new Exception("Formato inválido. Solo se admiten archivos .crt o .pem");
@@ -98,19 +122,27 @@ try {
                 }
             }
 
-            // 4. Requerimiento: El nombre debe ser el CUIT del tenant. 
-            // Conservamos la extensión original del archivo subido (.crt o .pem)
-            $nombre_archivo_final = $cuit_tenant . '.' . $ext;
-            $destino = $directorio_destino . $nombre_archivo_final;
+            // 3b. La clave privada también tiene que estar en la carpeta de la empresa (cubre
+            //     solicitudes generadas antes de que se copiara al generarlas).
+            $asegurarClaveEmpresa();
 
-            // 5. move_uploaded_file sobreescribe automáticamente archivos existentes
-            if (!move_uploaded_file($file['tmp_name'], $destino)) {
+            // 4. Se graba dos veces, con el mismo contenido:
+            //    - {cuit}.pem: nombre que usan las instalaciones legacy.
+            //    - certificado.pem: el que buscan arcaCredencialesFiscalesDisponibles()
+            //      (arca_certificados.php) y ARCA/ArcaFunctions.php.
+            //    move_uploaded_file / copy sobreescriben los archivos existentes.
+            $nombre_cuit = $cuit_tenant . '.pem';
+            $nombre_generico = 'certificado.pem';
+            if (!move_uploaded_file($file['tmp_name'], $directorio_destino . $nombre_cuit)) {
                 throw new Exception("No se pudo guardar el archivo en el servidor. Verifique los permisos.");
+            }
+            if (!copy($directorio_destino . $nombre_cuit, $directorio_destino . $nombre_generico)) {
+                throw new Exception("No se pudo terminar de guardar el certificado. Contacte a soporte.");
             }
 
             echo json_encode([
                 'success' => true,
-                'message' => "Certificado guardado exitosamente en: ARCA/{$cuit_tenant}/prod/{$nombre_archivo_final}"
+                'message' => 'Guardado con éxito'
             ]);
             break;
 

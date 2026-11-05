@@ -148,7 +148,7 @@ require_once 'check_access.php';
 (function() {
     let currentData = [];
     let asientoSeleccionado = null;
-    let pagActual = 1, pagTotal = 1, pagTam = 50;
+    let pagActual = 1, pagTotal = 1, pagTam = 50, totalRegistros = 0;
     window.pagActual = 1; window.pagTotal = 1;
 
     async function init() {
@@ -195,7 +195,8 @@ require_once 'check_access.php';
         const payload = {
             vista: vista, ejercicio: ej, desde: $('#txtDesde').val(), hasta: $('#txtHasta').val(),
             fiscal: $('input[name="optFiscal"]:checked').val(),
-            manual: $('input[name="optManual"]:checked').val()
+            manual: $('input[name="optManual"]:checked').val(),
+            pagina: pagActual, tamanioPagina: pagTam
         };
 
         const $tbody = $('#tbodyDiario');
@@ -213,6 +214,12 @@ require_once 'check_access.php';
             if (!result.success) throw new Error(result.error);
 
             currentData = result.data || [];
+            if (Array.isArray(currentData)) {
+                totalRegistros = Number(result.totalRegistros ?? currentData.length);
+                pagTotal = Number(result.totalPaginas ?? 1);
+                pagActual = Number(result.paginaActual ?? pagActual);
+                window.pagActual = pagActual; window.pagTotal = pagTotal;
+            }
             asientoSeleccionado = null;
             $('#btnModificarAsiento').addClass('d-none');
 
@@ -228,12 +235,8 @@ require_once 'check_access.php';
     }
 
     function renderPagina() {
-        const total = currentData.length;
-        pagTotal = Math.max(1, Math.ceil(total / pagTam));
-        if (pagActual > pagTotal) pagActual = pagTotal;
-        window.pagActual = pagActual; window.pagTotal = pagTotal;
-
-        const datos = currentData.slice((pagActual - 1) * pagTam, pagActual * pagTam);
+        const total = totalRegistros;
+        const datos = currentData;
         renderTablaDetallada(datos);
         renderTarjetasDetallada(datos);
         sincronizarPaginacion(total);
@@ -354,7 +357,7 @@ require_once 'check_access.php';
         });
     }
 
-    window.pagGo = function(n){ n=Math.max(1,Math.min(pagTotal,n)); if(n===pagActual)return; pagActual=n; window.pagActual=n; renderPagina(); document.getElementById('moduloLibroDiario')?.scrollIntoView({behavior:'smooth'}); };
+    window.pagGo = function(n){ n=Math.max(1,Math.min(pagTotal,n)); if(n===pagActual)return; pagActual=n; window.pagActual=n; cargarDatos(); document.getElementById('moduloLibroDiario')?.scrollIntoView({behavior:'smooth'}); };
     window.pagJump = function(){ const v=parseInt(document.getElementById('pagJumpInput').value); if(!isNaN(v))pagGo(v); };
     window.pagJumpTop = function(){ const v=parseInt(document.getElementById('pagJumpInputTop').value); if(!isNaN(v))pagGo(v); };
     window.pagCambiarTamano = function(){ pagTam=parseInt(document.getElementById('pagTamano').value); pagActual=1; window.pagActual=1; cargarDatos(); };

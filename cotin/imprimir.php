@@ -110,7 +110,7 @@ try {
             "tipoDocRec" => $tipoDocRec,
             "nroDocRec" => (int) $docRecLimpio,
             "tipoCodAut" => "E",
-            "codAut" => $cab['cae']
+            "codAut" => (int) $cab['cae']
         ];
 
         $qrBase64 = base64_encode(json_encode($qrPayload));

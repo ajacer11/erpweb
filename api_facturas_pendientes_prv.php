@@ -25,8 +25,8 @@ try {
                     DATE_FORMAT(fechavencimiento, '%d/%m/%Y') as Vencimiento,
                     (SELECT razon FROM Proveedores WHERE id = facturasdecompra.proveedorid) as Proveedor,
                     CASE tipocomp 
-                        WHEN 1 THEN 'FCA' WHEN 3 THEN 'NCA' WHEN 1000 THEN 'REM' WHEN 6 THEN 'FCB' 
-                        WHEN 8 THEN 'NCB' WHEN 100 THEN 'TKT' WHEN 101 THEN 'TDC' WHEN 11 THEN 'FCC' 
+                        WHEN 1 THEN 'FCA' WHEN 2 THEN 'NDA' WHEN 3 THEN 'NCA' WHEN 1000 THEN 'REM' WHEN 6 THEN 'FCB' WHEN 7 THEN 'NDB'
+                        WHEN 8 THEN 'NCB' WHEN 100 THEN 'TKT' WHEN 101 THEN 'TDC' WHEN 11 THEN 'FCC' WHEN 12 THEN 'NDC'
                         WHEN 13 THEN 'NCC' ELSE 'Otro' 
                     END AS Tipo,
                     CONCAT(LPAD(PV, 4, '0'),'-',LPAD(numfact, 8, '0')) AS 'Num Factura',

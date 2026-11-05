@@ -180,13 +180,57 @@ function renderPermissionTree($items, $level = 0) {
                         </div>
 
                         <!-- Permiso 5 -->
-                        <div class="form-check form-switch mb-4">
+                        <div class="form-check form-switch mb-4 border-bottom border-secondary pb-4">
                             <input class="form-check-input" type="checkbox" id="pe_modificarfacturas" name="modificarfacturas" value="1">
                             <label class="form-check-label text-white fw-bold" for="pe_modificarfacturas">
                                 No Permitir modificar facturas de compra
                             </label>
                             <div class="text-muted small mt-1">
                                 Las facturas de compra quedan en modo solo lectura para este usuario.
+                            </div>
+                        </div>
+
+                        <!-- Permiso 6 -->
+                        <div class="form-check form-switch mb-4 border-bottom border-secondary pb-4">
+                            <input class="form-check-input" type="checkbox" id="pe_editardescripcionfacturar" name="editardescripcionfacturar" value="1">
+                            <label class="form-check-label text-white fw-bold" for="pe_editardescripcionfacturar">
+                                Permitir editar descripción de producto al Facturar
+                            </label>
+                            <div class="text-muted small mt-1">
+                                Solo aplica si además está habilitado en Configuración General.
+                            </div>
+                        </div>
+
+                        <!-- Permiso 7 -->
+                        <div class="form-check form-switch mb-4 border-bottom border-secondary pb-4">
+                            <input class="form-check-input" type="checkbox" id="pe_editardescripcionpedidos" name="editardescripcionpedidos" value="1">
+                            <label class="form-check-label text-white fw-bold" for="pe_editardescripcionpedidos">
+                                Permitir editar descripción de producto en Pedidos
+                            </label>
+                            <div class="text-muted small mt-1">
+                                Solo aplica si además está habilitado en Configuración General.
+                            </div>
+                        </div>
+
+                        <!-- Permiso 8 -->
+                        <div class="form-check form-switch mb-4">
+                            <input class="form-check-input" type="checkbox" id="pe_editardescripcionpresupuestos" name="editardescripcionpresupuestos" value="1">
+                            <label class="form-check-label text-white fw-bold" for="pe_editardescripcionpresupuestos">
+                                Permitir editar descripción de producto en Presupuestos
+                            </label>
+                            <div class="text-muted small mt-1">
+                                Solo aplica si además está habilitado en Configuración General.
+                            </div>
+                        </div>
+
+                        <!-- Permiso 9 -->
+                        <div class="form-check form-switch mb-4">
+                            <input class="form-check-input" type="checkbox" id="pe_modificarmedioscobro" name="modificarmedioscobro" value="1">
+                            <label class="form-check-label text-white fw-bold" for="pe_modificarmedioscobro">
+                                Permitir modificar medios de cobro de comprobantes emitidos
+                            </label>
+                            <div class="text-muted small mt-1">
+                                Desde Comprobantes Emitidos. Genera ajustes en caja, tesorería, bancos, cuenta corriente y contabilidad. Los administradores siempre pueden.
                             </div>
                         </div>
 
@@ -257,6 +301,10 @@ function renderPermissionTree($items, $level = 0) {
             document.getElementById('pe_modificarprecios').checked  = false;
             document.getElementById('pe_facturarpedidos').checked   = false;
             document.getElementById('pe_modificarfacturas').checked = false;
+            document.getElementById('pe_editardescripcionfacturar').checked     = false;
+            document.getElementById('pe_editardescripcionpedidos').checked      = false;
+            document.getElementById('pe_editardescripcionpresupuestos').checked = false;
+            document.getElementById('pe_modificarmedioscobro').checked          = false;
             document.getElementById('pe_vendedor_wrapper').style.display = 'none';
             return;
         }
@@ -274,6 +322,10 @@ function renderPermissionTree($items, $level = 0) {
             document.getElementById('pe_modificarprecios').checked  = parseInt(d.modificarprecios)  === 1;
             document.getElementById('pe_facturarpedidos').checked   = parseInt(d.facturarpedidos)   === 1;
             document.getElementById('pe_modificarfacturas').checked = parseInt(d.modificarfacturas) === 1;
+            document.getElementById('pe_editardescripcionfacturar').checked     = parseInt(d.editardescripcionfacturar)     === 1;
+            document.getElementById('pe_editardescripcionpedidos').checked      = parseInt(d.editardescripcionpedidos)      === 1;
+            document.getElementById('pe_editardescripcionpresupuestos').checked = parseInt(d.editardescripcionpresupuestos) === 1;
+            document.getElementById('pe_modificarmedioscobro').checked          = parseInt(d.modificarmedioscobro)          === 1;
 
             // Vendedor
             const wrapper = document.getElementById('pe_vendedor_wrapper');
@@ -304,6 +356,10 @@ function renderPermissionTree($items, $level = 0) {
             modificarprecios:  document.getElementById('pe_modificarprecios').checked  ? 1 : 0,
             facturarpedidos:   document.getElementById('pe_facturarpedidos').checked   ? 1 : 0,
             modificarfacturas: document.getElementById('pe_modificarfacturas').checked ? 1 : 0,
+            editardescripcionfacturar:     document.getElementById('pe_editardescripcionfacturar').checked     ? 1 : 0,
+            editardescripcionpedidos:      document.getElementById('pe_editardescripcionpedidos').checked      ? 1 : 0,
+            editardescripcionpresupuestos: document.getElementById('pe_editardescripcionpresupuestos').checked ? 1 : 0,
+            modificarmedioscobro:          document.getElementById('pe_modificarmedioscobro').checked          ? 1 : 0,
         };
 
         // Validar que si marcó "un vendedor" tenga uno seleccionado

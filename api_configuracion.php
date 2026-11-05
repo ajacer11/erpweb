@@ -71,12 +71,14 @@ try {
             $habilitarubros             = ($_POST['habilitarubros']             ?? '0') === '1' ? 1 : 0;
             $modiflistas                = ($_POST['modiflistas']                ?? '0') === '1' ? 1 : 0;
             $admitendc                  = ($_POST['admitendc']                  ?? '0') === '1' ? 1 : 0;
+            $admitenotasdebito          = ($_POST['admitenotasdebito']          ?? '0') === '1' ? 1 : 0;
             $descuentosglobales         = ($_POST['descuentosglobales']         ?? '0') === '1' ? 1 : 0;
             $descuentosporlinea         = ($_POST['descuentosporlinea']         ?? '0') === '1' ? 1 : 0;
             $recargosglobales           = ($_POST['recargosglobales']           ?? '0') === '1' ? 1 : 0;
             $ticketsiniva               = ($_POST['ticketsiniva']               ?? '0') === '1' ? 1 : 0;
             $agruparproductos           = ($_POST['agruparproductos']           ?? '0') === '1' ? 1 : 0;
             $modificarprecioenventas    = ($_POST['modificarprecioenventas']    ?? '0') === '1' ? 1 : 0;
+            $permitireditardescripcion  = ($_POST['permitireditardescripcion']  ?? '0') === '1' ? 1 : 0;
             $predeterminarcliente       = ($_POST['predeterminarcliente']       ?? '0') === '1' ? 1 : 0;
             $imprimeremitoenviopostfactura = ($_POST['imprimeremitoenviopostfactura'] ?? '0') === '1' ? 1 : 0;
             $imputarcobros              = ($_POST['imputarcobros']              ?? '0') === '1' ? 1 : 0;
@@ -102,34 +104,53 @@ try {
             $sql = "INSERT INTO configuracion (
                         montominimo, maximoajustes, stocknegativo, tipoventa, poriibb,
                         retgan, retiibb, retiva, habilitarubros, modiflistas,
-                        texboxpredeterminado, admitendc, fechastock, descuentosglobales,
+                        texboxpredeterminado, admitendc, admitenotasdebito, fechastock, descuentosglobales,
                         descuentosporlinea, recargosglobales, tipodescuentoindividual,
                         ticketsiniva, agruparproductos, modificarprecioenventas,
                         predeterminarcliente, predeterminarcomprobante, clientepredeterminado,
                         imprimeremitoenviopostfactura, leyenda2, imputarcobros,
-                        formatoimpresion, tablareducidaventas, mostrarvendedor, usuario, logo
+                        formatoimpresion, tablareducidaventas, mostrarvendedor, permitireditardescripcion, usuario, logo
                     ) VALUES (
                         ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?,
-                        ?, ?, ?, ?, ?, ?
+                        ?, ?, ?, ?, ?, ?, ?, ?
                     )";
 
             $params = [
                 $montominimo, $maximoajustes, $stocknegativo, $tipoventa, $poriibb,
                 $retgan, $retiibb, $retiva, $habilitarubros, $modiflistas,
-                $texboxpredeterminado, $admitendc, $fechastock, $descuentosglobales,
+                $texboxpredeterminado, $admitendc, $admitenotasdebito, $fechastock, $descuentosglobales,
                 $descuentosporlinea, $recargosglobales, $tipodescuentoindividual,
                 $ticketsiniva, $agruparproductos, $modificarprecioenventas,
                 $predeterminarcliente, $predeterminarcomprobante, $clientepredeterminado,
                 $imprimeremitoenviopostfactura, $leyenda2, $imputarcobros,
-                $formatoimpresion, $tablareducidaventas, $mostrarvendedor, $usuario, $logoData
+                $formatoimpresion, $tablareducidaventas, $mostrarvendedor, $permitireditardescripcion, $usuario, $logoData
             ];
+
+            // Registro vigente ANTES de guardar: los campos que esta pantalla no maneja (multidepósito y
+            // depósito predeterminado, que se activan desde Depósitos; datos heredados del sistema anterior)
+            // se copian al nuevo registro. Sin esto quedaban en su default y guardar la configuración
+            // apagaba el multidepósito.
+            $anterior = $pdo->query("SELECT * FROM configuracion ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC) ?: [];
 
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
+            $nuevoId = (int) $pdo->lastInsertId();
+
+            if ($anterior && $nuevoId) {
+                preg_match('/INSERT INTO configuracion \((.*?)\) VALUES/s', $sql, $m);
+                $delFormulario = array_map('trim', explode(',', $m[1] ?? ''));
+                $heredar = array_diff(array_keys($anterior), $delFormulario, ['id', 'fechacreacion', 'timestamp']);
+                if ($heredar) {
+                    $set = implode(', ', array_map(fn($c) => "`$c` = ?", $heredar));
+                    $vals = array_map(fn($c) => $anterior[$c], array_values($heredar));
+                    $vals[] = $nuevoId;
+                    $pdo->prepare("UPDATE configuracion SET $set WHERE id = ?")->execute($vals);
+                }
+            }
 
             echo json_encode(['success' => true, 'message' => 'Configuración guardada correctamente (nuevo histórico).']);
             break;

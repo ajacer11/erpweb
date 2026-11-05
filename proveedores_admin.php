@@ -160,6 +160,9 @@ require_once 'check_access.php';
     /* ============================================================
        FETCH & RENDERIZADO SPA
     ============================================================ */
+    const ordenTabla = erpOrdenarTabla('#tblProveedores', () => listado, renderPagina,
+        [{campo:'Id', tipo:'numero'}, 'Razon', 'cuit', 'condicion', 'localidad', 'telefono', null]);
+
     async function listarProveedores() {
         const query = document.getElementById('buscarProv').value;
         const inhabilitados = document.getElementById('verInhabilitados').checked;
@@ -180,6 +183,7 @@ require_once 'check_access.php';
             listado = [];
         }
 
+        ordenTabla.aplicar();
         pagActual = 1;
         window.pagActual = 1;
         renderPagina();

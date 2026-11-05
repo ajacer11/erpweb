@@ -107,6 +107,10 @@ require_once 'check_access.php';
                                 <label class="form-check-label text-white" for="modificarprecioenventas">Permitir modificar Precio en Venta</label>
                             </div>
                             <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" name="permitireditardescripcion" id="permitireditardescripcion" value="1">
+                                <label class="form-check-label text-white" for="permitireditardescripcion">Permitir editar Descripción de Producto</label>
+                            </div>
+                            <div class="form-check form-switch mb-3">
                                 <input class="form-check-input" type="checkbox" name="modiflistas" id="modiflistas" value="1">
                                 <label class="form-check-label text-white" for="modiflistas">Permitir cambiar Lista de Precios</label>
                             </div>
@@ -121,6 +125,10 @@ require_once 'check_access.php';
                             <div class="form-check form-switch mb-3">
                                 <input class="form-check-input" type="checkbox" name="admitendc" id="admitendc" value="1">
                                 <label class="form-check-label text-white" for="admitendc">Admitir Notas de Crédito</label>
+                            </div>
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" name="admitenotasdebito" id="admitenotasdebito" value="1">
+                                <label class="form-check-label text-white" for="admitenotasdebito">Admitir Notas de Débito</label>
                             </div>
                         </div>
 
@@ -334,10 +342,12 @@ require_once 'check_access.php';
                 // Checkboxes (Switches)
                 setCheck('stocknegativo',               d.stocknegativo);
                 setCheck('modificarprecioenventas',      d.modificarprecioenventas);
+                setCheck('permitireditardescripcion',    d.permitireditardescripcion);
                 setCheck('modiflistas',                  d.modiflistas);
                 setCheck('agruparproductos',             d.agruparproductos);
                 setCheck('imputarcobros',                d.imputarcobros);
                 setCheck('admitendc',                    d.admitendc);
+                setCheck('admitenotasdebito',            d.admitenotasdebito);
                 setCheck('habilitarubros',               d.habilitarubros);
                 setCheck('predeterminarcliente',         d.predeterminarcliente);
                 setCheck('retiva',                       d.retiva);

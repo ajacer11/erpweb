@@ -5,6 +5,8 @@
  */
 // SEGURIDAD CENTRALIZADA (Check Access)
 require_once 'check_access.php';
+require_once 'permisos_helpers.php';
+$puedeModMediosCobro = puedeModificarMediosCobro($pdo);
 
 $hoy = date('Y-m-d');
 $mes_atras = date('Y-m-d');
@@ -80,27 +82,21 @@ $mes_atras = date('Y-m-d');
                 <div class="col-md-9">
                     <div class="row g-2">
                         <div class="col-md-4">
-                            <div class="form-check form-switch mb-1">
-                                <input class="form-check-input chk-toggle" type="checkbox" data-target="#cCliente">
-                                <label class="form-check-label text-white-50 small">Cliente</label>
-                            </div>
-                            <select id="cCliente" class="form-select form-select-sm select2-remote filter-auto"
-                                disabled></select>
+                            <label class="form-label-custom mb-1">CLIENTE</label>
+                            <select id="cCliente" class="form-select form-select-sm select2-filter filter-auto"></select>
                         </div>
                         <div class="col-md-4">
-                            <div class="form-check form-switch mb-1">
-                                <input class="form-check-input chk-toggle" type="checkbox" data-target="#cVendedor">
-                                <label class="form-check-label text-white-50 small">Vendedor</label>
-                            </div>
-                            <select id="cVendedor" class="form-select form-select-sm select2-remote filter-auto"
-                                disabled></select>
+                            <label class="form-label-custom mb-1">VENDEDOR</label>
+                            <select id="cVendedor" class="form-select form-select-sm select2-filter filter-auto"></select>
                         </div>
                         <div class="col-md-4">
-                            <div class="form-check form-switch mb-1">
-                                <input class="form-check-input chk-toggle" type="checkbox" data-target="#cTipo">
-                                <label class="form-check-label text-white-50 small">Tipo Comprobante</label>
-                            </div>
-                            <select id="cTipo" class="form-select form-select-sm filter-auto" disabled>
+                            <label class="form-label-custom mb-1">USUARIO</label>
+                            <select id="cUsuario" class="form-select form-select-sm select2-filter filter-auto"></select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label-custom mb-1">TIPO COMPROBANTE</label>
+                            <select id="cTipo" class="form-select form-select-sm select2-filter filter-auto">
+                                <option value="">TODOS</option>
                                 <option value="FACTURA A">FACTURA A</option>
                                 <option value="NOTA DE CREDITO A">NOTA DE CREDITO A</option>
                                 <option value="FACTURA B">FACTURA B</option>
@@ -112,27 +108,17 @@ $mes_atras = date('Y-m-d');
                             </select>
                         </div>
                         <div class="col-md-4">
-                            <div class="form-check form-switch mb-1">
-                                <input class="form-check-input chk-toggle" type="checkbox" data-target="#cMPago">
-                                <label class="form-check-label text-white-50 small">Medio de Pago</label>
-                            </div>
-                            <select id="cMPago" class="form-select form-select-sm select2-remote filter-auto"
-                                disabled></select>
+                            <label class="form-label-custom mb-1">MEDIO DE PAGO</label>
+                            <select id="cMPago" class="form-select form-select-sm select2-filter filter-auto"></select>
                         </div>
                         <div class="col-md-4">
-                            <div class="form-check form-switch mb-1">
-                                <input class="form-check-input chk-toggle" type="checkbox" data-target="#cUnidad">
-                                <label class="form-check-label text-white-50 small">Unidad Negocio</label>
-                            </div>
-                            <select id="cUnidad" class="form-select form-select-sm select2-remote filter-auto"
-                                disabled></select>
+                            <label class="form-label-custom mb-1">UNIDAD NEGOCIO</label>
+                            <select id="cUnidad" class="form-select form-select-sm select2-filter filter-auto"></select>
                         </div>
                         <div class="col-md-4">
-                            <div class="form-check form-switch mb-1">
-                                <input class="form-check-input chk-toggle" type="checkbox" data-target="#cProv">
-                                <label class="form-check-label text-white-50 small">Provincia</label>
-                            </div>
-                            <select id="cProv" class="form-select form-select-sm filter-auto" disabled>
+                            <label class="form-label-custom mb-1">PROVINCIA</label>
+                            <select id="cProv" class="form-select form-select-sm select2-filter filter-auto">
+                                <option value="">TODOS</option>
                                 <option value="BUENOS AIRES">Buenos Aires</option>
                                 <option value="CABA">CABA</option>
                                 <option value="CATAMARCA">Catamarca</option>
@@ -161,12 +147,14 @@ $mes_atras = date('Y-m-d');
                             </select>
                         </div>
                         <div class="col-md-4">
-                            <div class="form-check form-switch mb-1">
-                                <input class="form-check-input chk-toggle" type="checkbox" data-target="#cRama">
-                                <label class="form-check-label text-white-50 small">Rama Cliente</label>
-                            </div>
-                            <select id="cRama" class="form-select form-select-sm select2-remote filter-auto"
-                                disabled></select>
+                            <label class="form-label-custom mb-1">RAMA CLIENTE</label>
+                            <select id="cRama" class="form-select form-select-sm select2-filter filter-auto"></select>
+                        </div>
+                        <div class="col-md-4 d-none" id="grupoFiltroDeposito">
+                            <label class="form-label-custom mb-1">DEPÓSITO</label>
+                            <select id="cDeposito" class="form-select form-select-sm select2-filter filter-auto">
+                                <option value="">TODOS</option>
+                            </select>
                         </div>
                     </div>
                     <div class="mt-2" hidden>
@@ -352,6 +340,12 @@ $mes_atras = date('Y-m-d');
             </div>
             <div class="col-12 col-xl-6">
                 <section class="comprobantes-chart-panel">
+                    <h5><i class="fa-solid fa-user-gear"></i> Facturación por usuario</h5>
+                    <div class="comprobantes-chart-canvas"><canvas id="chartCompUsuarios"></canvas></div>
+                </section>
+            </div>
+            <div class="col-12 col-xl-6">
+                <section class="comprobantes-chart-panel">
                     <h5><i class="fa-solid fa-stamp"></i> Importe neto por situación fiscal</h5>
                     <div class="comprobantes-chart-canvas"><canvas id="chartCompFiscal"></canvas></div>
                 </section>
@@ -367,6 +361,83 @@ $mes_atras = date('Y-m-d');
     </div>
 </div>
 
+<!-- MODIFICAR MEDIOS DE COBRO (api_modificar_medios_cobro.php) -->
+<div class="modal fade" id="modMediosCobro" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title text-accent fw-bold"><i class="fas fa-money-bill-transfer me-2"></i>MODIFICAR MEDIOS DE COBRO</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="d-flex flex-wrap justify-content-between gap-2 mb-3">
+                    <div>
+                        <div class="fw-bold text-white" id="mmcNumero">-</div>
+                        <div class="small text-white-50" id="mmcCliente">-</div>
+                    </div>
+                    <div class="text-end">
+                        <div class="small text-white-50">A REPARTIR</div>
+                        <div class="h5 fw-bold text-accent mb-0" id="mmcARepartir">$ 0,00</div>
+                    </div>
+                </div>
+
+                <div class="small text-white-50 mb-1">COBRADO ACTUALMENTE</div>
+                <div class="mb-3" id="mmcActuales"></div>
+
+                <div class="row g-2 align-items-end mb-2">
+                    <div class="col-8">
+                        <label class="form-label-custom">MEDIO DE COBRO 1</label>
+                        <select id="mmcMp1" class="form-select"></select>
+                        <div class="d-none mt-1" id="mmcTj1">
+                            <div class="row g-1">
+                                <div class="col-7"><select id="mmcTj1Id" class="form-select form-select-sm" title="Tarjeta"></select></div>
+                                <div class="col-2"><input type="number" id="mmcTj1Cuotas" class="form-control form-control-sm text-center" min="1" max="99" value="1" title="Cuotas"></div>
+                                <div class="col-3"><input type="text" id="mmcTj1Cupon" class="form-control form-control-sm" maxlength="30" placeholder="Cupón"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label-custom">IMPORTE</label>
+                        <input type="number" id="mmcImp1" class="form-control text-end fw-bold" step="0.01" min="0">
+                    </div>
+                </div>
+                <div class="row g-2 align-items-end mb-2">
+                    <div class="col-8">
+                        <label class="form-label-custom">MEDIO DE COBRO 2 (OPCIONAL)</label>
+                        <select id="mmcMp2" class="form-select"></select>
+                        <div class="d-none mt-1" id="mmcTj2">
+                            <div class="row g-1">
+                                <div class="col-7"><select id="mmcTj2Id" class="form-select form-select-sm" title="Tarjeta"></select></div>
+                                <div class="col-2"><input type="number" id="mmcTj2Cuotas" class="form-control form-control-sm text-center" min="1" max="99" value="1" title="Cuotas"></div>
+                                <div class="col-3"><input type="text" id="mmcTj2Cupon" class="form-control form-control-sm" maxlength="30" placeholder="Cupón"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label-custom">IMPORTE</label>
+                        <input type="number" id="mmcImp2" class="form-control text-end fw-bold" step="0.01" min="0">
+                    </div>
+                </div>
+                <div class="small mb-3" id="mmcDiferencia"></div>
+
+                <label class="form-label-custom">MOTIVO (OBLIGATORIO)</label>
+                <input type="text" id="mmcMotivo" class="form-control mb-3" maxlength="255" placeholder="Ej.: se cobró con MercadoPago y se cargó como efectivo">
+
+                <div class="alert alert-warning small mb-0 py-2">
+                    <i class="fas fa-triangle-exclamation me-1"></i>
+                    No se modifica lo ya grabado: se registran movimientos de ajuste <strong>con fecha de hoy</strong>
+                    en tesorería, bancos, cuenta corriente y contabilidad. El efectivo se ajusta en <strong>su caja abierta</strong>.
+                    <div id="mmcAvisos"></div>
+                </div>
+            </div>
+            <div class="modal-footer border-top border-secondary border-opacity-25">
+                <button class="btn btn-outline-secondary rounded-pill px-4 fw-bold" data-bs-dismiss="modal">CANCELAR</button>
+                <button class="btn btn-info rounded-pill px-4 fw-bold" id="mmcBtnGuardar" onclick="guardarMediosCobro()"><i class="fas fa-check me-2"></i>GUARDAR</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     (function () {
@@ -374,6 +445,14 @@ $mes_atras = date('Y-m-d');
         let listadoComprobantes = [];
         let pagActual = 1, pagTotal = 1, pagTam = 20;
         let comprobantesCharts = [];
+        const PUEDE_MOD_MEDIOS = <?= $puedeModMediosCobro ? 'true' : 'false' ?>;
+        let mmcDatos = null;
+        const ordenTabla = erpOrdenarTabla('#tablaEmitidos', () => listadoComprobantes, renderPagina, [
+            {campo:r => `${r.fecha || ''} ${r.hora || ''}`, tipo:'fecha'}, 'tipo_str',
+            {campo:r => `${String(r.ptovta || '').padStart(4, '0')}-${String(r.numcomp || '').padStart(8, '0')}`},
+            'cliente_nombre', {campo:'subtotal_calc', tipo:'numero'}, {campo:'iva_calc', tipo:'numero'},
+            {campo:'total', tipo:'numero'}, 'mpago1', 'mpago2', 'vendedor_nombre', 'usuario', null
+        ]);
 
         window.pagActual = 1; window.pagTotal = 1;
 
@@ -382,31 +461,29 @@ $mes_atras = date('Y-m-d');
             document.getElementById('comprobantes-graficos-tab').addEventListener('shown.bs.tab', renderGraficosComprobantes);
 
             try {
-                const [rCli, rVend, rMPag, rUnid, rRamas] = await Promise.all([
+                const [rCli, rVend, rUsu, rMPag, rUnid, rRamas, rDepositos] = await Promise.all([
                     fetch('api_helpers.php?action=get_clientes', { headers: h }).then(r => r.json()),
                     fetch('api_helpers.php?action=get_vendedores', { headers: h }).then(r => r.json()),
+                    fetch('api_helpers.php?action=get_usuarios', { headers: h }).then(r => r.json()),
                     fetch('api_helpers.php?action=get_medios_pago', { headers: h }).then(r => r.json()),
                     fetch('api_helpers.php?action=get_unidades_negocio', { headers: h }).then(r => r.json()),
-                    fetch('api_helpers.php?action=get_ramas_clientes', { headers: h }).then(r => r.json())
+                    fetch('api_helpers.php?action=get_ramas_clientes', { headers: h }).then(r => r.json()),
+                    fetch('api_comprobantes_emitidos.php?action=get_depositos', { headers: h }).then(r => r.json())
                 ]);
 
                 fillSelect('#cCliente', rCli, 'razon');
                 fillSelect('#cVendedor', rVend, 'nombre');
+                // El usuario se filtra por nombre (columna de texto en tickets), no por id:
+                // el value de cada opción es el nombre de usuario, no su id numérico.
+                fillSelectPorNombre('#cUsuario', rUsu, 'usuario');
                 fillSelect('#cMPago', rMPag, 'medio');
                 fillSelect('#cUnidad', rUnid, 'nombre');
                 fillSelect('#cRama', rRamas, 'rama');
-
-                // Lógica de Switches
-                $('.chk-toggle').on('change', function () {
-                    const target = $(this).data('target');
-                    const isChecked = $(this).is(':checked');
-                    $(target).prop('disabled', !isChecked);
-                    if (!isChecked) {
-                        if ($(target).hasClass('select2-hidden-accessible')) { $(target).val(null).trigger('change'); }
-                        else { $(target).val(''); }
-                    }
-                    consultarComprobantes();
-                });
+                if (rDepositos.success && rDepositos.habilitado) {
+                    const dep = $('#cDeposito').empty().append(new Option('TODOS', ''));
+                    rDepositos.data.forEach(d => dep.append(new Option(d.nombre, d.id)));
+                    $('#grupoFiltroDeposito').removeClass('d-none');
+                }
 
                 // Listener para filtrado automático
                 $('.filter-auto').on('change', function () {
@@ -414,7 +491,7 @@ $mes_atras = date('Y-m-d');
                 });
 
                 // Inicialización Select2
-                $('.select2-remote').select2({ dropdownParent: $('#moduloComprobantes'), width: '100%', placeholder: 'SELECCIONE...' });
+                $('.select2-filter').select2({ dropdownParent: $('#moduloComprobantes'), width: '100%' });
 
                 // Consultar inicialmente
                 setFechasIniciales();
@@ -430,13 +507,15 @@ $mes_atras = date('Y-m-d');
                     desde: $('#fDesde').val(),
                     hasta: $('#fHasta').val(),
                     tipo_fecha: $('input[name="rTipoFecha"]:checked').val(),
-                    cliente_id: $('#cCliente').is(':disabled') ? null : $('#cCliente').val(),
-                    vendedor_id: $('#cVendedor').is(':disabled') ? null : $('#cVendedor').val(),
-                    tipo_comp: $('#cTipo').is(':disabled') ? null : $('#cTipo').val(),
-                    mpago_txt: $('#cMPago').is(':disabled') ? null : $('#cMPago option:selected').text(),
-                    unidad_id: $('#cUnidad').is(':disabled') ? null : $('#cUnidad').val(),
-                    provincia: $('#cProv').is(':disabled') ? null : $('#cProv').val(),
-                    rama_id: $('#cRama').is(':disabled') ? null : $('#cRama').val(),
+                    cliente_id: $('#cCliente').val() || null,
+                    vendedor_id: $('#cVendedor').val() || null,
+                    usuario_txt: $('#cUsuario').val() || null,
+                    tipo_comp: $('#cTipo').val() || null,
+                    mpago_txt: $('#cMPago').val() ? $('#cMPago option:selected').text() : null,
+                    unidad_id: $('#cUnidad').val() || null,
+                    provincia: $('#cProv').val() || null,
+                    rama_id: $('#cRama').val() || null,
+                    deposito_id: $('#cDeposito').val() || null,
                     sin_remitir: $('#chkSinRemitir').is(':checked')
                 };
 
@@ -453,6 +532,7 @@ $mes_atras = date('Y-m-d');
 
                     if (res.success) {
                         listadoComprobantes = res.data;
+                        ordenTabla.aplicar();
                         calcularTotalesGlobales(listadoComprobantes);
                         pagActual = 1; window.pagActual = 1;
                         renderPagina();
@@ -528,8 +608,10 @@ $mes_atras = date('Y-m-d');
                     <td class="text-center">
                         <div class="btn-group">
                             <button class="btn btn-sm btn-link text-info p-1" onclick="verComprobante(${row.ticket_id})" title="Ver / Imprimir"><i class="fas fa-eye"></i></button>
+                            <button class="btn btn-sm btn-link text-accent p-1" onclick="imprimirRemito(${row.ticket_id})" title="Imprimir Remito"><i class="fas fa-truck-ramp-box"></i></button>
                             ${caePendiente ? `<button class="btn btn-sm btn-link text-danger p-1" onclick="resolicitarCAE(${row.ticket_id}, ${row.tipocomp})" title="Re-solicitar CAE"><i class="fas fa-rotate"></i></button>` : ''}
                             <button class="btn btn-sm btn-link text-warning p-1" onclick="generarNC(${row.ticket_id}, '${row.tipo_str}')" title="Generar Crédito"><i class="fas fa-undo-alt"></i></button>
+                            ${PUEDE_MOD_MEDIOS ? `<button class="btn btn-sm btn-link text-success p-1" onclick="abrirModificarMedios(${row.ticket_id})" title="Modificar medios de cobro"><i class="fas fa-money-bill-transfer"></i></button>` : ''}
                         </div>
                     </td>
                 </tr>
@@ -585,10 +667,16 @@ $mes_atras = date('Y-m-d');
                         <button class="btn btn-info btn-sm flex-fill fw-bold" onclick="verComprobante(${row.ticket_id})">
                             <i class="fas fa-eye me-1"></i> VER
                         </button>
+                        <button class="btn btn-outline-info btn-sm flex-fill fw-bold" onclick="imprimirRemito(${row.ticket_id})">
+                            <i class="fas fa-truck-ramp-box me-1"></i> REMITO
+                        </button>
                         ${caePendiente ? `<button class="btn btn-danger btn-sm flex-fill fw-bold" onclick="resolicitarCAE(${row.ticket_id}, ${row.tipocomp})"><i class="fas fa-rotate me-1"></i> RE-SOLICITAR CAE</button>` : ''}
                         <button class="btn btn-warning btn-sm flex-fill fw-bold" onclick="generarNC(${row.ticket_id}, '${row.tipo_str}')">
                             <i class="fas fa-undo-alt me-1"></i> CRÉDITO
                         </button>
+                        ${PUEDE_MOD_MEDIOS ? `<button class="btn btn-outline-success btn-sm flex-fill fw-bold" onclick="abrirModificarMedios(${row.ticket_id})">
+                            <i class="fas fa-money-bill-transfer me-1"></i> MEDIOS DE COBRO
+                        </button>` : ''}
                     </div>
                 </div>
                 `);
@@ -659,6 +747,13 @@ $mes_atras = date('Y-m-d');
             comprobantesCharts.push(new Chart(document.getElementById('chartCompVendedores'), {
                 type: 'bar',
                 data: { labels: vendedores.map(([vendedor]) => vendedor), datasets: [{ label: 'Importe neto', data: vendedores.map(([, total]) => total), backgroundColor: palette[4] }] },
+                options: { responsive: true, maintainAspectRatio: false, scales: { x: axis, y: axis }, plugins: { legend: { display: false }, tooltip: moneyTooltip } }
+            }));
+
+            const usuarios = top(aggregate(r => r.usuario || 'SIN USUARIO', signedTotal));
+            comprobantesCharts.push(new Chart(document.getElementById('chartCompUsuarios'), {
+                type: 'bar',
+                data: { labels: usuarios.map(([usuario]) => usuario), datasets: [{ label: 'Importe neto', data: usuarios.map(([, total]) => total), backgroundColor: palette[2] }] },
                 options: { responsive: true, maintainAspectRatio: false, scales: { x: axis, y: axis }, plugins: { legend: { display: false }, tooltip: moneyTooltip } }
             }));
 
@@ -736,6 +831,12 @@ $mes_atras = date('Y-m-d');
             window.open('imprimir_ticket.php?id=' + id, '_blank');
         }
 
+        window.imprimirRemito = function (id) {
+            // imprimir_remito.php busca el remito ya generado para este comprobante,
+            // o lo genera si es la primera vez (numeración propia, arranca en 6200).
+            window.open('imprimir_remito.php?id=' + id, '_blank');
+        }
+
         window.resolicitarCAE = async function (id, tipoComp) {
             const requiereAsociado = [2, 3, 7, 8, 12, 13].includes(Number(tipoComp));
             const confirmar = await Swal.fire(requiereAsociado ? {
@@ -779,7 +880,15 @@ $mes_atras = date('Y-m-d');
                     body: JSON.stringify({ticket_id: id, associatedDoc: confirmar.value || null})
                 }).then(r => r.json());
                 if (!res.success) throw new Error(res.error || 'No se pudo obtener el CAE.');
-                await Swal.fire('CAE autorizado', `CAE N° ${res.cae}`, 'success');
+                if (res.renumeracion_fallida) {
+                    await Swal.fire({
+                        icon: 'warning',
+                        title: 'CAE autorizado, pero requiere revisión',
+                        html: `CAE N° ${res.cae}<br><br>${res.aviso_numeracion || 'ARCA aprobó un número de comprobante distinto al local y no se pudo corregir automáticamente.'}`
+                    });
+                } else {
+                    await Swal.fire('CAE autorizado', `CAE N° ${res.cae}`, 'success');
+                }
                 consultarComprobantes();
             } catch (e) {
                 Swal.fire('CAE no autorizado', e.message || 'Error al comunicarse con ARCA.', 'error');
@@ -905,11 +1014,23 @@ $mes_atras = date('Y-m-d');
         }
 
         function fillSelect(sel, res, field) {
-            const el = $(sel); el.empty().append(new Option('SELECCIONE...', '', true, true));
+            const el = $(sel); el.empty().append(new Option('TODOS', '', true, true));
             if (res && res.success && res.data) {
                 res.data.forEach(d => {
                     let label = d[field] || d.text || d.nombre || d.razon || 'S/D';
                     el.append(new Option(label.toString().toUpperCase(), d.id));
+                });
+            }
+        }
+        // Igual que fillSelect, pero el value de cada opción es el propio nombre
+        // (no el id) — para filtros que comparan contra una columna de texto,
+        // como "usuario" en tickets.
+        function fillSelectPorNombre(sel, res, field) {
+            const el = $(sel); el.empty().append(new Option('TODOS', '', true, true));
+            if (res && res.success && res.data) {
+                res.data.forEach(d => {
+                    const nombre = (d[field] || '').toString();
+                    if (nombre) el.append(new Option(nombre.toUpperCase(), nombre));
                 });
             }
         }
@@ -922,6 +1043,123 @@ $mes_atras = date('Y-m-d');
 
         function formatMoney(n) { return (parseFloat(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2 }); }
         function formatDate(d) { if (!d) return '-'; const p = d.split(' ')[0].split('-'); return `${p[2]}/${p[1]}/${p[0]}`; }
+
+        // --- MODIFICAR MEDIOS DE COBRO (api_modificar_medios_cobro.php) ---
+        const mmcHeaders = { 'X-Requested-With': 'XMLHttpRequest' };
+        const mmcNum = v => Math.round((parseFloat(v) || 0) * 100) / 100;
+        const mmcEsc = t => $('<div>').text(t ?? '').html();
+
+        window.abrirModificarMedios = async function (id) {
+            const res = await fetch(`api_modificar_medios_cobro.php?action=get&id=${id}`, { headers: mmcHeaders }).then(r => r.json()).catch(() => null);
+            if (!res || !res.success) {
+                Swal.fire('No se puede modificar', res?.error || 'Error de comunicación.', 'warning');
+                return;
+            }
+            mmcDatos = res;
+            const t = res.ticket;
+            $('#mmcNumero').text(`${t.numero} · ${formatDate(t.fecha)}${t.es_nota ? ' · NOTA DE CRÉDITO' : ''}`);
+            $('#mmcCliente').text(t.cliente);
+            $('#mmcARepartir').text('$ ' + formatMoney(res.a_repartir));
+            $('#mmcActuales').html(res.actuales.map(a =>
+                `<span class="badge bg-secondary me-1 mb-1 fw-normal">${mmcEsc(a.nombre)}: $ ${formatMoney(a.imp)}</span>`).join(''));
+
+            const opciones = res.medios.map(m => `<option value="${m.id}">${mmcEsc(m.medio)}</option>`).join('');
+            $('#mmcMp1').html('<option value="">SELECCIONE...</option>' + opciones);
+            $('#mmcMp2').html('<option value="">(NINGUNO)</option>' + opciones);
+            const a1 = res.actuales[0], a2 = res.actuales[1];
+            $('#mmcMp1').val(a1 ? String(a1.medio_id) : ''); $('#mmcImp1').val(a1 ? a1.imp.toFixed(2) : '');
+            $('#mmcMp2').val(a2 ? String(a2.medio_id) : ''); $('#mmcImp2').val(a2 ? a2.imp.toFixed(2) : '');
+            $('#mmcMotivo').val('');
+            const optTj = '<option value="">TARJETA...</option>' + (res.tarjetas || []).map(t => `<option value="${t.id}">${mmcEsc(t.descripcion)}</option>`).join('');
+            $('#mmcTj1Id, #mmcTj2Id').html(optTj);
+            $('#mmcTj1Cuotas, #mmcTj2Cuotas').val(1); $('#mmcTj1Cupon, #mmcTj2Cupon').val('');
+            mmcActualizarTarjetas();
+
+            let avisos = '';
+            if (res.imputado > 0) avisos += `<div class="mt-1">Tiene <strong>$ ${formatMoney(res.imputado)}</strong> imputados ${t.es_nota ? 'a facturas' : 'por cobros'}: la cuenta corriente no puede quedar por debajo de ese importe.</div>`;
+            if (!res.caja_abierta) avisos += '<div class="mt-1">No tiene caja abierta: no puede usar efectivo.</div>';
+            if (!t.cliente_cc) avisos += '<div class="mt-1">El cliente no tiene cuenta corriente habilitada.</div>';
+            $('#mmcAvisos').html(avisos);
+
+            mmcActualizarDiferencia();
+            bootstrap.Modal.getOrCreateInstance(document.getElementById('modMediosCobro')).show();
+        };
+
+        // Si se elige un medio de tipo Tarjetas (y hay tarjetas cargadas) se pide cuál, para el cupón.
+        function mmcActualizarTarjetas() {
+            const hay = mmcDatos && (mmcDatos.tarjetas || []).length > 0;
+            [1, 2].forEach(n => {
+                const m = hay ? mmcDatos.medios.find(x => String(x.id) === $(`#mmcMp${n}`).val()) : null;
+                $(`#mmcTj${n}`).toggleClass('d-none', !(m && m.tipo === 'Tarjetas'));
+            });
+        }
+
+        function mmcTarjeta(n) {
+            if ($(`#mmcTj${n}`).hasClass('d-none')) return null;
+            return { id: parseInt($(`#mmcTj${n}Id`).val()) || 0, cuotas: parseInt($(`#mmcTj${n}Cuotas`).val()) || 1, cupon: $(`#mmcTj${n}Cupon`).val().trim() };
+        }
+
+        function mmcActualizarDiferencia() {
+            if (!mmcDatos) return;
+            const suma = mmcNum($('#mmcImp1').val()) + ($('#mmcMp2').val() ? mmcNum($('#mmcImp2').val()) : 0);
+            const dif = Math.round((mmcDatos.a_repartir - suma) * 100) / 100;
+            $('#mmcDiferencia').html(Math.abs(dif) < 0.01
+                ? '<span class="text-success"><i class="fas fa-check me-1"></i>Los importes cubren el total.</span>'
+                : `<span class="text-danger">${dif > 0 ? 'Faltan' : 'Sobran'} $ ${formatMoney(Math.abs(dif))}</span>`);
+        }
+
+        // Al cambiar un importe, el otro medio toma el resto (si hay segundo medio).
+        $(document).off('.mmc')
+            .on('input.mmc', '#mmcImp1', function () {
+                if ($('#mmcMp2').val()) $('#mmcImp2').val(Math.max(0, mmcDatos.a_repartir - mmcNum(this.value)).toFixed(2));
+                mmcActualizarDiferencia();
+            })
+            .on('input.mmc', '#mmcImp2', function () {
+                $('#mmcImp1').val(Math.max(0, mmcDatos.a_repartir - mmcNum(this.value)).toFixed(2));
+                mmcActualizarDiferencia();
+            })
+            .on('change.mmc', '#mmcMp2', function () {
+                if (!this.value) { $('#mmcImp2').val(''); $('#mmcImp1').val(mmcDatos.a_repartir.toFixed(2)); }
+                mmcActualizarTarjetas();
+                mmcActualizarDiferencia();
+            })
+            .on('change.mmc', '#mmcMp1', mmcActualizarTarjetas);
+
+        window.guardarMediosCobro = async function () {
+            const mp2 = $('#mmcMp2').val();
+            const payload = {
+                ticket_id: mmcDatos.ticket.id,
+                mp1: parseInt($('#mmcMp1').val()) || 0, imp1: mmcNum($('#mmcImp1').val()),
+                mp2: parseInt(mp2) || 0, imp2: mp2 ? mmcNum($('#mmcImp2').val()) : 0,
+                motivo: $('#mmcMotivo').val().trim(),
+                tarjeta1: mmcTarjeta(1), tarjeta2: mp2 ? mmcTarjeta(2) : null
+            };
+            if (!payload.mp1) return Swal.fire('Atención', 'Elija el medio de cobro 1.', 'warning');
+            if (payload.motivo.length < 5) return Swal.fire('Atención', 'Indique el motivo de la modificación.', 'warning');
+
+            const ok = await Swal.fire({
+                title: '¿Confirmar el cambio?',
+                html: 'Se registrarán movimientos de ajuste con fecha de hoy en caja, tesorería, bancos, cuenta corriente y contabilidad.',
+                icon: 'question', showCancelButton: true, confirmButtonText: 'SÍ, MODIFICAR', cancelButtonText: 'CANCELAR'
+            }).then(r => r.isConfirmed);
+            if (!ok) return;
+
+            $('#mmcBtnGuardar').prop('disabled', true);
+            try {
+                const res = await fetch('api_modificar_medios_cobro.php?action=save', {
+                    method: 'POST', headers: { ...mmcHeaders, 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                }).then(r => r.json());
+                if (!res.success) return Swal.fire('Error', res.error, 'error');
+                bootstrap.Modal.getOrCreateInstance(document.getElementById('modMediosCobro')).hide();
+                await Swal.fire('Listo', res.message, 'success');
+                consultarComprobantes();
+            } catch (e) {
+                Swal.fire('Error', 'Error de comunicación.', 'error');
+            } finally {
+                $('#mmcBtnGuardar').prop('disabled', false);
+            }
+        };
 
         init();
     })();

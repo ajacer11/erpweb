@@ -2,6 +2,7 @@
 // SEGURIDAD CENTRALIZADA API
 require_once 'check_api_access.php';
 require_once 'permisos_helpers.php';
+require_once 'stock_deposito_helpers.php';
 
 $action = $_GET['action'] ?? '';
 
@@ -27,6 +28,9 @@ try {
         $data['unidades'] = $pdo->query("SELECT id, nombre FROM unidadesdenegocio ORDER BY nombre ASC")->fetchAll(PDO::FETCH_ASSOC);
         $data['provincias'] = $pdo->query("SELECT DISTINCT provincia FROM alb_clientes WHERE provincia IS NOT NULL AND provincia <> '' ORDER BY provincia ASC")->fetchAll(PDO::FETCH_COLUMN);
         $data['ramas'] = $pdo->query("SELECT id, rama FROM ramasclientes ORDER BY rama ASC")->fetchAll(PDO::FETCH_ASSOC);
+        $data['multideposito_habilitado'] = multidepositoHabilitado($pdo);
+        $data['depositos'] = $data['multideposito_habilitado']
+            ? depositosPermitidosUsuario($pdo, $_SESSION['usuario_nombre'] ?? '') : [];
 
         echo json_encode($data);
 
@@ -39,6 +43,23 @@ try {
         // Construcción del WHERE
         $where = " WHERE a.cliente <> 0 AND j.razon <> 'INGRESO DE STOCK' AND a.fecha BETWEEN ? AND ? ";
         $params = [$desde, $hasta];
+
+        if (multidepositoHabilitado($pdo) && !empty($input['deposito_id'])) {
+            $idDeposito = (int) $input['deposito_id'];
+            $permitidos = array_map('intval', array_column(depositosPermitidosUsuario($pdo, $_SESSION['usuario_nombre'] ?? ''), 'id'));
+            if (!in_array($idDeposito, $permitidos, true)) throw new Exception('No tiene acceso al depósito seleccionado.');
+            $stPvDep = $pdo->prepare('SELECT puntodeventa FROM depositos WHERE id = ?');
+            $stPvDep->execute([$idDeposito]);
+            $pvDeposito = (int) $stPvDep->fetchColumn();
+            // Lineadeventa es legacy y no guarda depósito; tickets sí conserva la
+            // sucursal emisora, por eso se cruza por la identidad del comprobante.
+            $where .= " AND EXISTS (SELECT 1 FROM tickets tdep
+                            WHERE tdep.PtoVta = a.pdv AND tdep.tipocomp = a.tipocomp
+                              AND tdep.numcomp = a.numcomp
+                              AND (tdep.id_deposito = ? OR (tdep.id_deposito IS NULL AND tdep.PtoVta = ?))) ";
+            $params[] = $idDeposito;
+            $params[] = $pvDeposito;
+        }
 
         if (!empty($input['cliente_id'])) { $where .= " AND a.cliente = ? "; $params[] = $input['cliente_id']; }
         // PERMISO ESPECIAL: fuerza el propio vendedor sin importar qué haya elegido
@@ -59,48 +80,68 @@ try {
         // Filtro Tipos Comprobante
         $where .= " AND a.tipocomp IN (1, 2, 3, 6, 7, 8, 11, 12, 13, 100, 101) ";
 
+        // Notas de crédito: restan. Es el mismo conjunto que usa el resto del
+        // sistema (api_comprobantes_emitidos, api_dashboard, api_cobros...).
+        // Antes acá decía (3, 7, 8, 101): restaba las notas de DÉBITO B (7) y
+        // sumaba las notas de crédito C (13), que faltaban en la lista.
+        // Las notas de débito (2 NDA, 7 NDB, 12 NDC) suman, como las facturas.
+        $esNotaCredito = "a.tipocomp IN (3, 8, 13, 101)";
+
+        // SIGNOS DE LAS NOTAS DE CRÉDITO
+        // Históricamente la tabla guardaba las NC con signos MEZCLADOS: cant, ii,
+        // costo e ivacosto negativos, y siniva, iva, total e IIBB positivos. El
+        // script sql/2026-09-29_normalizar_signos_notas_credito.sql las normaliza
+        // todas a negativo.
+        // Acá se fuerza el signo con -ABS() en vez de invertir con "* -1", para no
+        // depender de si esa migración ya corrió en esta base: el resultado es el
+        // mismo antes y después, así que el despliegue no hay que coordinarlo.
+        // Las líneas DESC y RECA llevan el signo CONTRARIO al del comprobante (un
+        // descuento resta), por eso se les fuerza el positivo.
+        $esDescuento = "a.prodcod IN ('DESC', 'RECA')";
+        $signoNC = function ($col) use ($esNotaCredito, $esDescuento) {
+            return "CASE WHEN $esNotaCredito AND $esDescuento THEN ABS($col)
+                         WHEN $esNotaCredito THEN -ABS($col)
+                         ELSE $col END";
+        };
+
         // QUERY
-        $sql = "SELECT 
+        $sql = "SELECT
                     a.fecha AS 'Fecha',
-                    CASE 
-                        WHEN a.tipocomp = 1 THEN 'FCA' 
-                        WHEN a.tipocomp = 2 THEN 'FCC'
-                        WHEN a.tipocomp = 3 THEN 'NCA' 
-                        WHEN a.tipocomp = 6 THEN 'FCB' 
-                        WHEN a.tipocomp = 7 THEN 'NCC'
-                        WHEN a.tipocomp = 8 THEN 'NCB' 
-                        WHEN a.tipocomp = 100 THEN 'TKT' 
-                        WHEN a.tipocomp = 101 THEN 'TDC' 
-                        ELSE 'Otro' 
+                    CASE
+                        WHEN a.tipocomp = 1 THEN 'FCA'
+                        WHEN a.tipocomp = 2 THEN 'NDA'
+                        WHEN a.tipocomp = 3 THEN 'NCA'
+                        WHEN a.tipocomp = 6 THEN 'FCB'
+                        WHEN a.tipocomp = 7 THEN 'NDB'
+                        WHEN a.tipocomp = 8 THEN 'NCB'
+                        WHEN a.tipocomp = 11 THEN 'FCC'
+                        WHEN a.tipocomp = 12 THEN 'NDC'
+                        WHEN a.tipocomp = 13 THEN 'NCC'
+                        WHEN a.tipocomp = 100 THEN 'TKT'
+                        WHEN a.tipocomp = 101 THEN 'TDC'
+                        ELSE 'Otro'
                     END AS 'Tipo',
                     CONCAT(LPAD(COALESCE(a.pdv,0), 5, '0'), '-', LPAD(a.numcomp, 8, '0')) AS 'Numero',
                     a.prodcod AS 'Codigo',
                     a.proddes AS 'Descripcion',
-                    a.cant AS 'Cantidad',
-                    
-                    /* Total: Negativo si es NC */
-                    CASE WHEN a.tipocomp IN (3, 7, 8, 101) THEN (a.total * -1) ELSE a.total END AS 'Total',
-                    
-                    a.ii AS 'Imp_Int',
-                    
-                    /* IVA: Negativo si es NC */
-                    CASE WHEN a.tipocomp IN (3, 7, 8, 101) THEN (a.iva * -1) ELSE a.iva END AS 'IVA',
-                    
-                    /* Neto (SubTotal): Negativo si es NC */
-                    CASE WHEN a.tipocomp IN (3, 7, 8, 101) THEN (a.siniva * -1) ELSE a.siniva END AS 'Neto',
-                    
+
+                    {$signoNC('a.cant')} AS 'Cantidad',
+
+                    {$signoNC('a.total')} AS 'Total',
+                    {$signoNC('a.ii')} AS 'Imp_Int',
+                    {$signoNC('a.iva')} AS 'IVA',
+                    {$signoNC('a.siniva')} AS 'Neto',
+
                     a.rubro AS 'Rubro',
-                    
-                    /* IIBB: Negativo si es NC */
-                    CASE WHEN a.tipocomp IN (3, 7, 8, 101) THEN (a.iibb * -1) ELSE a.iibb END AS 'IIBB',
-                    
-                    a.costo AS 'Costo',
+
+                    {$signoNC('a.iibb')} AS 'IIBB',
+                    {$signoNC('a.costo')} AS 'Costo',
                     a.usuario AS 'Usuario',
                     v.nombre AS 'Vendedor',
                     d.Proveedor AS 'Proveedor',
                     j.razon AS 'Cliente',
                     rc.rama AS 'Rama',
-                    a.ivacosto AS 'Iva_compras',
+                    {$signoNC('a.ivacosto')} AS 'Iva_compras',
                     h.marca AS 'Marca',
                     a.totaldescuento AS 'Porc_Descuento'
 
@@ -138,6 +179,14 @@ try {
                         </tr>
                     </thead>
                     <tbody>
+                        <?php
+                        // Los números se escriben en formato "crudo" (punto decimal, sin
+                        // separador de miles) y con mso-number-format: así Excel los importa
+                        // como valores numéricos reales (permite SUM/fórmulas), no como texto.
+                        // Antes se armaban con number_format(..., ',', '') -> string con coma
+                        // decimal que Excel no reconoce como número y cae como texto.
+                        $num = fn($v) => number_format((float) $v, 2, '.', '');
+                        ?>
                         <?php foreach($data as $r): ?>
                         <tr>
                             <td><?= $r['Fecha'] ?></td>
@@ -145,21 +194,21 @@ try {
                             <td style='mso-number-format:"\@";'><?= $r['Numero'] ?></td>
                             <td><?= $r['Codigo'] ?></td>
                             <td><?= htmlspecialchars($r['Descripcion']) ?></td>
-                            <td align="right"><?= $r['Cantidad'] ?></td>
-                            <td align="right"><?= number_format($r['Total'], 2, ',', '') ?></td>
-                            <td align="right"><?= number_format($r['Imp_Int'], 2, ',', '') ?></td>
-                            <td align="right"><?= number_format($r['IVA'], 2, ',', '') ?></td>
-                            <td align="right"><?= number_format($r['Neto'], 2, ',', '') ?></td>
+                            <td align="right" style="mso-number-format:'0.00'"><?= $num($r['Cantidad']) ?></td>
+                            <td align="right" style="mso-number-format:'0.00'"><?= $num($r['Total']) ?></td>
+                            <td align="right" style="mso-number-format:'0.00'"><?= $num($r['Imp_Int']) ?></td>
+                            <td align="right" style="mso-number-format:'0.00'"><?= $num($r['IVA']) ?></td>
+                            <td align="right" style="mso-number-format:'0.00'"><?= $num($r['Neto']) ?></td>
                             <td><?= htmlspecialchars($r['Rubro']) ?></td>
-                            <td align="right"><?= number_format($r['IIBB'], 2, ',', '') ?></td>
-                            <td align="right"><?= number_format($r['Costo'], 2, ',', '') ?></td>
+                            <td align="right" style="mso-number-format:'0.00'"><?= $num($r['IIBB']) ?></td>
+                            <td align="right" style="mso-number-format:'0.00'"><?= $num($r['Costo']) ?></td>
                             <td><?= htmlspecialchars($r['Usuario']) ?></td>
                             <td><?= htmlspecialchars($r['Vendedor']) ?></td>
                             <td><?= htmlspecialchars($r['Proveedor']) ?></td>
                             <td><?= htmlspecialchars($r['Cliente']) ?></td>
-                            <td align="right"><?= number_format($r['Iva_compras'], 2, ',', '') ?></td>
+                            <td align="right" style="mso-number-format:'0.00'"><?= $num($r['Iva_compras']) ?></td>
                             <td><?= htmlspecialchars($r['Marca']) ?></td>
-                            <td align="right"><?= number_format($r['Porc_Descuento'], 2, ',', '') ?>%</td>
+                            <td align="right" style='mso-number-format:"0.00\%";'><?= $num($r['Porc_Descuento']) ?></td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>

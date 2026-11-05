@@ -51,6 +51,16 @@ require_once 'check_access.php';
                         </button>
                     </div>
 
+                    <!-- Formato numerico detectado en el archivo -->
+                    <div id="avisoFormato" class="alert alert-info py-2 px-3 mb-3 d-none">
+                        <i class="fas fa-calculator me-2"></i>
+                        Formato numérico detectado: <strong id="lblFormato">-</strong>.
+                        <span class="d-block small mt-1 opacity-75">
+                            Verifique los importes en la vista previa antes de confirmar.
+                            Si el formato no es el correcto, corrija el archivo y vuelva a subirlo.
+                        </span>
+                    </div>
+
                     <!-- Estado Vacío -->
                     <div id="emptyState" class="text-center py-5 text-muted">
                         <i class="fas fa-boxes fa-3x mb-3 opacity-25"></i>
@@ -94,7 +104,7 @@ require_once 'check_access.php';
                 const res = await resp.json();
 
                 if (res.success) {
-                    mostrarPreview(res.headers, res.preview, res.total);
+                    mostrarPreview(res.headers, res.preview, res.total, res.formato);
                 } else {
                     Swal.fire('Error', res.error, 'error');
                 }
@@ -105,11 +115,19 @@ require_once 'check_access.php';
             }
         };
 
-        function mostrarPreview(headers, data, total) {
+        function mostrarPreview(headers, data, total, formato) {
             document.getElementById('emptyState').classList.add('d-none');
             document.getElementById('gridContainer').classList.remove('d-none');
             document.getElementById('btnProcesar').disabled = false;
             document.getElementById('lblCount').innerText = total;
+
+            const aviso = document.getElementById('avisoFormato');
+            if (formato) {
+                document.getElementById('lblFormato').innerText = formato;
+                aviso.classList.remove('d-none');
+            } else {
+                aviso.classList.add('d-none');
+            }
 
             const thead = document.getElementById('gridHeader');
             const tbody = document.getElementById('gridBody');

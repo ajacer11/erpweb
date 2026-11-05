@@ -58,6 +58,10 @@ function canAccessUrl($url) {
 }
 
 $puedeCrearCliente = canAccessUrl('clientes_alta.php');
+$puedeImprimirEnvios = canAccessUrl('imprimir_envios.php');
+
+require_once 'permisos_helpers.php';
+$puedeEditarDescFacturar = puedeEditarDescripcionFacturar();
 ?>
 
 <style>
@@ -161,6 +165,10 @@ $puedeCrearCliente = canAccessUrl('clientes_alta.php');
     .nf2-opt-txt { display: flex; flex-direction: column; min-width: 0; }
     .nf2-opt-cod { font-size: 9.5px; color: var(--text-muted); font-weight: 700; }
     .nf2-opt-desc { font-size: 12px; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nf2-opt-stk { margin-left: auto; padding-left: 8px; font-size: 11px; font-weight: 700; white-space: nowrap; color: var(--success, #2ecc71); }
+    .nf2-opt-stk + .nf2-opt-price { margin-left: 0; }
+    .select2-results__option--highlighted .nf2-opt-stk { color: inherit; }
+    .nf2-opt-stk.sin-stock { color: var(--danger, #e74c3c); }
     .nf2-opt-price { margin-left: auto; font-size: 12px; font-weight: 800; color: var(--accent); white-space: nowrap; padding-left: 8px; }
 
     /* ---------- Lista de ítems ---------- */
@@ -190,6 +198,8 @@ $puedeCrearCliente = canAccessUrl('clientes_alta.php');
     .nf2-thumb img { width: 100%; height: 100%; object-fit: contain; display: block; cursor: zoom-in; }
     .nf2-thumb i { color: var(--text-muted); font-size: 16px; }
     .nf2-item-info { flex: 1 1 auto; min-width: 0; }
+    .nf2-item-field { display:flex; flex-direction:column; gap:3px; flex-shrink:0; }
+    .nf2-item-field-label { font-size:8px; line-height:1; font-weight:800; color:var(--text-muted); text-transform:uppercase; text-align:center; }
     .nf2-item-cod { font-size: 9.5px; font-weight: 800; color: var(--text-muted); }
     .nf2-item-desc { font-size: 12.5px; font-weight: 600; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .nf2-item-sub { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
@@ -543,6 +553,7 @@ $puedeCrearCliente = canAccessUrl('clientes_alta.php');
         <div class="nf2-card nf2-summary">
             <div class="nf2-sum-row"><span>Neto</span><b id="tx_neto_f">0,00</b></div>
             <div class="nf2-sum-row"><span>IVA</span><b id="tx_iva_f">0,00</b></div>
+            <div class="nf2-sum-row"><span>Impuestos internos</span><b id="tx_ii_final_total">0,00</b></div>
             <div class="nf2-sum-row" id="btn_desc_global"><span>Descuento</span><b style="color:var(--warning)">
                 <span id="tx_desc_g">0,00</span><i class="fas fa-edit nf2-sum-adj-edit" onclick="bill.modalGlobal('DESC')"></i></b></div>
             <div class="nf2-sum-row" id="btn_reca_global"><span>Recargo</span><b style="color:var(--info)">
@@ -552,10 +563,10 @@ $puedeCrearCliente = canAccessUrl('clientes_alta.php');
             <div class="nf2-sum-detail" id="tax_matrix_detalle">
                 <div class="nf2-sum-row"><span>Sub. 21%</span><b id="tx_n21_1">0,00</b></div>
                 <div class="nf2-sum-row"><span>Sub. 10.5%</span><b id="tx_n105_1">0,00</b></div>
-                <div class="nf2-sum-row"><span>Imp. Interno</span><b id="tx_ii_final_total">0,00</b></div>
             </div>
 
             <div class="nf2-total-row">
+                <div class="nf2-sum-row mb-1"><span>Unidades</span><b id="tx_total_unidades">0</b></div>
                 <div class="nf2-total-lbl">Total comprobante</div>
                 <div class="nf2-total-val" id="tx_total_f">0,00</div>
             </div>
@@ -567,6 +578,9 @@ $puedeCrearCliente = canAccessUrl('clientes_alta.php');
             <div class="nf2-toolbar-side">
                 <button type="button" class="nf2-btn-mini info" onclick="bill.nueva()"><i class="fas fa-file"></i>Nuevo (F4)</button>
                 <button type="button" class="nf2-btn-mini warn" onclick="bill.abrirLineaManual()"><i class="fas fa-keyboard"></i>Manual (F8)</button>
+                <button type="button" class="nf2-btn-mini warn" id="btnTogglePreciosOrigen" style="display:none;" onclick="bill.toggleUsarPreciosActuales()">
+                    <i class="fas fa-tag"></i>Usando: Precio GUARDADO
+                </button>
                 <button type="button" class="nf2-btn-mini danger" onclick="bill.nueva()"><i class="fas fa-times"></i>Anular</button>
             </div>
         </div>
@@ -680,7 +694,12 @@ $puedeCrearCliente = canAccessUrl('clientes_alta.php');
                     </div>
                     <div class="col-md-8">
                         <label class="form-label-custom">NRO DOCUMENTO</label>
-                        <input type="text" id="nc_numdoc" class="form-control nf2-in-modal">
+                        <div class="input-group">
+                            <input type="text" id="nc_numdoc" class="form-control nf2-in-modal">
+                            <button type="button" class="btn btn-outline-info" id="btnAutocompletarCuitNC" title="Autocompletar por CUIT (consulta el padrón de AFIP)">
+                                <i class="fas fa-magic"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="col-md-7">
                         <label class="form-label-custom">CONDICIÓN FISCAL</label>
@@ -702,6 +721,14 @@ $puedeCrearCliente = canAccessUrl('clientes_alta.php');
                     <div class="col-12">
                         <label class="form-label-custom">DOMICILIO</label>
                         <input type="text" id="nc_domicilio" class="form-control nf2-in-modal">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label-custom">LOCALIDAD</label>
+                        <input type="text" id="nc_localidad" class="form-control nf2-in-modal">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label-custom">PROVINCIA</label>
+                        <input type="text" id="nc_provincia" class="form-control nf2-in-modal">
                     </div>
                     <div class="col-md-6">
                         <label class="form-label-custom">TELÉFONO</label>
@@ -786,18 +813,41 @@ $puedeCrearCliente = canAccessUrl('clientes_alta.php');
                 <div class="text-center mb-3 p-3 rounded border border-accent" style="background-color: var(--bg-card);">
                     <div style="font-size:9px;font-weight:800;color:var(--text-muted);text-transform:uppercase;">TOTAL</div>
                     <div class="nf2-total-val" id="mod_pay_total">$ 0,00</div>
+                    <div class="small text-warning d-none mt-1" id="mod_pay_percep"></div>
                 </div>
                 <div class="row g-3">
                     <div class="col-12"><label class="form-label-custom">MEDIO 1</label>
                         <div class="input-group input-group-sm">
                             <select id="pay_m1" class="form-select nf2-in-modal" style="flex:2"></select>
-                            <input type="number" id="pay_i1" class="form-control nf2-in-modal text-end fw-bold text-success" style="flex:1">
+                            <input type="text" inputmode="decimal" id="pay_i1" class="form-control nf2-in-modal text-end fw-bold text-success" style="flex:1">
+                        </div>
+                        <div class="d-none mt-1 pay-tarjeta" id="pay_t1">
+                            <div class="row g-1">
+                                <div class="col-5"><select id="pay_t1_id" class="form-select form-select-sm nf2-in-modal" title="Tarjeta"></select></div>
+                                <div class="col-2"><input type="number" id="pay_t1_cuotas" class="form-control form-control-sm nf2-in-modal text-center" min="1" max="99" value="1" title="Cuotas"></div>
+                                <div class="col-2"><input type="text" id="pay_t1_lote" class="form-control form-control-sm nf2-in-modal" maxlength="20" placeholder="Lote" title="Lote (opcional)"></div>
+                                <div class="col-3"><input type="text" id="pay_t1_cupon" class="form-control form-control-sm nf2-in-modal" maxlength="30" placeholder="Cupón" title="Número de cupón (opcional)"></div>
+                            </div>
                         </div>
                     </div>
                     <div class="col-12"><label class="form-label-custom">MEDIO 2</label>
                         <div class="input-group input-group-sm">
                             <select id="pay_m2" class="form-select nf2-in-modal" style="flex:2"></select>
-                            <input type="number" id="pay_i2" class="form-control nf2-in-modal text-end fw-bold text-warning" style="flex:1" value="0.00">
+                            <input type="text" inputmode="decimal" id="pay_i2" class="form-control nf2-in-modal text-end fw-bold text-warning" style="flex:1" value="0.00">
+                        </div>
+                        <div class="d-none mt-1 pay-tarjeta" id="pay_t2">
+                            <div class="row g-1">
+                                <div class="col-5"><select id="pay_t2_id" class="form-select form-select-sm nf2-in-modal" title="Tarjeta"></select></div>
+                                <div class="col-2"><input type="number" id="pay_t2_cuotas" class="form-control form-control-sm nf2-in-modal text-center" min="1" max="99" value="1" title="Cuotas"></div>
+                                <div class="col-2"><input type="text" id="pay_t2_lote" class="form-control form-control-sm nf2-in-modal" maxlength="20" placeholder="Lote" title="Lote (opcional)"></div>
+                                <div class="col-3"><input type="text" id="pay_t2_cupon" class="form-control form-control-sm nf2-in-modal" maxlength="30" placeholder="Cupón" title="Número de cupón (opcional)"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 d-none" id="pay_balance_helper">
+                        <div class="p-3 rounded border border-accent" style="background-color: var(--bg-card);">
+                            <div class="d-flex justify-content-between"><span class="fw-bold">FALTA POR COBRAR</span><strong class="text-danger fs-5" id="pay_falta">$ 0,00</strong></div>
+                            <div class="d-flex justify-content-between"><span class="fw-bold">VUELTO A ENTREGAR</span><strong class="text-success fs-5" id="pay_sobra">$ 0,00</strong></div>
                         </div>
                     </div>
                     <div class="col-12 mt-3"><label class="form-label-custom">VENDEDOR</label>
@@ -809,7 +859,7 @@ $puedeCrearCliente = canAccessUrl('clientes_alta.php');
                 <button type="button" class="btn btn-danger fw-bold px-3" data-bs-dismiss="modal" style="flex: 0 0 auto;">
                     CANCELAR (ESC)
                 </button>
-                <button type="button" class="btn btn-success fw-bold flex-grow-1 py-2" onclick="bill.grabar()">
+                <button type="button" id="btnEmitir" class="btn btn-success fw-bold flex-grow-1 py-2" onclick="bill.grabar()">
                     EMITIR (F10)
                 </button>
             </div>
@@ -842,6 +892,8 @@ $puedeCrearCliente = canAccessUrl('clientes_alta.php');
     // ?pedidoid=/?presupuestoid= de la URL (igual que facturar.js).
     const NF2_PUEDE_CREAR_CLIENTE = <?php echo $puedeCrearCliente ? 'true' : 'false'; ?>;
     const NF2_NC_ORIGEN_ID = <?php echo (int) $ncOrigenId; ?>;
+    const NF2_PUEDE_EDITAR_DESC = <?php echo $puedeEditarDescFacturar ? 'true' : 'false'; ?>;
+    const NF2_PUEDE_IMPRIMIR_ENVIOS = <?php echo $puedeImprimirEnvios ? 'true' : 'false'; ?>;
 </script>
 <script src="facturar_validaciones.js?v=<?php echo time(); ?>"></script>
 <script src="newfactura.js?v=<?php echo time(); ?>"></script>

@@ -100,6 +100,10 @@ if ($vistaActual !== '' && isset($todasLasVistas[$vistaActual])) {
     }
 }
 
+// Las capturas de pantalla de la ayuda no le sirven a la IA (son rutas de imágenes).
+foreach ($detalle as &$fichaDetalle) unset($fichaDetalle['capturas']);
+unset($fichaDetalle);
+
 $contextoJson = json_encode([
     'pantalla_actual' => $vistaActual !== '' ? $vistaActual : null,
     'indice_de_pantallas' => $indice,

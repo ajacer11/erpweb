@@ -35,41 +35,8 @@ $sql = "SELECT p.*,
 
 $params = [];
 
-// Filtro de Búsqueda General
-if ($q !== '') {
-    $sql .= " AND (p.codigo LIKE :q OR p.descripcion LIKE :q OR p.codigoproveedor LIKE :q)";
-    $params[':q'] = "%$q%";
-}
-
-// Filtros Específicos
-if ($rubro !== '') {
-    $sql .= " AND p.rubro = :rubro";
-    $params[':rubro'] = $rubro;
-}
-if ($marca !== '') {
-    $sql .= " AND p.Marca = :marca";
-    $params[':marca'] = $marca;
-}
-if ($familia !== '') {
-    $sql .= " AND p.familia = :familia";
-    $params[':familia'] = $familia;
-}
-if ($proveedor !== '') {
-    $sql .= " AND p.Proveedor = :proveedor";
-    $params[':proveedor'] = $proveedor;
-}
-
-// Filtro Habilitado
-if ($habilitado === '1') {
-    $sql .= " AND p.habilitado = 1";
-} elseif ($habilitado === '0') {
-    $sql .= " AND p.habilitado = 0";
-}
-
-// Filtro Stock Bajo
-if ($stock_bajo) {
-    $sql .= " AND p.Stock <= p.StockMin";
-}
+require_once 'productos_filtros.php';
+aplicarFiltrosProductos($sql, $params, $_GET);
 
 $sql .= " ORDER BY p.descripcion ASC";
 

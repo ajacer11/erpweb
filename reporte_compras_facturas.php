@@ -300,7 +300,9 @@ require_once 'check_access.php';
     function configurarListeners() {
         $('#btn-buscar').click(buscarForce);
         $('#btn-excel').click(exportarExcel);
-        $('#btn-arca').click(exportarArca);
+        // El Libro IVA Digital ahora se genera desde Contabilidad > Impuestos > Libro IVA
+        // (alícuotas por línea, percepciones en su campo y ventas + compras).
+        $('#btn-arca').click(() => loadModule('libro_iva.php'));
 
         // Checkbox fuerza búsqueda inmediata
         $('#chk-solo-pend').on('change', buscarForce);

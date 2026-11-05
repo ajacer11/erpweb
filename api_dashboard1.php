@@ -51,7 +51,7 @@ try {
             t.id,
             COALESCE((SELECT razon FROM alb_clientes WHERE id = t.cliente), 'Consumidor Final') as cliente,
             DATE_FORMAT(t.vencimiento, '%d/%m/%Y') as fecha,
-            (t.total - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = t.id), 0)) as monto
+            (COALESCE(t.importectacte, t.total) - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = t.id), 0)) as monto
         FROM tickets t
         WHERE t.pagada = 0 AND t.tipocomp NOT IN (3, 8, 13, 101) AND t.vencimiento < CURDATE() $filtroVendCobros
         HAVING monto > 0

@@ -116,6 +116,10 @@ try {
                 'modificarprecios'  => 0,
                 'facturarpedidos'   => 0,
                 'modificarfacturas' => 0,
+                'editardescripcionfacturar'     => 0,
+                'editardescripcionpedidos'      => 0,
+                'editardescripcionpresupuestos' => 0,
+                'modificarmedioscobro'          => 0,
             ];
         }
 
@@ -132,17 +136,29 @@ try {
         $modificarprecios  = (int)($input['modificarprecios']  ?? 0);
         $facturarpedidos   = (int)($input['facturarpedidos']   ?? 0);
         $modificarfacturas = (int)($input['modificarfacturas'] ?? 0);
+        $editardescripcionfacturar     = (int)($input['editardescripcionfacturar']     ?? 0);
+        $editardescripcionpedidos      = (int)($input['editardescripcionpedidos']      ?? 0);
+        $editardescripcionpresupuestos = (int)($input['editardescripcionpresupuestos'] ?? 0);
+        $modificarmedioscobro          = (int)($input['modificarmedioscobro']          ?? 0);
 
         if (empty($usuarioNombre)) throw new Exception("Nombre de usuario requerido.");
 
         // Replicar exactamente la lógica VB.NET: DELETE + INSERT
         $pdo->beginTransaction();
         try {
+            // puedecambiardeposito se administra desde Depósitos, no desde esta
+            // pantalla: se conserva para que el DELETE + INSERT no lo borre.
+            $stmtDep = $pdo->prepare("SELECT puedecambiardeposito FROM permisosespeciales WHERE usuario = ? LIMIT 1");
+            $stmtDep->execute([$usuarioNombre]);
+            $puedecambiardeposito = (int) ($stmtDep->fetchColumn() ?: 0);
+
             $pdo->prepare("DELETE FROM permisosespeciales WHERE usuario = ?")->execute([$usuarioNombre]);
 
-            $pdo->prepare("INSERT INTO permisosespeciales 
-                (usuario, precioscosto, unvendedor, idvendedor, modificarprecios, facturarpedidos, modificarfacturas)
-                VALUES (?, ?, ?, ?, ?, ?, ?)")
+            $pdo->prepare("INSERT INTO permisosespeciales
+                (usuario, precioscosto, unvendedor, idvendedor, modificarprecios, facturarpedidos, modificarfacturas,
+                 editardescripcionfacturar, editardescripcionpedidos, editardescripcionpresupuestos,
+                 modificarmedioscobro, puedecambiardeposito)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
                 ->execute([
                     $usuarioNombre,
                     $precioscosto,
@@ -151,7 +167,12 @@ try {
                     $unvendedor === 1 ? $idvendedor : 0,
                     $modificarprecios,
                     $facturarpedidos,
-                    $modificarfacturas
+                    $modificarfacturas,
+                    $editardescripcionfacturar,
+                    $editardescripcionpedidos,
+                    $editardescripcionpresupuestos,
+                    $modificarmedioscobro,
+                    $puedecambiardeposito
                 ]);
 
             $pdo->commit();

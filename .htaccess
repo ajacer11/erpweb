@@ -1,3 +1,14 @@
 <FilesMatch "^menu(1|2|_excluidos)\.json$">
     Require all denied
 </FilesMatch>
+
+# Con mod_php (a diferencia de PHP-FPM), Apache no reenvía por defecto el header
+# Authorization a PHP: $_SERVER['HTTP_AUTHORIZATION'] queda vacío aunque el
+# cliente sí lo mande. api_productos_externa.php se autentica con
+# "Authorization: Bearer <token>", así que hace falta esta regla para que
+# llegue. Sin efecto si el módulo no está cargado (hosting con PHP-FPM, etc.).
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTP:Authorization} ^(.+)
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%1]
+</IfModule>

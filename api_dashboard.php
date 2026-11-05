@@ -61,7 +61,7 @@ try {
 
     // VENCIDOS (Extraídos del cálculo de comprobantes pendientes y saldos impagos)
     $data['kpis']['vencidos_cobrar'] = safeQueryValue($pdo, "
-        SELECT SUM(total - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0)) 
+        SELECT SUM(COALESCE(importectacte, total) - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0)) 
         FROM tickets 
         WHERE pagada = 0 AND tipocomp NOT IN (3, 8, 13, 101) AND vencimiento < CURDATE()
     ");
@@ -74,7 +74,7 @@ try {
 
     // VENCIMIENTOS EXACTOS DE HOY
     $data['kpis']['hoy_cobros'] = safeQueryValue($pdo, "
-        SELECT SUM(total - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0)) 
+        SELECT SUM(COALESCE(importectacte, total) - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0)) 
         FROM tickets 
         WHERE pagada = 0 AND tipocomp NOT IN (3, 8, 13, 101) AND vencimiento = CURDATE()
     ");
@@ -121,7 +121,7 @@ try {
     $data['charts']['cashflow_cobros'] = safeQueryAll($pdo, "
         SELECT 
             DATE_FORMAT(vencimiento, '%Y-%m-%d') as fecha, 
-            SUM(total - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0)) as monto
+            SUM(COALESCE(importectacte, total) - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0)) as monto
         FROM tickets 
         WHERE pagada = 0 AND tipocomp NOT IN (3, 8, 13, 101) 
           AND vencimiento >= CURDATE() AND vencimiento <= DATE_ADD(CURDATE(), INTERVAL 14 DAY)

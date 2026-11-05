@@ -24,7 +24,7 @@ try {
     // 2. NOTAS DE CRÉDITO PENDIENTES (Tickets tipo 3, 8, 13, 101 sin liquidar)
     $stmtNC = $pdo->prepare("
         SELECT id, fecha, CONCAT(letracomp,' ',LPAD(PtoVta,4,'0'),'-',LPAD(numcomp,8,'0')) as numero,
-               total - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idpago = tickets.id AND tablapago = 'tickets'), 0) as pendiente
+               COALESCE(importectacte, total) - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idpago = tickets.id AND tablapago = 'tickets'), 0) as pendiente
         FROM tickets WHERE cliente = ? AND pagada = 0 AND tipocomp IN (3, 8, 13, 101)
         HAVING pendiente > 0.01 ORDER BY fecha ASC");
     $stmtNC->execute([$cliente_id]);
@@ -36,7 +36,7 @@ try {
     // 3. FACTURAS PENDIENTES
     $stmtF = $pdo->prepare("
         SELECT id, fecha, CONCAT(letracomp,' ',LPAD(PtoVta,4,'0'),'-',LPAD(numcomp,8,'0')) as numero,
-               total - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0) as pendiente
+               COALESCE(importectacte, total) - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0) as pendiente
         FROM tickets WHERE cliente = ? AND pagada = 0 AND tipocomp NOT IN (3, 8, 13, 101)
         HAVING pendiente > 0.01 ORDER BY fecha ASC");
     $stmtF->execute([$cliente_id]);

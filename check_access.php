@@ -151,9 +151,16 @@ if ($isDashboard && !in_array($currentScript, $allowedDashboards, true)) {
 // para cualquier usuario sin importar el plan contratado ni sus permisos
 // (se llega a él desde el menú de usuario, que no forma parte de
 // menu1.json/menu2.json, por eso nunca aparecería en $contractUrls).
+// NOTA: los dashboards NO son core files. Antes lo eran (línea eliminada:
+// `|| in_array($currentScript, $allowedDashboards, true)`), y eso hacía que
+// CUALQUIER usuario pudiera abrir dashboard1.php/dashboard2.php sin pasar
+// por la sección 6-8 (verificación de allowed_urls por usuario) — el toggle
+// de "Panel Gerencial" en niveles_acceso.php quedaba sin efecto en el
+// servidor. $allowedDashboards se sigue usando arriba solo para el check
+// de licencia (¿el plan del tenant incluye este panel?), que es un control
+// distinto del control de rol por usuario.
 $core_files = ['index.php', 'login.php', 'logout.php', 'ayuda.php'];
-$isCoreFile = in_array($currentScript, $core_files)
-           || in_array($currentScript, $allowedDashboards, true);
+$isCoreFile = in_array($currentScript, $core_files);
 
 // ======================================================================
 // VALIDACIÓN DE CONTRATO (VERSIÓN SAAS)
@@ -180,29 +187,33 @@ if (file_exists($json_path)) {
     $contractUrls = extractContractUrlsGlobal($menu_data);
 }
 
-// FIX: los core files siempre están permitidos por contrato
-$allowedByContract = false;
-
-if ($isCoreFile || empty($contractUrls)) {
-    $allowedByContract = true;
-} else {
-    if (in_array($currentScript, $contractUrls)) {
-        $allowedByContract = true;
-    } else {
-        // Validación inteligente por prefijo de submódulos
-        foreach ($contractUrls as $cUrl) {
-            $parts = explode('_', $cUrl);
+// Validación inteligente por prefijo de submódulos: una pantalla de detalle
+// (ej. stock_ajuste_add.php, solo alcanzable navegando desde
+// stock_ajuste_grupo.php) nunca aparece en menu1.json/menu2.json ni en los
+// allowed_urls que arma niveles_acceso.php, porque no es un ítem de menú.
+// Se considera cubierta por el permiso/contrato de su pantalla "padre" si
+// comparte el prefijo (todo antes del último "_").
+if (!function_exists('urlMatchesByPrefixGlobal')) {
+    function urlMatchesByPrefixGlobal($currentScript, array $urls) {
+        if (in_array($currentScript, $urls, true)) {
+            return true;
+        }
+        foreach ($urls as $u) {
+            $parts = explode('_', $u);
             if (count($parts) > 1) {
                 array_pop($parts);
                 $prefix = implode('_', $parts) . '_';
                 if (strpos($currentScript, $prefix) === 0) {
-                    $allowedByContract = true;
-                    break;
+                    return true;
                 }
             }
         }
+        return false;
     }
 }
+
+// FIX: los core files siempre están permitidos por contrato
+$allowedByContract = $isCoreFile || empty($contractUrls) || urlMatchesByPrefixGlobal($currentScript, $contractUrls);
 
 if (!$allowedByContract) {
     denyAccessAndLog($pdo, "Módulo bloqueado. La licencia contratada por la empresa no incluye este servicio.", $currentScript);
@@ -245,15 +256,43 @@ try {
     $permisosData = json_decode($accesoRow['permisos'], true);
     $allowedUrls  = $permisosData['allowed_urls'] ?? [];
 
-    $isAllowed = false;
-    foreach ($allowedUrls as $url) {
-        if (basename($url) === $currentScript) {
+    // Prefijo de submódulos (ver urlMatchesByPrefixGlobal): cubre pantallas de
+    // detalle como stock_ajuste_add.php, que no son ítem de menú y por lo tanto
+    // nunca están en $allowedUrls, aunque el usuario sí tenga el permiso de la
+    // pantalla "padre" (stock_ajuste_grupo.php) desde la que se navega a ellas.
+    $isAllowed = urlMatchesByPrefixGlobal($currentScript, array_map('basename', $allowedUrls));
+
+    // Compatibilidad: igual que en menu.php, un registro de permisos guardado
+    // antes de que existiera el árbol de "Dashboards" no va a mencionar
+    // NINGUNA de las dos URLs de panel — sin este fallback, esos usuarios
+    // quedarían bloqueados de golpe. Pero si el registro SÍ menciona algún
+    // dashboard (fue guardado con la niveles_acceso.php actual), se respeta
+    // la whitelist tal cual quedó armada, incluida la exclusión explícita.
+    if (!$isAllowed && $isDashboard) {
+        $urlsBase = array_map('basename', $allowedUrls);
+        $tieneDashboardsEnPermisos = count(array_intersect($allowedDashboards, $urlsBase)) > 0;
+        if (!$tieneDashboardsEnPermisos) {
             $isAllowed = true;
-            break;
         }
     }
 
     if (!$isAllowed) {
+        if ($isDashboard) {
+            // No tener un panel habilitado no es un intento de acceso indebido
+            // como para cerrarle la sesión al usuario (denyAccessAndLog hace
+            // session_destroy() y lo manda a loguearse de nuevo) — es solo
+            // "este panel no te lo dieron". Se degrada con gracia: si pidió
+            // dashboard2.php y sí tiene dashboard1.php, se lo manda ahí; si
+            // tampoco tiene dashboard1.php, se le muestra una pantalla vacía.
+            logSecurityEventInternal($pdo, "Dashboard sin permiso: se degradó sin cerrar sesión.", $currentScript);
+            $urlsBase = array_map('basename', $allowedUrls);
+            if ($currentScript === 'dashboard2.php' && in_array('dashboard1.php', $urlsBase, true)) {
+                echo '<script>loadModule(\'dashboard1.php\');</script>';
+            } else {
+                echo '<div class="container-fluid px-4 py-4"></div>';
+            }
+            exit();
+        }
         denyAccessAndLog($pdo, "URL no autorizada en tu perfil de usuario.", $currentScript);
     }
 

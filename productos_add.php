@@ -3,8 +3,15 @@
 // SEGURIDAD CENTRALIZADA (Check Access)
 require_once 'check_access.php';
 $codigo = $_GET['codigo'] ?? '';
+$clonar = $_GET['clonar'] ?? '';
 // Título inicial
-$titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8') . "..." : "NUEVO PRODUCTO";
+if ($codigo) {
+    $titulo = "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8') . "...";
+} elseif ($clonar) {
+    $titulo = "CLONANDO " . htmlspecialchars($clonar, ENT_QUOTES, 'UTF-8') . "...";
+} else {
+    $titulo = "NUEVO PRODUCTO";
+}
 ?>
 
 <style>
@@ -139,11 +146,11 @@ $titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8')
 
                         <div class="mb-3">
                             <label class="form-label-custom">Neto Costo Compra</label>
-                            <input type="number" class="form-control fw-bold border-info text-end" name="sinivacosto" id="costo_neto" step="0.001" oninput="calcular()">
+                            <input type="number" class="form-control fw-bold border-info text-end" name="sinivacosto" id="costo_neto" step="0.01" oninput="calcular()">
                         </div>
                         <div class="mb-3">
                             <label class="form-label-custom">Impuestos Int.</label>
-                            <input type="number" class="form-control text-end" name="impint" id="costo_ii" step="0.001" oninput="calcular()">
+                            <input type="number" class="form-control text-end" name="impint" id="costo_ii" step="0.01" oninput="calcular()">
                         </div>
                         <div class="row g-2">
                             <div class="col-6"><label class="form-label-custom">IVA Costo</label><input type="text" class="form-control bg-dark bg-opacity-50 text-end" name="ivacosto" id="costo_iva" readonly></div>
@@ -180,36 +187,44 @@ $titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8')
                                 <thead>
                                     <tr>
                                         <th>LISTA</th>
-                                        <th class="text-center" width="12%">% UTIL</th>
-                                        <th class="text-center" width="12%">PRED. %</th>
+                                        <th class="text-center" width="9%">% UTIL</th>
+                                        <th class="text-center" width="9%">PRED. %</th>
+                                        <th class="text-center" width="9%">DESC. MÁX %</th>
                                         <th class="text-center" width="18%">NETO VTA</th>
-                                        <th class="text-center" width="15%">IVA</th>
-                                        <th class="text-center" width="15%">IIBB</th>
-                                        <th class="text-end" width="18%">P. FINAL</th>
+                                        <th class="text-center" width="14%">IVA</th>
+                                        <th class="text-center" width="15%">IMP. INT.</th>
+                                        <th class="text-end" width="17%">P. FINAL</th>
                                     </tr>
                                 </thead>
                                 <tbody id="grillaPrecios">
                                     <?php for($i=1; $i<=8; $i++): ?>
                                     <tr>
                                         <td class="fw-bold text-muted pt-2">LISTA <?=$i?></td>
-                                        
+
                                         <!-- Utilidad Calculada -->
                                         <td><input type="text" class="form-control form-control-sm text-center border-0 bg-transparent text-accent fw-bold" id="por_l<?=$i?>" readonly></td>
-                                        
+
                                         <!-- Utilidad Predeterminada -->
                                         <td><input type="number" class="form-control form-control-sm text-center" id="util_l<?=$i?>" step="0.01" oninput="calcular(<?=$i?>)"></td>
-                                        
+
+                                        <!-- Descuento máximo permitido en facturación para esta lista -->
+                                        <td><input type="number" class="form-control form-control-sm text-center" name="maxdescl<?=$i?>" id="maxdesc_l<?=$i?>" step="0.5" min="0" max="100"></td>
+
                                         <!-- Neto Venta -->
-                                        <td><input type="number" class="form-control form-control-sm text-center" name="siniva<?=$i==1?'':$i?>" id="neto_l<?=$i?>" step="0.001" oninput="calcular(<?=$i?>)"></td>
-                                        
+                                        <td><input type="number" class="form-control form-control-sm text-center" name="siniva<?=$i==1?'':$i?>" id="neto_l<?=$i?>" step="0.01" oninput="calcular(<?=$i?>)"></td>
+
                                         <!-- IVA Venta -->
                                         <td><input type="text" class="form-control form-control-sm text-center border-0 bg-transparent text-muted" name="iva<?=$i==1?'1':$i?>" id="iva_l<?=$i?>" readonly></td>
-                                        
-                                        <!-- IIBB -->
-                                        <td><input type="text" class="form-control form-control-sm text-center border-0 bg-transparent text-muted" name="IIBB<?=$i?>" id="iibb_l<?=$i?>" readonly></td>
-                                        
+
+                                        <!-- Impuesto interno: importe fijo unitario, no integra la base de IVA -->
+                                        <td><input type="text" class="form-control form-control-sm text-center border-0 bg-transparent text-muted" id="impint_l<?=$i?>" readonly></td>
+
+                                        <!-- IIBB: se sigue calculando y guardando (lo usan retenciones/percepciones),
+                                             pero se saca de la vista porque confundía a los usuarios en esta grilla -->
+                                        <td style="display:none"><input type="text" name="IIBB<?=$i?>" id="iibb_l<?=$i?>" readonly></td>
+
                                         <!-- Precio Final -->
-                                        <td><input type="number" class="form-control form-control-sm text-end fw-bold text-accent" name="precio<?=$i==1?'':$i?>" id="final_l<?=$i?>" step="0.001" oninput="calcular(<?=$i?>)"></td>
+                                        <td><input type="number" class="form-control form-control-sm text-end fw-bold text-accent" name="precio<?=$i==1?'':$i?>" id="final_l<?=$i?>" step="0.01" oninput="calcular(<?=$i?>)"></td>
                                     </tr>
                                     <?php endfor; ?>
                                 </tbody>
@@ -232,8 +247,29 @@ $titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8')
             <div class="tab-pane fade" id="tab-cat">
                 <div class="row g-3">
                     <div class="col-md-4">
-                        <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" name="mostrarencatalogo" value="1" id="pubWeb"><label class="text-white small" for="pubWeb">Publicar en West IT Online</label></div>
+                        <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" name="mostrarencatalogo" value="1" id="pubWeb"><label class="text-white small" for="pubWeb">Publicar en tienda/catálogo</label></div>
                         <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="mostrarsinstock" value="1" id="shwStock"><label class="text-white small" for="shwStock">Permitir pedidos sin stock</label></div>
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label-custom">Descripción para tienda/catálogo</label>
+                        <textarea class="form-control" name="descripcion_tienda" id="prod_desc_tienda" rows="4" maxlength="2000" placeholder="Si se deja vacío, se usa la descripción interna."></textarea>
+                        <div class="d-flex gap-2 mt-2">
+                            <button type="button" class="btn btn-outline-info btn-sm" id="btnIaGenerarDesc" onclick="generarDescripcionTienda('generar')">
+                                <i class="fas fa-wand-magic-sparkles me-1"></i>Generar con IA
+                            </button>
+                            <button type="button" class="btn btn-outline-info btn-sm" id="btnIaMejorarDesc" onclick="generarDescripcionTienda('mejorar')">
+                                <i class="fas fa-arrows-rotate me-1"></i>Mejorar redacción
+                            </button>
+                        </div>
+                        <small class="text-muted d-block mt-1" id="descTiendaHint" style="display:none;">Guardá el producto para poder usar la IA acá.</small>
+                    </div>
+
+                    <div class="col-12"><hr class="border-secondary opacity-25"></div>
+
+                    <div class="col-12">
+                        <label class="form-label-custom">Imágenes adicionales</label>
+                        <div class="d-flex gap-2 flex-wrap" id="galeriaAdicional"></div>
+                        <small class="text-muted d-block mt-1">Se suman a la foto de portada (junto al título) y se muestran en la API de productos.</small>
                     </div>
                 </div>
             </div>
@@ -277,6 +313,7 @@ $titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8')
         $('.select2-simple').select2({ dropdownParent: $('#main-content'), width: '100%' });
 
         const prodCodigo = <?= json_encode($codigo, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
+        const clonarCodigo = <?= json_encode($clonar, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>;
         let isEditing = false;
 
         // --- FOTO DEL PRODUCTO ---
@@ -332,6 +369,107 @@ $titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8')
         });
         // -----------------------------
 
+        // --- GALERÍA DE IMÁGENES ADICIONALES (slots 2 a 5) ---
+        function setupGaleriaAdicional() {
+            const cont = document.getElementById('galeriaAdicional');
+            cont.innerHTML = '';
+
+            for (let slot = 2; slot <= 5; slot++) {
+                const box = document.createElement('div');
+                box.className = 'prod-foto-box' + (!prodCodigo ? ' disabled' : '');
+                box.title = prodCodigo ? `Subir/cambiar imagen ${slot - 1}` : 'Guardá el producto para poder subir imágenes';
+                box.innerHTML = `
+                    <img class="gal-img" src="" style="display:none;" alt="Imagen adicional">
+                    <i class="fas fa-plus gal-icon"></i>
+                    <div class="prod-foto-overlay"><i class="fas fa-upload me-1"></i>CAMBIAR</div>
+                `;
+
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.style.display = 'none';
+
+                const img = box.querySelector('.gal-img');
+                const icon = box.querySelector('.gal-icon');
+
+                if (prodCodigo) {
+                    img.src = `img_producto.php?codigo=${encodeURIComponent(prodCodigo)}&slot=${slot}&v=${Date.now()}`;
+                    img.addEventListener('error', () => { img.style.display = 'none'; icon.style.display = ''; });
+                    img.addEventListener('load', () => { img.style.display = ''; icon.style.display = 'none'; });
+                    img.style.display = '';
+                    box.addEventListener('click', () => input.click());
+                }
+
+                input.addEventListener('change', async function () {
+                    const file = this.files[0];
+                    if (!file || !prodCodigo) return;
+
+                    const fd = new FormData();
+                    fd.append('codigo', prodCodigo);
+                    fd.append('foto', file);
+                    fd.append('slot', slot);
+
+                    Swal.fire({ title: 'Subiendo imagen...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                    try {
+                        const resp = await fetch('api_productos_foto.php?action=upload', {
+                            method: 'POST',
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                            body: fd
+                        });
+                        const res = await resp.json();
+                        if (res.success) {
+                            img.src = res.url;
+                            img.style.display = '';
+                            icon.style.display = 'none';
+                            Swal.fire({ icon: 'success', title: 'Imagen actualizada', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false });
+                        } else {
+                            Swal.fire('Error', res.error || 'No se pudo subir la imagen.', 'error');
+                        }
+                    } catch (e) {
+                        Swal.fire('Error', 'No se pudo comunicar con el servidor.', 'error');
+                    } finally {
+                        this.value = '';
+                    }
+                });
+
+                box.appendChild(input);
+                cont.appendChild(box);
+            }
+        }
+        // -----------------------------
+
+        // --- DESCRIPCIÓN DE TIENDA POR IA ---
+        window.generarDescripcionTienda = async function (modo) {
+            if (!prodCodigo) {
+                Swal.fire('Atención', 'Primero guardá el producto para poder usar la IA.', 'warning');
+                return;
+            }
+            const textoActual = document.getElementById('prod_desc_tienda').value.trim();
+            if (modo === 'mejorar' && !textoActual) {
+                Swal.fire('Atención', 'Escribí primero un texto para poder mejorarlo.', 'warning');
+                return;
+            }
+
+            Swal.fire({ title: 'Generando con IA...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+            try {
+                const resp = await fetch('api_ia_descripcion_producto.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({ codigo: prodCodigo, modo, texto_actual: textoActual })
+                });
+                const res = await resp.json();
+                Swal.close();
+                if (res.success) {
+                    document.getElementById('prod_desc_tienda').value = res.descripcion;
+                } else {
+                    Swal.fire('Error', res.error || 'No se pudo generar la descripción.', 'error');
+                }
+            } catch (e) {
+                Swal.fire('Error', 'No se pudo comunicar con el servidor.', 'error');
+            }
+        };
+        // -----------------------------
+
         window.toggleCalcMode = function() {
             const mode = document.querySelector('input[name="calc_mode"]:checked').value;
             const lbl = document.getElementById('lblNotaCalc');
@@ -345,7 +483,7 @@ $titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8')
                 setEnabled(allUtil, false); setEnabled(allNeto, false); setEnabled(allFinal, false);
                 if (!isEditing) calcular();
             } else if (mode === 'final') {
-                lbl.textContent = "Tipee Precio Final (IVA inc). Se recalcula Neto y Utilidad.";
+                lbl.textContent = "Tipee Precio Final (IVA + Imp. Int. incluidos). Se recalculan Neto, IVA y Utilidad.";
                 setEnabled(allUtil, false); setEnabled(allNeto, false); setEnabled(allFinal, true);
             } else if (mode === 'neto') {
                 lbl.textContent = "Tipee Neto Venta. Se recalcula Final y Utilidad.";
@@ -363,14 +501,14 @@ $titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8')
             const tbody = document.getElementById('listaReferenciasBody');
             
             try {
-                const resp = await fetch(`api_referencias.php?action=list&cod=${encodeURIComponent(codigo)}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                const resp = await fetch(`api_referencias.php?action=list&code=${encodeURIComponent(codigo)}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store' });
                 const res = await resp.json();
                 tbody.innerHTML = '';
                 if(res.success && res.data) {
                     res.data.forEach(ref => {
                         tbody.innerHTML += `
                             <tr>
-                                <td class="fw-bold text-white">${ref.codigo}</td>
+                                <td class="fw-bold" style="color: var(--text-main) !important;">${ref.codigo}</td>
                                 <td class="text-end">
                                     <button type="button" class="btn btn-link text-danger p-0" onclick="eliminarReferencia(${ref.id})">
                                         <i class="fas fa-trash-alt"></i>
@@ -433,6 +571,10 @@ $titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8')
 
         async function init() {
             setupFotoBox();
+            setupGaleriaAdicional();
+            if (!prodCodigo) {
+                document.getElementById('descTiendaHint').style.display = '';
+            }
 
             await Promise.allSettled([
                 fetch('api_helpers.php?action=get_rubros', { headers: { 'X-Requested-With': 'XMLHttpRequest' } }).then(r => r.json()).then(res => fillCombo('cmbRubros', res.data, 'rubro', 'rubro')),
@@ -469,7 +611,13 @@ $titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8')
                 await cargarDatos();
                 // Cargar referencias DESPUÉS de cargar datos
                 cargarReferencias();
-                setTimeout(() => { isEditing = false; }, 500); 
+                setTimeout(() => { isEditing = false; }, 500);
+            } else if (clonarCodigo) {
+                isEditing = true;
+                document.getElementById('r_final').checked = true;
+                toggleCalcMode();
+                await cargarDatos(clonarCodigo, true);
+                setTimeout(() => { isEditing = false; }, 500);
             }
         }
 
@@ -498,17 +646,21 @@ $titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8')
             $(el).trigger('change');
         }
 
-        async function cargarDatos() {
+        async function cargarDatos(codigoOrigen = prodCodigo, esClon = false) {
             try {
-                const resp = await fetch(`api_productos.php?codigo=${encodeURIComponent(prodCodigo)}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+                const resp = await fetch(`api_productos.php?codigo=${encodeURIComponent(codigoOrigen)}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
                 const res = await resp.json();
-                
+
                 if(res.success) {
                     const p = res.data;
                     const frm = document.getElementById('frmProducto');
 
-                    if (p.descripcion) document.getElementById('tituloModulo').innerHTML = `<span class="text-info">EDITAR:</span> ${p.codigo} - ${p.descripcion}`;
-                    
+                    if (p.descripcion) {
+                        document.getElementById('tituloModulo').innerHTML = esClon
+                            ? `<span class="text-warning">CLONANDO:</span> ${p.descripcion} <small class="text-muted">(asigná el nuevo código)</small>`
+                            : `<span class="text-info">EDITAR:</span> ${p.codigo} - ${p.descripcion}`;
+                    }
+
                     if(p.idmoneda) {
                         $('#cmbMoneda').val(p.idmoneda).trigger('change');
                         await actualizarCotizacion();
@@ -520,13 +672,15 @@ $titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8')
 
                     Array.from(frm.elements).forEach(el => {
                         if (!el.name) return;
+                        if (esClon && el.name === 'codigo') return; // El código nunca se clona
+                        if (el.id === 'cmbProveedores') return; // Se resuelve aparte por ID (evita colisiones de razón social duplicada)
                         const key = el.name.toLowerCase();
                         if (pNorm.hasOwnProperty(key)) {
                             let val = pNorm[key];
                             
                             if (['sinivacosto', 'ivacosto', 'preciocosto', 'impint'].includes(key) || 
                                 key.startsWith('precio') || key.startsWith('siniva') || key.startsWith('iibb')) {
-                                val = (parseFloat(val) / tipoCambio).toFixed(3);
+                                val = (parseFloat(val) / tipoCambio).toFixed(2);
                             }
 
                             if (el.tagName === 'SELECT' && $(el).hasClass('select2-hidden-accessible')) {
@@ -540,16 +694,16 @@ $titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8')
                     });
 
                     // Carga explicita de listas
-                    document.getElementById('neto_l1').value = (parseFloat(pNorm['siniva']) / tipoCambio).toFixed(3);
-                    document.getElementById('iva_l1').value = (parseFloat(pNorm['iva1']) / tipoCambio).toFixed(3);
-                    document.getElementById('final_l1').value = (parseFloat(pNorm['precio']) / tipoCambio).toFixed(3);
-                    document.getElementById('iibb_l1').value = (parseFloat(pNorm['iibb1']) / tipoCambio).toFixed(3);
+                    document.getElementById('neto_l1').value = (parseFloat(pNorm['siniva']) / tipoCambio).toFixed(2);
+                    document.getElementById('iva_l1').value = (parseFloat(pNorm['iva1']) / tipoCambio).toFixed(2);
+                    document.getElementById('final_l1').value = (parseFloat(pNorm['precio']) / tipoCambio).toFixed(2);
+                    document.getElementById('iibb_l1').value = (parseFloat(pNorm['iibb1']) / tipoCambio).toFixed(2);
 
                     for(let i=2; i<=8; i++) {
-                        if(pNorm[`siniva${i}`]) document.getElementById(`neto_l${i}`).value = (parseFloat(pNorm[`siniva${i}`]) / tipoCambio).toFixed(3);
-                        if(pNorm[`iva${i}`]) document.getElementById(`iva_l${i}`).value = (parseFloat(pNorm[`iva${i}`]) / tipoCambio).toFixed(3);
-                        if(pNorm[`precio${i}`]) document.getElementById(`final_l${i}`).value = (parseFloat(pNorm[`precio${i}`]) / tipoCambio).toFixed(3);
-                        if(pNorm[`iibb${i}`]) document.getElementById(`iibb_l${i}`).value = (parseFloat(pNorm[`iibb${i}`]) / tipoCambio).toFixed(3);
+                        if(pNorm[`siniva${i}`]) document.getElementById(`neto_l${i}`).value = (parseFloat(pNorm[`siniva${i}`]) / tipoCambio).toFixed(2);
+                        if(pNorm[`iva${i}`]) document.getElementById(`iva_l${i}`).value = (parseFloat(pNorm[`iva${i}`]) / tipoCambio).toFixed(2);
+                        if(pNorm[`precio${i}`]) document.getElementById(`final_l${i}`).value = (parseFloat(pNorm[`precio${i}`]) / tipoCambio).toFixed(2);
+                        if(pNorm[`iibb${i}`]) document.getElementById(`iibb_l${i}`).value = (parseFloat(pNorm[`iibb${i}`]) / tipoCambio).toFixed(2);
                     }
 
                     const costoNeto = parseFloat(document.getElementById('costo_neto').value) || 0;
@@ -563,8 +717,31 @@ $titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8')
                     }
 
                     if(p.idiva) document.getElementById('prod_idiva').value = p.idiva;
-                    if(p.proveedorID) document.getElementById('h_proveedorID').value = p.proveedorID;
-                    
+
+                    // Seleccionar el proveedor por ID (no por nombre): el combo puede tener
+                    // razones sociales duplicadas o excluir proveedores deshabilitados, y
+                    // matchear por texto termina seleccionando el proveedor equivocado.
+                    if (p.proveedorID) {
+                        const $prov = $('#cmbProveedores');
+                        let encontrado = false;
+                        $prov.find('option').each(function () {
+                            if (String(this.dataset.id) === String(p.proveedorID)) {
+                                $prov.val(this.value).trigger('change');
+                                encontrado = true;
+                                return false;
+                            }
+                        });
+                        if (!encontrado) {
+                            // Proveedor deshabilitado o renombrado: se agrega una opción temporal
+                            // para no perder el dato original al guardar.
+                            const nombreProv = pNorm['proveedor'] || `Proveedor #${p.proveedorID}`;
+                            const opt = new Option(nombreProv, nombreProv, true, true);
+                            opt.dataset.id = p.proveedorID;
+                            $prov.append(opt).val(nombreProv).trigger('change');
+                        }
+                        document.getElementById('h_proveedorID').value = p.proveedorID;
+                    }
+
                     setTimeout(calcular, 150);
                 }
             } catch (e) { console.error("Error crítico en fetch de producto:", e); }
@@ -580,8 +757,8 @@ $titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8')
             document.getElementById('prod_poriva_val').value = (alicIva * 100).toFixed(2);
 
             const costoIva = costoNeto * alicIva;
-            document.getElementById('costo_iva').value = costoIva.toFixed(3);
-            document.getElementById('costo_final').value = (costoNeto + impInt + costoIva).toFixed(3);
+            document.getElementById('costo_iva').value = costoIva.toFixed(2);
+            document.getElementById('costo_final').value = (costoNeto + impInt + costoIva).toFixed(2);
 
             const rubroText = $("#cmbRubros option:selected").text().toUpperCase();
             let alicIIBB = 0.035; 
@@ -604,33 +781,34 @@ $titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8')
                     utilInput.value = util;
                     netoVenta = costoNeto * (1 + util / 100);
                     finalVenta = netoVenta * (1 + alicIva) + impInt;
-                    netoInput.value = netoVenta.toFixed(3);
-                    finalInput.value = finalVenta.toFixed(3);
+                    netoInput.value = netoVenta.toFixed(2);
+                    finalInput.value = finalVenta.toFixed(2);
 
                 } else if (mode === 'manual') {
                     util = parseFloat(utilInput.value) || 0;
                     netoVenta = costoNeto * (1 + util / 100);
                     finalVenta = netoVenta * (1 + alicIva) + impInt;
-                    netoInput.value = netoVenta.toFixed(3);
-                    finalInput.value = finalVenta.toFixed(3);
+                    netoInput.value = netoVenta.toFixed(2);
+                    finalInput.value = finalVenta.toFixed(2);
 
                 } else if (mode === 'neto') {
                     netoVenta = parseFloat(netoInput.value) || 0;
                     finalVenta = netoVenta * (1 + alicIva) + impInt;
                     util = costoNeto > 0 ? ((netoVenta - costoNeto) / costoNeto * 100) : 0;
-                    finalInput.value = finalVenta.toFixed(3);
+                    finalInput.value = finalVenta.toFixed(2);
                     utilInput.value = util.toFixed(2);
 
                 } else if (mode === 'final') {
                     finalVenta = parseFloat(finalInput.value) || 0;
                     netoVenta = (finalVenta - impInt) / (1 + alicIva);
                     util = costoNeto > 0 ? ((netoVenta - costoNeto) / costoNeto * 100) : 0;
-                    netoInput.value = netoVenta.toFixed(3);
+                    netoInput.value = netoVenta.toFixed(2);
                     utilInput.value = util.toFixed(2);
                 }
 
-                ivaLabel.value = (netoVenta * alicIva).toFixed(3);
-                iibbLabel.value = (netoVenta * alicIIBB).toFixed(3);
+                ivaLabel.value = (netoVenta * alicIva).toFixed(2);
+                document.getElementById(`impint_l${i}`).value = impInt.toFixed(2);
+                iibbLabel.value = (netoVenta * alicIIBB).toFixed(2);
                 porcCalculado.value = util.toFixed(2);
             }
         }
@@ -643,17 +821,17 @@ $titulo = $codigo ? "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8')
             const moneyFields = ['sinivacosto', 'ivacosto', 'preciocosto', 'impint'];
             for(let i=1; i<=8; i++) {
                 if(i===1) {
-                    if(data['siniva']) data['siniva'] = (parseFloat(data['siniva']) * tipoCambio).toFixed(3);
-                    if(data['iva1']) data['iva1'] = (parseFloat(data['iva1']) * tipoCambio).toFixed(3);
-                    if(data['precio']) data['precio'] = (parseFloat(data['precio']) * tipoCambio).toFixed(3);
+                    if(data['siniva']) data['siniva'] = (parseFloat(data['siniva']) * tipoCambio).toFixed(2);
+                    if(data['iva1']) data['iva1'] = (parseFloat(data['iva1']) * tipoCambio).toFixed(2);
+                    if(data['precio']) data['precio'] = (parseFloat(data['precio']) * tipoCambio).toFixed(2);
                 } else {
-                    if(data[`siniva${i}`]) data[`siniva${i}`] = (parseFloat(data[`siniva${i}`]) * tipoCambio).toFixed(3);
-                    if(data[`iva${i}`]) data[`iva${i}`] = (parseFloat(data[`iva${i}`]) * tipoCambio).toFixed(3);
-                    if(data[`precio${i}`]) data[`precio${i}`] = (parseFloat(data[`precio${i}`]) * tipoCambio).toFixed(3);
+                    if(data[`siniva${i}`]) data[`siniva${i}`] = (parseFloat(data[`siniva${i}`]) * tipoCambio).toFixed(2);
+                    if(data[`iva${i}`]) data[`iva${i}`] = (parseFloat(data[`iva${i}`]) * tipoCambio).toFixed(2);
+                    if(data[`precio${i}`]) data[`precio${i}`] = (parseFloat(data[`precio${i}`]) * tipoCambio).toFixed(2);
                 }
-                if(data[`IIBB${i}`]) data[`IIBB${i}`] = (parseFloat(data[`IIBB${i}`]) * tipoCambio).toFixed(3);
+                if(data[`IIBB${i}`]) data[`IIBB${i}`] = (parseFloat(data[`IIBB${i}`]) * tipoCambio).toFixed(2);
             }
-            moneyFields.forEach(f => { if(data[f]) data[f] = (parseFloat(data[f]) * tipoCambio).toFixed(3); });
+            moneyFields.forEach(f => { if(data[f]) data[f] = (parseFloat(data[f]) * tipoCambio).toFixed(2); });
 
             const selPrv = document.getElementById('cmbProveedores');
             data.proveedorID = selPrv.options[selPrv.selectedIndex]?.dataset.id || document.getElementById('h_proveedorID').value || 1;

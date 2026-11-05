@@ -75,7 +75,7 @@ require_once 'check_access.php';
                     <div class="input-group input-group-sm">
                         <div class="input-group-text bg-dark border-secondary"><input class="form-check-input mt-0" type="checkbox" id="chk-producto"></div>
                         <span class="input-group-text bg-dark border-secondary text-muted" style="width:90px;">PRODUCTO</span>
-                        <div class="flex-grow-1"><select id="cmb-producto" class="form-select select2-filter" disabled></select></div>
+                        <div class="flex-grow-1"><select id="cmb-producto" class="form-select" disabled></select></div>
                     </div>
                 </div>
 

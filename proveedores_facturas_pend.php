@@ -156,6 +156,11 @@ require_once 'check_access.php';
     var pagTotal  = 1;
     var pagTam    = 20;
     var listado   = [];
+    const ordenTabla = erpOrdenarTabla('#tabla-pendientes', () => listado, renderPagina, [
+        'Proveedor', {campo:'Vencimiento', tipo:'fecha'}, {campo:'Fecha Fac', tipo:'fecha'},
+        'Tipo', 'Num Factura', {campo:'Total', tipo:'numero'}, {campo:'Pagado', tipo:'numero'},
+        {campo:'Saldo', tipo:'numero'}, {campo:'Fiscal', tipo:'numero'}
+    ]);
     const commonHeaders = { 'X-Requested-With': 'XMLHttpRequest' };
 
     window.pagActual = 1;
@@ -217,6 +222,7 @@ require_once 'check_access.php';
 
             if (res.success) {
                 listado = res.data;
+                ordenTabla.aplicar();
                 $('#lbl-total-deuda').text('$ ' + parseFloat(res.total_general).toLocaleString('es-AR', {minimumFractionDigits: 2}));
             } else {
                 listado = [];

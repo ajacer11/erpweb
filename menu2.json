@@ -219,7 +219,8 @@
           "url": "",
           "children": [
             { "id": "bnc_adm", "text": "Administrar Cuentas Bancarias", "url": "bancos_admin.php" },
-            { "id": "bnc_entidades_adm", "text": "Administrar Entidades Bancarias", "url": "bancos_entidades.php" }
+            { "id": "bnc_entidades_adm", "text": "Administrar Entidades Bancarias", "url": "bancos_entidades.php" },
+            { "id": "bnc_conc", "text": "Conciliación Bancaria", "url": "bancos_conciliacion.php" }
           ]
         },
         {
@@ -246,6 +247,7 @@
           ] 
       },
         { "id": "fnd_mon", "text": "Monedas y Tipos de Cambio", "url": "monedas_admin.php" },
+        { "id": "fnd_tarjetas", "text": "Tarjetas y Cupones", "url": "tarjetas_liquidaciones.php" },
         {
           "id": "fnd_inf",
           "text": "Informes de Fondos",
@@ -419,6 +421,7 @@
             { "id": "cfg_emp", "text": "Datos de la Empresa", "url": "empresa_datos.php" },
             { "id": "cfg_uns", "text": "Administrar UNs", "url": "uns_admin.php" },
             { "id": "cfg_gral", "text": "Configuración General", "url": "config_general.php" },
+            { "id": "cfg_apis", "text": "Configurar APIs", "url": "config_apis_externas.php" },
             { "id": "cfg_solicitar_cert", "text": "Descargar Certificado para ARCA", "url": "certificado_descargar.php" },
             { "id": "cfg_subir_cert", "text": "Subir Certificado Generado en ARCA", "url": "certificado_subir.php" }
           ]
@@ -435,6 +438,16 @@
         { "id": "cnt_diario", "text": "Libro Diario", "url": "libro_diario.php" },
         { "id": "cnt_mayor", "text": "Ver Libro Mayor", "url": "reporte_contable_mayor.php" },
         { "id": "cnt_balance", "text": "Balance de Sumas y Saldos", "url": "reporte_contable_balance.php" },
+        {
+          "id": "cnt_impuestos",
+          "text": "Impuestos",
+          "url": "",
+          "children": [
+            { "id": "imp_libro_iva", "text": "Libro IVA", "url": "libro_iva.php" },
+            { "id": "imp_retper_reg", "text": "Regímenes de Retención y Percepción", "url": "retper_regimenes.php" },
+            { "id": "imp_retper_pract", "text": "Retenciones y Percepciones Practicadas", "url": "retper_practicadas.php" }
+          ]
+        },
         { "id": "cnt_manual", "text": "Asiento Manual", "url": "asiento_manual.php" },
         { "id": "cnt_auto", "text": "Configurar Asientos Automáticos", "url": "asientos_auto_cfg.php" },
         { "id": "cnt_ejer", "text": "Abrir Ejercicio", "url": "ejercicios_admin.php" },

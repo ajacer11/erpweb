@@ -132,6 +132,13 @@ require_once 'check_access.php';
                             <button class="btn btn-warning d-none" id="btn-chq-1" title="Cargar Cheques"><i
                                     class="fas fa-money-check"></i></button>
                         </div>
+                        <div class="d-none mt-1" id="tj-box-1">
+                            <div class="row g-1">
+                                <div class="col-6"><select id="tj-id-1" class="form-select form-select-sm" title="Tarjeta"></select></div>
+                                <div class="col-2"><input type="number" id="tj-cuotas-1" class="form-control form-control-sm text-center" min="1" max="99" value="1" title="Cuotas"></div>
+                                <div class="col-4"><input type="text" id="tj-cupon-1" class="form-control form-control-sm" maxlength="30" placeholder="Cupón" title="Número de cupón (opcional)"></div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="mb-3 border-top border-secondary pt-3">
@@ -144,6 +151,13 @@ require_once 'check_access.php';
                             <input type="number" id="imp-2" class="form-control text-end input-calc" step="0.01">
                             <button class="btn btn-warning d-none" id="btn-chq-2" title="Cargar Cheques"><i
                                     class="fas fa-money-check"></i></button>
+                        </div>
+                        <div class="d-none mt-1" id="tj-box-2">
+                            <div class="row g-1">
+                                <div class="col-6"><select id="tj-id-2" class="form-select form-select-sm" title="Tarjeta"></select></div>
+                                <div class="col-2"><input type="number" id="tj-cuotas-2" class="form-control form-control-sm text-center" min="1" max="99" value="1" title="Cuotas"></div>
+                                <div class="col-4"><input type="text" id="tj-cupon-2" class="form-control form-control-sm" maxlength="30" placeholder="Cupón" title="Número de cupón (opcional)"></div>
+                            </div>
                         </div>
                     </div>
 
@@ -248,6 +262,7 @@ require_once 'check_access.php';
         let facturasPendientes = [];
         let chequesCargados = [];
         let mpData = [];
+        let tarjetasData = [];
         let targetMp = 1;
         const commonHeaders = { 'X-Requested-With': 'XMLHttpRequest' };
 
@@ -264,6 +279,9 @@ require_once 'check_access.php';
             const resM = await fetch('api_cobros.php?action=get_medios', { headers: commonHeaders }).then(r => r.json());
             if (resM.success) {
                 mpData = resM.data;
+                tarjetasData = resM.tarjetas || [];
+                $('#tj-id-1, #tj-id-2').empty().append(new Option('TARJETA...', ''));
+                tarjetasData.forEach(t => { $('#tj-id-1').append(new Option(t.descripcion, t.id)); $('#tj-id-2').append(new Option(t.descripcion, t.id)); });
                 $('#mp-1, #mp-2').empty().append(new Option('SELECCIONE...', ''));
                 resM.data.forEach(m => {
                     $('#mp-1').append(new Option(m.medio, m.id));
@@ -279,6 +297,12 @@ require_once 'check_access.php';
         }
 
         function configurarSelect2() {
+            $('#mp-1, #mp-2').select2({
+                dropdownParent: $('#main-content'),
+                width: '100%',
+                placeholder: 'BUSCAR MEDIO DE COBRO...',
+                minimumResultsForSearch: 0
+            });
             $('#cmb-cliente').select2({
                 placeholder: 'BUSCAR CLIENTE POR NOMBRE O ID...',
                 minimumInputLength: 2,
@@ -306,6 +330,10 @@ require_once 'check_access.php';
                 const num = $(this).attr('id').split('-')[1];
                 const medio = mpData.find(m => m.id == $(this).val());
                 const isCheque = (medio && medio.tipodecuenta === 'Cartera de Cheques');
+                // Datos del cupón si el medio es una tarjeta (solo si hay tarjetas cargadas).
+                const isTarjeta = !!(medio && medio.tipodecuenta === 'Tarjetas' && tarjetasData.length);
+                $(`#tj-box-${num}`).toggleClass('d-none', !isTarjeta);
+                if (!isTarjeta) { $(`#tj-id-${num}`).val(''); $(`#tj-cuotas-${num}`).val(1); $(`#tj-cupon-${num}`).val(''); }
 
                 $(`#btn-chq-${num}`).toggleClass('d-none', !isCheque);
                 $(`#imp-${num}`).prop('readonly', isCheque).val(isCheque ? 0 : $(`#imp-${num}`).val());
@@ -525,14 +553,23 @@ require_once 'check_access.php';
             $('#btn-confirmar').prop('disabled', true);
         }
 
+        function datosTarjeta(n) {
+            if ($(`#tj-box-${n}`).hasClass('d-none')) return null;
+            return { id: parseInt($(`#tj-id-${n}`).val()) || 0, cuotas: parseInt($(`#tj-cuotas-${n}`).val()) || 1, cupon: $(`#tj-cupon-${n}`).val().trim() };
+        }
+
         async function grabarCobro() {
+            for (const n of [1, 2]) {
+                const t = datosTarjeta(n);
+                if (t && !t.id) return Swal.fire('Atención', `Elija la tarjeta del medio de cobro ${n === 1 ? 'principal' : 'secundario'}.`, 'warning');
+            }
             const data = {
                 cliente_id: $('#cmb-cliente').val(),
                 nombre_cliente: $('#cmb-cliente').select2('data')[0].razon,
                 fecha: $('#txt-fecha').val(),
                 es_fiscal: $('.chk-factura:checked').length > 0 ? facturasPendientes[$('.chk-factura:checked').first().data('idx')].es_fiscal : ($('#chk-es-fiscal').is(':checked') ? 1 : 0),
-                medio1: { id: $('#mp-1').val(), importe: parseFloat($('#imp-1').val()) || 0 },
-                medio2: { id: $('#mp-2').val(), importe: parseFloat($('#imp-2').val()) || 0 },
+                medio1: { id: $('#mp-1').val(), importe: parseFloat($('#imp-1').val()) || 0, tarjeta: datosTarjeta(1) },
+                medio2: { id: $('#mp-2').val(), importe: parseFloat($('#imp-2').val()) || 0, tarjeta: datosTarjeta(2) },
                 retenciones: {
                     ganancias: parseFloat($('#ret-gan').val()) || 0,
                     iibb: parseFloat($('#ret-iibb').val()) || 0,

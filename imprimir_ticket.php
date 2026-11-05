@@ -7,6 +7,8 @@
  */
 session_start();
 require_once 'db.php';
+require_once 'stock_deposito_helpers.php';
+require_once 'retper_helpers.php';
 require_once __DIR__ . '/vendor/autoload.php';
 
 use Endroid\QrCode\Builder\Builder;
@@ -67,6 +69,28 @@ try {
     if (!$cab)
         die("El comprobante no existe.");
 
+    // En una reimpresión se usa la sucursal que realmente emitió la venta. El CUIT
+    // queda intacto en $emp porque pertenece al tenant y no al depósito.
+    if (multidepositoHabilitado($pdo) && !empty($cab['id_deposito'])) {
+        $stmtDep = $pdo->prepare("SELECT domicilio, localidad, provincia, telefono, email, codigopostal, logo FROM depositos WHERE id = ?");
+        $stmtDep->execute([(int) $cab['id_deposito']]);
+        $depEmisor = $stmtDep->fetch(PDO::FETCH_ASSOC);
+        if ($depEmisor) {
+            foreach (['domicilio', 'localidad', 'provincia', 'telefono', 'email'] as $campo) {
+                if (trim((string) ($depEmisor[$campo] ?? '')) !== '') {
+                    $emp[$campo] = (string) $depEmisor[$campo];
+                }
+            }
+            if (trim((string) ($depEmisor['codigopostal'] ?? '')) !== '') {
+                $emp['cp'] = (string) $depEmisor['codigopostal'];
+            }
+            if (!empty($depEmisor['logo'])) {
+                $logoBase64 = base64_encode($depEmisor['logo']);
+                $logoMime = (new finfo(FILEINFO_MIME_TYPE))->buffer($depEmisor['logo']) ?: 'image/png';
+            }
+        }
+    }
+
     $tipoID = intval($cab['tipocomp_alias']);
     $letra = 'X'; // default seguro
     $isTipoA = false;
@@ -109,7 +133,7 @@ try {
             "tipoDocRec" => $tipoDocRec,
             "nroDocRec" => (int) $docRecLimpio,
             "tipoCodAut" => "E",
-            "codAut" => $cab['cae']
+            "codAut" => (int) $cab['cae']
         ];
 
         $qrBase64 = base64_encode(json_encode($qrPayload));
@@ -643,6 +667,7 @@ try {
                         $iva10 = floatval($cab['iva10'] ?? 0);
                         $iiH = floatval($cab['ii'] ?? 0);
                         $totalH = floatval($cab['total'] ?? 0);
+                        $percepcionesH = percepcionesDeTicket($pdo, (int) ($cab['id'] ?? $id));
                         ?>
 
                         <?php if ($isTipoA): ?>
@@ -662,6 +687,11 @@ try {
                                 comprobante:<br>IVA: $<?php echo number_format($iva21 + $iva10, 2, ',', '.'); ?> // Imp Int:
                                 $<?php echo number_format($iiH, 2, ',', '.'); ?></p>
                         <?php endif; ?>
+
+                        <?php foreach ($percepcionesH as $perc): ?>
+                            <div class="total-row"><span><?php echo htmlspecialchars($perc['nombre']); ?> (<?php echo rtrim(rtrim(number_format((float) $perc['alicuota'], 2, ',', '.'), '0'), ','); ?>%):</span><span
+                                    class="fw-bold"><?php echo number_format((float) $perc['importe'], 2, ',', '.'); ?></span></div>
+                        <?php endforeach; ?>
 
                         <div class="total-row grand-total"><span>TOTAL:</span><span>$
                                 <?php echo number_format($totalH, 2, ',', '.'); ?></span></div>

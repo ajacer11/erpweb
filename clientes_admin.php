@@ -144,6 +144,8 @@ require_once 'check_access.php';
     var pagTotal      = 1;
     var pagTam        = 20;
     var todosLosDatos = [];
+    const ordenTabla = erpOrdenarTabla('#listaClientesBody', () => todosLosDatos, renderPagina,
+        [{campo:'id', tipo:'numero'}, 'razon', 'numdoc', 'condicionfiscal', 'localidad', 'telefono', null]);
     var timerBusqueda;
 
     window.pagActual = 1;
@@ -172,6 +174,7 @@ require_once 'check_access.php';
         }
 
         pagActual        = 1;
+        ordenTabla.aplicar();
         window.pagActual = 1;
         renderPagina();
     };

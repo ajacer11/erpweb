@@ -42,8 +42,14 @@ try {
                 $sql .= " AND Stock < stockmaximo";
             }
 
+            // Filtros opcionales para no traer todo lo que tiene cargado el proveedor
+            $params = [$idProv];
+            foreach (['rubro', 'marca', 'familia'] as $campo) {
+                if (($data[$campo] ?? '') !== '') { $sql .= " AND $campo = ?"; $params[] = $data[$campo]; }
+            }
+
             $stmt = $pdo->prepare($sql);
-            $stmt->execute([$idProv]);
+            $stmt->execute($params);
             $productos = $stmt->fetchAll();
 
             $detalle = [];
@@ -130,6 +136,29 @@ try {
 
             $pdo->commit();
             echo json_encode(['success' => true, 'id' => $idCab]);
+            break;
+
+        case 'pendientes_proveedor':
+            // Usado por stock_ingreso.php: "Cargar desde OC" — lista las órdenes de
+            // compra PENDIENTES de un proveedor con datos agregados (cantidad de
+            // líneas/artículos y monto estimado) para elegir cuál usar.
+            $idProv = (int) ($_GET['proveedor'] ?? 0);
+            if (!$idProv) throw new Exception("Proveedor no especificado.");
+
+            $sqlPend = "SELECT c.id,
+                               DATE_FORMAT(c.fecha, '%d/%m/%Y') AS fecha,
+                               c.usuario_creacion AS usuario,
+                               c.total,
+                               COUNT(d.id) AS cant_lineas,
+                               COALESCE(SUM(d.cantidad), 0) AS cant_articulos
+                        FROM pedidos_proveedores_cab c
+                        LEFT JOIN pedidos_proveedores_det d ON d.id_pedido = c.id
+                        WHERE c.id_proveedor = ? AND c.estado = 'PENDIENTE'
+                        GROUP BY c.id, c.fecha, c.usuario_creacion, c.total
+                        ORDER BY c.id DESC";
+            $stmtPend = $pdo->prepare($sqlPend);
+            $stmtPend->execute([$idProv]);
+            echo json_encode(['success' => true, 'data' => $stmtPend->fetchAll()]);
             break;
 
         case 'get_order':

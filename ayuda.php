@@ -169,7 +169,7 @@ function renderTocNivel($items, $vistasDisponibles, $nivel = 0)
         if (typeof cargarAyudaData === 'function') {
             ayudaData = await cargarAyudaData();
         } else {
-            const resp = await fetch('ayuda_sistema.json', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            const resp = await fetch('ayuda_sistema.json?v=<?= (int)(@filemtime($ayudaPath) ?: 0) ?>', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
             ayudaData = await resp.json();
         }
         return ayudaData;
@@ -183,6 +183,16 @@ function renderTocNivel($items, $vistasDisponibles, $nivel = 0)
         if (CONTENIDO_ESTATICO[clave]) return CONTENIDO_ESTATICO[clave].titulo;
         const rel = ayudaData?.vistas?.[clave] || ayudaData?.general?.[clave];
         return rel?.titulo || clave;
+    }
+
+    // Capturas de pantalla de un paso (campo opcional "capturas" de la ficha:
+    // { "<índice del paso>": [ { "src": "...", "alt": "..." } ] }). Clic: se abre en grande.
+    function capturasDePaso(entry, i) {
+        const lista = entry.capturas && entry.capturas[String(i)];
+        if (!Array.isArray(lista) || !lista.length) return '';
+        return '<div class="d-flex flex-wrap gap-2 mt-2 mb-3">' + lista.map(c =>
+            `<a href="${c.src}" target="_blank" rel="noopener" title="Ver en tamaño completo"><img src="${c.src}" alt="${c.alt || ''}" loading="lazy" style="max-width:100%;width:520px;border:1px solid rgba(255,255,255,.2);border-radius:6px;background:#fff"></a>`
+        ).join('') + '</div>';
     }
 
     function renderContenido(entry) {
@@ -200,7 +210,7 @@ function renderTocNivel($items, $vistasDisponibles, $nivel = 0)
 
         if (Array.isArray(entry.como_se_usa) && entry.como_se_usa.length) {
             html += '<h6>¿Cómo se usa?</h6><ol>';
-            entry.como_se_usa.forEach(p => html += `<li>${p}</li>`);
+            entry.como_se_usa.forEach((p, i) => html += `<li>${p}${capturasDePaso(entry, i)}</li>`);
             html += '</ol>';
         }
         if (Array.isArray(entry.tips) && entry.tips.length) {

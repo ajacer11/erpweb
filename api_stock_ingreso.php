@@ -53,6 +53,13 @@ try {
         $stmtIng->execute([$data['fiscal'], $data['tipo_comp'], $data['numero'], $data['id_proveedor'], $data['nombre_proveedor'], $it['codigo'], $it['descripcion'], $stkAnt, $it['cantidad'], $stkFinal, $it['nota'], $fecha_hoy, $usuario, $it['neto'], $it['iva'], $it['imp_int'], $it['total_un'], $it['cantidad']]);
     }
 
+    // Si el ingreso se cargó desde una Orden de Compra pendiente, se la marca
+    // como finalizada (queda registrado que ya se recibió la mercadería).
+    if (!empty($data['id_oc'])) {
+        $pdo->prepare("UPDATE pedidos_proveedores_cab SET estado = 'FINALIZADO' WHERE id = ? AND estado = 'PENDIENTE'")
+            ->execute([(int) $data['id_oc']]);
+    }
+
     $pdo->commit();
     echo json_encode(['success' => true]);
 

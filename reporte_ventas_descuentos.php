@@ -116,6 +116,10 @@ require_once 'check_access.php';
 (function() {
     let debounceTimer = null;
     let currentData = [];
+    const ordenTabla = erpOrdenarTabla('#tablaDescuentos', () => currentData, renderPagina,
+        () => currentData.length ? Object.keys(currentData[0]).map(k =>
+            ['Neto', 'IVA', 'Total_Comp', 'Total_Descuento', 'Cantidad', 'Porc_Descuento'].includes(k)
+                ? {campo:k, tipo:'numero'} : {campo:k, tipo:/fecha/i.test(k) ? 'fecha' : 'texto'}) : []);
     let pagActual = 1, pagTotal = 1, pagTam = 20;
 
     window.pagActual = 1; window.pagTotal = 1;
@@ -174,6 +178,7 @@ require_once 'check_access.php';
             if (res.status !== 'ok') throw new Error(res.error || 'Error desconocido');
 
             currentData = res.data || [];
+            ordenTabla.aplicar();
             
             pagActual = 1; window.pagActual = 1;
             renderPagina();
@@ -229,6 +234,7 @@ require_once 'check_access.php';
             }
             thead.appendChild(th);
         });
+        ordenTabla.pintar();
 
         // 2. Generar Filas de la página actual
         if (!data || data.length === 0) return;

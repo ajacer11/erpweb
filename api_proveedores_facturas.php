@@ -86,6 +86,13 @@ try {
             $totalFactura = floatval($data['total']);
             $tipocomp = (int) $data['tipocomp'];
             $esFiscal = $data['fiscal'] ? 1 : 0;
+            $stmtConceptoActivo = $pdo->prepare('SELECT 1 FROM conceptosgastos WHERE id = ? AND habilitada = 1');
+            foreach ($data['conceptos'] ?? [] as $concepto) {
+                $stmtConceptoActivo->execute([(int)($concepto['idconcepto'] ?? 0)]);
+                if (!$stmtConceptoActivo->fetchColumn()) {
+                    throw new Exception('Un concepto seleccionado fue deshabilitado. Actualice la lista antes de grabar.');
+                }
+            }
 
             // Determinar multiplicador (NC restan en CC y contabilidad)
             $esNC = in_array($tipocomp, [3, 8, 13, 101]);

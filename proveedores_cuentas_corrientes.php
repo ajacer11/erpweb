@@ -147,7 +147,7 @@ require_once 'check_access.php';
                     <th class="ps-3">FECHA</th>
                     <th>PROVEEDOR</th>
                     <th>COMPROBANTE</th>
-                    <th class="text-end">DEBE (FACT.)</th>
+                    <th class="text-end">DEBE / CARGOS</th>
                     <th class="text-end">HABER (PAGOS)</th>
                     <th class="text-end">SALDO</th>
                 </tr>
@@ -320,7 +320,7 @@ require_once 'check_access.php';
         }
 
         if (isSoloSaldosView) {
-            header.append('<th class="ps-3">ID</th><th>PROVEEDOR</th><th class="text-center">ÚLT. MOV</th><th class="text-end">FACTURACIÓN (+)</th><th class="text-end">PAGOS (-)</th><th class="text-end">SALDO DEUDA</th>');
+            header.append('<th class="ps-3">ID</th><th>PROVEEDOR</th><th class="text-center">ÚLT. MOV</th><th class="text-end">DEBE / CARGOS (+)</th><th class="text-end">PAGOS (-)</th><th class="text-end">SALDO DEUDA</th>');
             data.forEach(row => {
                 body.append(`
                     <tr>
@@ -334,7 +334,7 @@ require_once 'check_access.php';
                 `);
             });
         } else {
-            header.append('<th class="ps-3 text-center">FECHA</th><th>PROVEEDOR</th><th>COMPROBANTE</th><th class="text-end">DEBE (FACT.)</th><th class="text-end">HABER (PAGOS)</th><th class="text-end">SALDO ACUM.</th>');
+            header.append('<th class="ps-3 text-center">FECHA</th><th>PROVEEDOR</th><th>COMPROBANTE</th><th class="text-end">DEBE / CARGOS</th><th class="text-end">HABER (PAGOS)</th><th class="text-end">SALDO ACUM.</th>');
             data.forEach(row => {
                 const esSaldoAnterior = row.Num_Comprobante === 'ANTERIOR';
                 body.append(`

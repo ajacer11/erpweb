@@ -168,12 +168,12 @@ require_once 'check_access.php';
 
                     if (res.success) {
                         Swal.fire({
-                            icon: 'success',
-                            title: 'Transferencia Exitosa',
-                            text: res.message,
-                            timer: 2000,
-                            showConfirmButton: false
-                        }).then(() => {
+                            icon: 'success', title: 'Movimiento registrado',
+                            text: res.message + (res.comprobante_id ? ' ¿Desea imprimir el comprobante?' : ''),
+                            showCancelButton: !!res.comprobante_id,
+                            confirmButtonText: res.comprobante_id ? 'IMPRIMIR' : 'ACEPTAR', cancelButtonText: 'NO IMPRIMIR'
+                        }).then((respuesta) => {
+                            if (respuesta.isConfirmed && res.comprobante_id) window.open('imprimir_movimiento_caja.php?id=' + encodeURIComponent(res.comprobante_id), '_blank');
                             loadModule('cajas_transferir_a_otra_caja.php', false, true);
                         });
                     } else {

@@ -42,6 +42,35 @@ try {
             exit;
         }
 
+        // Consulta al padrón de AFIP/ARCA por CUIT, para autocompletar el alta de un cliente.
+        // Proxea al servicio ARCA (mismo criterio que api_facturar.php con new_fe_cae_api.php):
+        // nunca se llama al padrón directo desde el navegador.
+        if (isset($_GET['action']) && $_GET['action'] === 'consultar_padron') {
+            $cuit = preg_replace('/[^0-9]/', '', $_GET['cuit'] ?? '');
+            if (strlen($cuit) !== 11) {
+                throw new Exception('El CUIT debe tener 11 dígitos.');
+            }
+            $ch = curl_init("https://erp.westit.com.ar/ARCA/padron/consultar_padron.php?cuit={$cuit}");
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 20,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_USERAGENT => 'SistemaERP/Padron'
+            ]);
+            $resp = curl_exec($ch);
+            $curlError = curl_error($ch);
+            curl_close($ch);
+            if ($resp === false) {
+                throw new Exception('No se pudo comunicar con el padrón de AFIP: ' . $curlError);
+            }
+            $data = json_decode($resp, true);
+            if (!is_array($data) || isset($data['error'])) {
+                throw new Exception($data['error'] ?? 'No se encontraron datos para ese CUIT.');
+            }
+            echo json_encode(['success' => true, 'data' => $data]);
+            exit;
+        }
+
         // Obtener un cliente específico por ID
         if (isset($_GET['id'])) {
             $stmt = $pdo->prepare("SELECT * FROM alb_clientes WHERE id = ?");

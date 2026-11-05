@@ -286,6 +286,7 @@ $pedidoIdFacturar = isset($_GET['pedidoid']) ? intval($_GET['pedidoid']) : 0;
                 </div>
             </div>
             <div class="total-display-big">
+                <div class="tax-lbl">UNIDADES: <strong id="tx_total_unidades">0</strong></div>
                 <div class="tax-lbl" style="color:var(--accent); font-weight: 900;">TOTAL COMPROBANTE</div>
                 <div class="lbl-total-pos" id="tx_total_f">0,00</div>
             </div>
@@ -450,6 +451,14 @@ $pedidoIdFacturar = isset($_GET['pedidoid']) ? intval($_GET['pedidoid']) : 0;
                         <div class="input-group input-group-sm">
                             <select id="pay_m2" class="form-select in-pos" style="flex:2"></select>
                             <input type="number" id="pay_i2" class="form-control in-pos text-end fw-bold text-warning" style="flex:1" value="0.00">
+                        </div>
+                    </div>
+                    <div class="col-12 d-none" id="pay_efectivo_helper">
+                        <div class="p-3 rounded border border-success bg-success bg-opacity-10">
+                            <label class="form-label-custom">IMPORTE QUE ENTREGA EL CLIENTE</label>
+                            <input type="text" inputmode="decimal" id="pay_entrega_efectivo" class="form-control in-pos text-end fw-bold" placeholder="0,00">
+                            <div class="d-flex justify-content-between mt-2"><span class="fw-bold">VUELTO</span><strong class="text-success fs-5" id="pay_vuelto">$ 0,00</strong></div>
+                            <div class="d-flex justify-content-between"><span class="fw-bold">FALTA</span><strong class="text-danger fs-5" id="pay_falta">$ 0,00</strong></div>
                         </div>
                     </div>
                     <div class="col-12 mt-3"><label class="form-label-custom">VENDEDOR</label>

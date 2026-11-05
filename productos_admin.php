@@ -154,6 +154,13 @@ require_once 'check_access.php';
     var pagTotal  = 1;
     var pagTam    = 20;
     var todosLosDatos = []; // dataset completo recibido del servidor
+    const ordenTabla = erpOrdenarTabla('#headerProds', () => todosLosDatos, renderPagina, () => {
+        const redu = document.getElementById('chkVistaReducida').checked;
+        return redu
+            ? ['codigo', 'descripcion', 'rubro', {campo:'precio', tipo:'numero'}, {campo:p => p.stock || p.Stock || 0, tipo:'numero'}, null]
+            : ['codigo', 'descripcion', 'rubro', 'nombre_marca', {campo:'preciocosto', tipo:'numero'},
+                {campo:'precio', tipo:'numero'}, {campo:p => p.stock || p.Stock || 0, tipo:'numero'}, null];
+    });
     var timerBusqueda;
 
     // Exponer pagActual/pagTotal al scope global para los onclick inline
@@ -184,6 +191,16 @@ require_once 'check_access.php';
         if (familias.success)   fill('fFamilia',   familias.data,   'id',    'nombre');
         if (proveedores.success) fill('fProveedor', proveedores.data, 'razon', 'razon');
 
+        const estado = window.productosAdminEstado;
+        if (estado) {
+            $('#busqProd').val(estado.q);
+            $('#fRubro').val(estado.rubro).trigger('change.select2');
+            $('#fMarca').val(estado.marca).trigger('change.select2');
+            $('#fFamilia').val(estado.familia).trigger('change.select2');
+            $('#fProveedor').val(estado.proveedor).trigger('change.select2');
+            $('input[name="filtroHab"]').filter(function() { return this.value === estado.habilitado; }).prop('checked', true);
+            $('#chkStockBajo').prop('checked', estado.stock_bajo === 'true');
+        }
         listarProductos();
     }
 
@@ -207,7 +224,9 @@ require_once 'check_access.php';
         const hab = document.querySelector('input[name="filtroHab"]:checked').value;
         const stk = document.getElementById('chkStockBajo').checked;
 
-        const url = `api_productos.php?q=${encodeURIComponent(q)}&rubro=${rub}&marca=${mar}&familia=${fam}&proveedor=${prv}&habilitado=${hab}&stock_bajo=${stk}`;
+        const filtros = {q, rubro: rub, marca: mar, familia: fam, proveedor: prv, habilitado: hab, stock_bajo: String(stk)};
+        window.productosAdminEstado = filtros;
+        const url = 'api_productos.php?' + new URLSearchParams(filtros);
 
         // Mostrar spinner mientras carga
         document.getElementById('listaProductosBody').innerHTML =
@@ -229,6 +248,7 @@ require_once 'check_access.php';
         }
 
         pagActual = 1;
+        ordenTabla.aplicar();
         window.pagActual = 1;
         renderPagina();
     };
@@ -258,6 +278,7 @@ require_once 'check_access.php';
         } else {
             thead.innerHTML = '<th>CÓDIGO</th><th>PRODUCTO</th><th>RUBRO</th><th>MARCA</th><th class="text-end">COSTO</th><th class="text-end">L1 FINAL</th><th class="text-center">STOCK</th><th class="text-center">ACC.</th>';
         }
+        ordenTabla.pintar();
 
         tbody.innerHTML = '';
         if (datos.length === 0) {
@@ -288,8 +309,11 @@ require_once 'check_access.php';
                     <td class="text-end fw-bold text-accent">$&nbsp;${preciofmt}</td>
                     <td class="text-center fw-bold ${stockCls}">${stockReal}</td>
                     <td class="text-center">
-                        <button class="btn btn-link text-info p-0" onclick="loadModule('productos_add.php?codigo=${p.codigo}')" title="Editar">
+                        <button class="btn btn-link text-info p-0 me-2" onclick="loadModule('productos_add.php?codigo=${p.codigo}')" title="Editar">
                             <i class="fas fa-edit"></i>
+                        </button>
+                        <button class="btn btn-link text-warning p-0" onclick="loadModule('productos_add.php?clonar=${encodeURIComponent(p.codigo)}')" title="Clonar (X2)">
+                            <i class="fas fa-clone"></i>
                         </button>
                     </td>`;
 
@@ -362,6 +386,9 @@ require_once 'check_access.php';
                 <div class="erp-card-actions">
                     <button class="btn btn-info btn-sm fw-bold" onclick="loadModule('productos_add.php?codigo=${p.codigo}')">
                         <i class="fas fa-edit me-1"></i> EDITAR
+                    </button>
+                    <button class="btn btn-warning btn-sm fw-bold" onclick="loadModule('productos_add.php?clonar=${encodeURIComponent(p.codigo)}')">
+                        <i class="fas fa-clone me-1"></i> CLONAR
                     </button>
                 </div>
             </div>`;
@@ -460,7 +487,8 @@ require_once 'check_access.php';
     window.exportarExcel = function() {
         const q   = document.getElementById('busqProd').value;
         const hab = document.querySelector('input[name="filtroHab"]:checked').value;
-        window.open(`exportar_productos_excel.php?q=${encodeURIComponent(q)}&habilitado=${hab}`, '_blank');
+        const filtros = {q, habilitado: hab, rubro: $('#fRubro').val(), marca: $('#fMarca').val(), familia: $('#fFamilia').val(), proveedor: $('#fProveedor').val(), stock_bajo: String($('#chkStockBajo').prop('checked'))};
+        window.open('exportar_productos_excel.php?' + new URLSearchParams(filtros), '_blank');
     };
 
     window.prepararListaPrecios = async function() {

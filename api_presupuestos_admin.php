@@ -4,12 +4,88 @@
  * Actualizado con nuevos estados (1:Pendiente, 2:Anulado, 3:Aprobado, 4:Facturado, 5:Rechazado)
  */
 require_once 'check_api_access.php';
+require_once 'precios_listas.php';
 require_once 'permisos_helpers.php';
+
+/**
+ * Devuelve, para un set de códigos de producto, sus 8 precios de lista
+ * (siniva..siniva8) en un solo query. [codigo => ['siniva'=>.., 'siniva2'=>.., ...]]
+ */
+function obtenerPreciosActualesProductos(PDO $pdo, array $codigos): array
+{
+    $codigos = array_values(array_unique($codigos));
+    if (empty($codigos))
+        return [];
+    $ph = implode(',', array_fill(0, count($codigos), '?'));
+    $stmt = $pdo->prepare("SELECT codigo, " . sqlNetosListas() . "
+                            FROM alb_productos WHERE codigo IN ($ph)");
+    $stmt->execute($codigos);
+    $out = [];
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row)
+        $out[$row['codigo']] = $row;
+    return $out;
+}
+
+/** Elige la columna siniva/siniva2..8 correspondiente a $lista (1-8) del mapa de un producto. */
+function precioActualParaLista(array $preciosProducto, int $lista): float
+{
+    $lista = max(1, min(8, $lista));
+    $col = $lista === 1 ? 'siniva' : 'siniva' . $lista;
+    return isset($preciosProducto[$col]) ? (float) $preciosProducto[$col] : 0.0;
+}
+
+/**
+ * Compara, línea por línea, el precio guardado (preciounit) contra el precio
+ * actual de alb_productos para la lista propia de esa línea.
+ * $lineas: filas de lineapresupuestosclientes (necesita producto, lista, preciounit).
+ */
+function calcularDiferenciaPrecios(PDO $pdo, array $lineas): array
+{
+    $mapa = obtenerPreciosActualesProductos($pdo, array_column($lineas, 'producto'));
+    $hayDiferencia = false;
+    $detalle = [];
+    foreach ($lineas as $l) {
+        if ($l['producto'] === 'LM')
+            continue; // línea manual: no tiene precio de catálogo con el cual comparar
+        $actual = precioActualParaLista($mapa[$l['producto']] ?? [], (int) $l['lista']);
+        $guardado = (float) $l['preciounit'];
+        $difiere = abs($actual - $guardado) > 0.005; // tolerancia de centavos
+        if ($difiere)
+            $hayDiferencia = true;
+        $detalle[] = ['producto' => $l['producto'], 'lista' => (int) $l['lista'],
+            'precio_guardado' => $guardado, 'precio_actual' => $actual, 'difiere' => $difiere];
+    }
+    return ['hay_diferencia' => $hayDiferencia, 'detalle' => $detalle];
+}
 
 $action = $_GET['action'] ?? '';
 
 try {
     switch ($action) {
+        case 'check_price_diff':
+            $numpresupuesto = $_GET['numpedido'] ?? 0;
+            $stmtCab = $pdo->prepare("SELECT fechaentrega, estadofac FROM presupuestosclientes WHERE numpedido = ?");
+            $stmtCab->execute([$numpresupuesto]);
+            $cab = $stmtCab->fetch(PDO::FETCH_ASSOC);
+            if (!$cab)
+                throw new Exception("Presupuesto no encontrado.");
+
+            $stmtLin = $pdo->prepare("SELECT producto, lista, preciounit FROM lineapresupuestosclientes WHERE numpedido = ?");
+            $stmtLin->execute([$numpresupuesto]);
+            $lineas = $stmtLin->fetchAll(PDO::FETCH_ASSOC);
+
+            $vencido = strtotime($cab['fechaentrega']) < strtotime('today');
+            $r = calcularDiferenciaPrecios($pdo, $lineas);
+
+            echo json_encode([
+                'success' => true,
+                'vencido' => $vencido,
+                'hay_diferencia' => $r['hay_diferencia'],
+                'requiere_confirmacion' => $vencido && $r['hay_diferencia'],
+                'detalle' => $r['detalle']
+            ]);
+            break;
+
         case 'list':
         case 'export':
             $input = ($action === 'list') ? json_decode(file_get_contents('php://input'), true) : $_GET;
@@ -83,6 +159,7 @@ try {
         case 'approve':
             $input = json_decode(file_get_contents('php://input'), true);
             $numpresupuesto = $input['numpedido'];
+            $usarPreciosActuales = !empty($input['usar_precios_actuales']);
 
             $pdo->beginTransaction();
 
@@ -122,11 +199,22 @@ try {
                 ]);
 
                 // 6. Traspasar e insertar cada una de las líneas en la tabla de líneas de pedido
-                $sqlInsertLineas = "INSERT INTO lineapedidosclientes (numpedido, producto, cantidad, descripcion, lista, descuento, preciounit, impint) 
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+                $mapaPreciosActuales = $usarPreciosActuales
+                    ? obtenerPreciosActualesProductos($pdo, array_column($lineasPresupuesto, 'producto'))
+                    : [];
+
+                $sqlInsertLineas = "INSERT INTO lineapedidosclientes (numpedido, producto, cantidad, descripcion, lista, descuento, preciounit, impint, poriva)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmtInsertL = $pdo->prepare($sqlInsertLineas);
 
                 foreach ($lineasPresupuesto as $linea) {
+                    // Línea manual (LM): nunca se le aplica el toggle de precio actual/guardado
+                    // (no tiene producto real de catálogo para recalcular), y su IVA propio se traspasa tal cual.
+                    $esLineaManual = $linea['producto'] === 'LM';
+                    $preciounit = ($usarPreciosActuales && !$esLineaManual)
+                        ? precioActualParaLista($mapaPreciosActuales[$linea['producto']] ?? [], (int) $linea['lista'])
+                        : $linea['preciounit'];
+
                     $stmtInsertL->execute([
                         $nuevoNumPedido,
                         $linea['producto'],
@@ -134,15 +222,19 @@ try {
                         $linea['descripcion'],
                         $linea['lista'],
                         $linea['descuento'],
-                        $linea['preciounit'],
-                        $linea['impint']
+                        $preciounit,
+                        $linea['impint'],
+                        $esLineaManual ? ($linea['poriva'] ?? null) : null
                     ]);
                 }
 
                 // 7. Registrar en el historial/seguimiento de presupuestos
                 $usuario = $_SESSION['usuario_nombre'] ?? 'SISTEMA';
+                $detalleSeg = "PRESUPUESTO APROBADO Y CONVERTIDO EN PEDIDO #$nuevoNumPedido";
+                if ($usarPreciosActuales)
+                    $detalleSeg .= " (usando PRECIOS ACTUALES de lista)";
                 $pdo->prepare("INSERT INTO seguimientopresupuestos (numpresupuesto, fecha, usuario, detalle) VALUES (?, NOW(), ?, ?)")
-                    ->execute([$numpresupuesto, $usuario, "PRESUPUESTO APROBADO Y CONVERTIDO EN PEDIDO #$nuevoNumPedido"]);
+                    ->execute([$numpresupuesto, $usuario, $detalleSeg]);
 
                 $pdo->commit();
                 echo json_encode(['success' => true, 'nuevo_pedido' => $nuevoNumPedido]);

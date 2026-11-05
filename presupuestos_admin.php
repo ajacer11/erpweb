@@ -318,7 +318,41 @@ $mes_anterior = date('Y-m-d', strtotime('-1 month'));
         loadModule('presupuestos_nuevo.php?id=' + id);
     }
 
-    window.aprobarPresupuesto = async function(id) { runAction(id, 'approve', '¿Aprobar Presupuesto?', 'Se convertirá el presupuesto en un Pedido de Venta activo.', '#28a745', 'SÍ, APROBAR'); }
+    window.aprobarPresupuesto = async function(id) {
+        let chequeo = { requiere_confirmacion: false };
+        try {
+            chequeo = await fetch(`api_presupuestos_admin.php?action=check_price_diff&numpedido=${id}`,
+                { headers: { 'X-Requested-With': 'XMLHttpRequest' } }).then(r => r.json());
+        } catch (e) { /* fail-open: si el chequeo falla, se sigue el flujo normal sin preguntar */ }
+
+        if (chequeo.success && chequeo.requiere_confirmacion) {
+            const r = await Swal.fire({
+                title: 'Presupuesto vencido con precios desactualizados',
+                html: 'La Fecha de Validez de este presupuesto ya pasó y al menos un producto cambió de precio.<br>¿Con qué precios se aprueba?',
+                icon: 'warning',
+                showDenyButton: true, showCancelButton: true, reverseButtons: true,
+                confirmButtonText: 'Precios ACTUALES', denyButtonText: 'Precios GUARDADOS',
+                cancelButtonText: 'Cancelar', confirmButtonColor: '#0d6efd', denyButtonColor: '#6c757d'
+            });
+            if (r.isDismissed) return;
+            await ejecutarAprobacionPresupuesto(id, r.isConfirmed);
+            return;
+        }
+
+        runAction(id, 'approve', '¿Aprobar Presupuesto?', 'Se convertirá el presupuesto en un Pedido de Venta activo.', '#28a745', 'SÍ, APROBAR');
+    }
+
+    async function ejecutarAprobacionPresupuesto(id, usarPreciosActuales) {
+        try {
+            const res = await fetch(`api_presupuestos_admin.php?action=approve`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify({ numpedido: id, usar_precios_actuales: usarPreciosActuales })
+            }).then(r => r.json());
+            if (res.success) buscarPresupuestos();
+            else Swal.fire('Error', res.error, 'error');
+        } catch (e) { console.error(e); }
+    }
+
     window.rechazarPresupuesto = async function(id) { runAction(id, 'reject', '¿Rechazar Presupuesto?', 'El cliente no aceptó esta cotización.', '#6c757d', 'SÍ, RECHAZAR'); }
     window.anularPresupuesto = async function(id) { runAction(id, 'annul', '¿Anular Presupuesto?', 'Se cancelará este documento por error de carga.', '#d33', 'SÍ, ANULAR'); }
     window.restaurarPresupuesto = async function(id) { runAction(id, 'restore', '¿Restaurar a Pendiente?', 'El presupuesto volverá a estado pendiente para su evaluación.', '#28a745', 'SÍ, RESTAURAR'); }

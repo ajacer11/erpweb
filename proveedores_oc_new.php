@@ -72,6 +72,23 @@ $is_view = isset($_GET['view']) && ($_GET['view'] === 'true' || $_GET['edit'] ==
                         </div>
                         <?php endif; ?>
                     </div>
+                    <?php if (!$is_view): ?>
+                    <!-- Filtros opcionales del GENERAR: acotan los productos del proveedor -->
+                    <div class="row g-3 mt-0">
+                        <div class="col-12 col-md-4 col-lg-3">
+                            <label class="form-label-custom">RUBRO</label>
+                            <select id="f-rubro-oc" class="form-control"><option value="">TODOS</option></select>
+                        </div>
+                        <div class="col-12 col-md-4 col-lg-3">
+                            <label class="form-label-custom">MARCA</label>
+                            <select id="f-marca-oc" class="form-control"><option value="">TODAS</option></select>
+                        </div>
+                        <div class="col-12 col-md-4 col-lg-3">
+                            <label class="form-label-custom">FAMILIA</label>
+                            <select id="f-familia-oc" class="form-control"><option value="">TODAS</option></select>
+                        </div>
+                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -185,6 +202,7 @@ $is_view = isset($_GET['view']) && ($_GET['view'] === 'true' || $_GET['edit'] ==
         configurarSelect2();
         if (!isView) {
             configurarBuscadorProductos();
+            cargarFiltrosGeneracion();
             $('#btn-generar-auto').click(generarAutomatico);
             $('#btn-grabar-oc').click(grabarPedido);
             
@@ -235,6 +253,19 @@ $is_view = isset($_GET['view']) && ($_GET['view'] === 'true' || $_GET['edit'] ==
         });
     }
 
+    async function cargarFiltrosGeneracion() {
+        const combos = [
+            { id: '#f-rubro-oc', action: 'get_rubros', key: 'rubro', label: 'rubro' },
+            { id: '#f-marca-oc', action: 'get_marcas', key: 'id', label: 'marca' },
+            { id: '#f-familia-oc', action: 'get_familias', key: 'id', label: 'nombre' }
+        ];
+        for (const c of combos) {
+            $(c.id).select2({ dropdownParent: $('#main-content'), width: '100%' });
+            const res = await fetch(`api_helpers.php?action=${c.action}`, { headers: commonHeaders }).then(r => r.json());
+            if (res.success) res.data.forEach(d => $(c.id).append(new Option(d[c.label], d[c.key])));
+        }
+    }
+
     async function procesarSeleccionManual(codigo, prodProvID) {
         const provActual = $('#cmb-proveedor-oc').val();
         if (!provActual) return Swal.fire('Atención', 'Debe seleccionar un proveedor primero.', 'warning');
@@ -277,7 +308,10 @@ $is_view = isset($_GET['view']) && ($_GET['view'] === 'true' || $_GET['edit'] ==
 
         const resp = await fetch('api_proveedores_oc.php?action=generate_auto', {
             method: 'POST', headers: { ...commonHeaders, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ proveedor_id: idProv, filtro: mode })
+            body: JSON.stringify({
+                proveedor_id: idProv, filtro: mode,
+                rubro: $('#f-rubro-oc').val(), marca: $('#f-marca-oc').val(), familia: $('#f-familia-oc').val()
+            })
         }).then(r => r.json());
 
         if (resp.success) {
@@ -339,8 +373,8 @@ $is_view = isset($_GET['view']) && ($_GET['view'] === 'true' || $_GET['edit'] ==
                     <td class="text-center text-muted small">${item.stock_actual}</td>
                     <td class="text-center text-muted small">${item.stock_ideal}</td>
                     <td class="text-center">
-                        <input type="number" class="form-control form-control-sm text-center fw-bold border-warning bg-warning bg-opacity-10 text-white row-cant" 
-                               data-idx="${absoluteIdx}" value="${item.cantidad}" step="0.01" ${isView ? 'readonly' : ''}>
+                        <input type="number" class="form-control form-control-sm text-center fw-bold border-warning bg-warning bg-opacity-10 text-white row-cant"
+                               data-idx="${absoluteIdx}" value="${item.cantidad}" step="1" min="0" ${isView ? 'readonly' : ''}>
                     </td>
                     <td class="text-end">$ ${parseFloat(item.costo).toFixed(2)}</td>
                     <td class="text-end fw-bold text-white">$ ${parseFloat(item.subtotal).toFixed(2)}</td>
@@ -378,8 +412,8 @@ $is_view = isset($_GET['view']) && ($_GET['view'] === 'true' || $_GET['edit'] ==
                 </div>
                 <div class="erp-card-row">
                     <span class="erp-card-label text-warning">Cantidad</span>
-                    <input type="number" class="form-control form-control-sm text-center fw-bold border-warning bg-warning bg-opacity-10 text-white row-cant" 
-                           data-idx="${absoluteIdx}" value="${item.cantidad}" step="0.01" style="width: 80px;" ${isView ? 'readonly' : ''}>
+                    <input type="number" class="form-control form-control-sm text-center fw-bold border-warning bg-warning bg-opacity-10 text-white row-cant"
+                           data-idx="${absoluteIdx}" value="${item.cantidad}" step="1" min="0" style="width: 80px;" ${isView ? 'readonly' : ''}>
                 </div>
                 <div class="erp-card-row">
                     <span class="erp-card-label">Costo</span>
@@ -480,15 +514,28 @@ $is_view = isset($_GET['view']) && ($_GET['view'] === 'true' || $_GET['edit'] ==
 
     function exportarPersonalizado() {
         if (items.length === 0) return;
-        let csv = "\xEF\xBB\xBF";
-        csv += "Código;Cód. Proveedor;Cantidad;Descripción;Precio Unit.;Importe Total\n";
-        items.forEach(i => { csv += `${i.codigo};${i.cod_prov};${i.cantidad};${i.descripcion};${i.costo.toFixed(2)};${i.subtotal.toFixed(2)}\n`; });
-        csv += `\n;;;;TOTAL ESTIMADO:;${$('#lbl-total-estimado').text()}`;
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement("a");
-        link.setAttribute("href", URL.createObjectURL(blob));
-        link.setAttribute("download", `Orden_Compra_${$('#cmb-proveedor-oc option:selected').text().replace(/ /g, '_')}.csv`);
-        link.click();
+        const nombreProveedor = $('#cmb-proveedor-oc option:selected').text() || 'SIN PROVEEDOR';
+
+        // Se envía por POST vía formulario (no fetch/blob) para que el navegador
+        // dispare la descarga nativa del .xls que arma el servidor con estilos.
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = 'exportar_oc_excel.php';
+        form.target = '_blank';
+
+        const addField = (name, value) => {
+            const inp = document.createElement('input');
+            inp.type = 'hidden';
+            inp.name = name;
+            inp.value = value;
+            form.appendChild(inp);
+        };
+        addField('proveedor', nombreProveedor);
+        addField('items', JSON.stringify(items));
+
+        document.body.appendChild(form);
+        form.submit();
+        document.body.removeChild(form);
     }
 
     init();

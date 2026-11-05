@@ -72,6 +72,8 @@ try {
                         tabla as tipo_origen, debe, haber
                     FROM cccuentastesoreria
                     WHERE DATE(fecha) BETWEEN ? AND ?
+                      -- el ajuste de caja también mueve el medio de tipo 'Ajuste' (contrapartida): no se cuenta dos veces
+                      AND NOT (tabla = 'ajuste_caja' AND idcuenta IN (SELECT id FROM mediosdepago WHERE tipodecuenta = 'Ajuste'))
                 ) AS base
                 WHERE 1=1 $filtroUsuario
                 GROUP BY usuario_real
@@ -108,6 +110,8 @@ try {
                     END AS usuario_real
                 FROM cccuentastesoreria
                 WHERE DATE(fecha) BETWEEN ? AND ?
+                      -- el ajuste de caja también mueve el medio de tipo 'Ajuste' (contrapartida): no se cuenta dos veces
+                      AND NOT (tabla = 'ajuste_caja' AND idcuenta IN (SELECT id FROM mediosdepago WHERE tipodecuenta = 'Ajuste'))
             ) AS base
             WHERE 1=1 $filtroUsuario
             ORDER BY fecha DESC, id DESC

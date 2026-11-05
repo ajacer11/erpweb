@@ -5,19 +5,52 @@
  * ACTUALIZACIÓN V19.5: Validación de propiedad y saltos de precio para PRESUPUESTOS.
  */
 require_once 'check_api_access.php';
+require_once 'permisos_helpers.php';
+require_once 'stock_deposito_helpers.php';
+require_once 'tarjetas_helpers.php';
+
+/**
+ * Margen admitido, por unidad, entre el neto de lista guardado en el producto y
+ * el neto que manda la pantalla de facturacion. Existe porque las dos puntas
+ * calculan ese numero distinto: el producto guarda el neto, y el buscador lo
+ * deriva del precio final. Cubre la diferencia de redondeo, no una edicion
+ * manual de precio, que siempre mueve mucho mas que esto.
+ */
+define('TOLERANCIA_PRECIO_LISTA', 0.05);
 
 try {
     $input = json_decode(file_get_contents('php://input'), true);
     if (!$input)
         throw new Exception("No se recibieron datos para validar.");
 
+    if (multidepositoHabilitado($pdo)) {
+        $emisor = datosEmisorFacturacion($pdo, $_SESSION['usuario_nombre'] ?? '');
+        if (!$emisor['completo']) {
+            throw new Exception('Complete los datos de la empresa o del depósito antes de facturar: ' . implode(', ', $emisor['faltantes']) . '.');
+        }
+    }
+
     $cliente_id = $input['cliente_id'];
     $vendedor_id = $input['vendedor_id'];
     $tipo_comp = (int) $input['tipo_comp'];
     $items = $input['items'] ?? [];
+
+    // REGLA: los importes deben ser numéricos. Un "" (p.ej. típeo con coma
+    // decimal en vez de punto en el front) no puede colarse como pago válido.
+    $imp1raw = $input['imp1'] ?? '';
+    $imp2raw = $input['imp2'] ?? '';
+    if ($imp1raw === '' || !is_numeric($imp1raw)) {
+        throw new Exception("El importe del Medio de pago 1 no es un número válido.");
+    }
+    if (!empty($input['mp2']) && (!is_numeric($imp2raw))) {
+        throw new Exception("El importe del Medio de pago 2 no es un número válido.");
+    }
+    if ((float) $imp1raw < 0 || (is_numeric($imp2raw) && (float) $imp2raw < 0)) {
+        throw new Exception("Los importes de los medios de pago no pueden ser negativos.");
+    }
     $pagos = [
-        ['id' => $input['mp1'], 'imp' => (float) $input['imp1']],
-        ['id' => $input['mp2'], 'imp' => (float) $input['imp2']]
+        ['id' => $input['mp1'], 'imp' => (float) $imp1raw],
+        ['id' => $input['mp2'], 'imp' => is_numeric($imp2raw) ? (float) $imp2raw : 0]
     ];
     $total_doc = (float) $input['total_comprobante'];
     $associated = $input['associatedDoc'] ?? null;
@@ -68,6 +101,9 @@ try {
     if ($tipo_comp < 1) {
         throw new Exception("Seleccione un tipo de comprobante antes de emitir.");
     }
+    if (in_array($tipo_comp, [2, 7, 12], true) && (int) ($config['admitenotasdebito'] ?? 0) !== 1) {
+        throw new Exception("Las notas de débito no están habilitadas en la Configuración General.");
+    }
 
     // 3. VALIDAR VENDEDOR
     $stmtVen = $pdo->prepare("SELECT * FROM vendedores WHERE id = ?");
@@ -94,7 +130,15 @@ try {
         if ((int) $art['habilitado'] === 0)
             throw new Exception("El artículo [{$it['descripcion']}] está inhabilitado.");
 
-        if ((int) $config['stocknegativo'] === 0) {
+        if (isset($it['descripcion']) && trim($it['descripcion']) !== trim($art['descripcion'])) {
+            if ((int) $config['permitireditardescripcion'] !== 1 || !puedeEditarDescripcionFacturar()) {
+                throw new Exception("No tiene permiso para modificar la descripción del artículo [{$art['descripcion']}].");
+            }
+        }
+
+        // Las notas de crédito (3, 8, 13 y ticket de crédito 101) son
+        // devoluciones: reingresan mercadería, no consumen stock.
+        if ((int) $config['stocknegativo'] === 0 && !in_array($tipo_comp, [3, 8, 13, 101], true)) {
             $stockActual = (float) ($art['Stock'] ?? $art['stock'] ?? 0);
             if ($stockActual < (float) $it['cantidad']) {
                 throw new Exception("Stock insuficiente para [{$it['descripcion']}]. Disponible: " . $stockActual);
@@ -104,7 +148,19 @@ try {
         // VALIDACIÓN DE PRECIO (Se saltea si es Pedido o Presupuesto, ya que vienen con precio pactado)
         if ((int) $config['modificarprecioenventas'] === 0 && empty($input['pedido_id']) && empty($input['presupuesto_id'])) {
             $col_lista = ($it['lista'] === 1) ? 'siniva' : 'siniva' . $it['lista'];
-            if (round((float) $art[$col_lista], 2) !== round((float) $it['precio_base'], 2)) {
+            // El buscador de facturacion (api_facturar_gets.php, normalizarListasParaVenta)
+            // no manda el neto guardado: lo recalcula desde el precio final como
+            // ($final - $impInterno) / (1 + $alicuota), redondeado a 3 decimales.
+            // Cuando el neto y el precio final guardados del producto no cierran
+            // entre si, ese recalculo cae en otro centavo y esta comparacion
+            // rechazaba ventas que el vendedor nunca habia modificado. El caso
+            // tipico son los cigarrillos, donde el impuesto interno es varias veces
+            // el neto y amplifica cualquier medio centavo perdido al dividir.
+            // Por eso se compara con tolerancia en lugar de exigir igualdad exacta.
+            $netoGuardado = (float) ($art[$col_lista] ?? 0);
+            $netoEnviado  = (float) $it['precio_base'];
+
+            if (abs($netoGuardado - $netoEnviado) > TOLERANCIA_PRECIO_LISTA) {
                 throw new Exception("El precio del artículo [{$it['codigo']}] no coincide con la Lista {$it['lista']}. Su perfil no permite modificaciones manuales de precio.");
             }
         }
@@ -140,6 +196,10 @@ try {
             if ($mp['tipodecuenta'] === 'Cuenta Corriente') {
                 if ((int) $cli['cuentacorriente'] === 0)
                     throw new Exception("El cliente no tiene habilitada la Cuenta Corriente.");
+            }
+            if ($p['imp'] > 0) {
+                $nMedio = ($p['id'] == ($input['mp1'] ?? null)) ? 1 : 2;
+                datosTarjetaCobro($pdo, $mp, $input["tarjeta$nMedio"] ?? null, "el medio de pago $nMedio");
             }
             $total_pagado += $p['imp'];
         }

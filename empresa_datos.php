@@ -161,7 +161,7 @@ require_once 'check_access.php';
                 $('#web').val(d.web);
                 $('#numiibb').val(d.numiibb);
                 $('#fechainicioact').val(d.fechainicioact);
-                $('puntoventa').val(d.puntodeventa)
+                $('#puntoventa').val(d.puntodeventa)
                 
                 // Selects
                 $('#condicioniva').val(d.condicioniva);

@@ -1,7 +1,8 @@
 <?php
 /**
  * api_tesoreria_informe.php - MOTOR DE DATOS PARA INFORME DE TESORERÍA
- * v5.1 (Fila de Compensación para Saldo Real con Filtro de Usuario)
+ * v6.0 (Filtro de usuario aplicado en SQL: al filtrar, saldos y movimientos
+ * de otros usuarios no se calculan ni se devuelven)
  */
 
 if (!isset($_SERVER['HTTP_X_REQUESTED_WITH']) || strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) != 'xmlhttprequest') {
@@ -20,7 +21,7 @@ function getMovimientos($pdo, $filters) {
     $ids_cuentas = json_decode($filters['ids_cuentas'] ?? '[]');
     if (!is_array($ids_cuentas)) $ids_cuentas = [$filters['ids_cuentas'] ?? 0];
 
-    // 2. Decodificar Usuarios (Para filtrado en PHP)
+    // 2. Decodificar Usuarios (filtrado en SQL, ver $whereUsuario más abajo)
     $lista_usuarios = json_decode($filters['usuarios'] ?? '[]');
     if (!is_array($lista_usuarios)) {
         $lista_usuarios = !empty($filters['usuarios']) ? [$filters['usuarios']] : [];
@@ -34,10 +35,10 @@ function getMovimientos($pdo, $filters) {
     $solo_saldos = $filters['solo_saldos'] === 'true' || $filters['solo_saldos'] === true;
     $desglosar = $filters['desglosar'] === 'true' || $filters['desglosar'] === true;
 
-    // CONSTRUCCIÓN WHERE DINÁMICO (SOLO CUENTAS Y FECHAS, USUARIO SE FILTRA DESPUÉS)
+    // CONSTRUCCIÓN WHERE DINÁMICO (CUENTAS Y FECHAS)
     $whereCommon = "";
     $paramsCommon = [];
-    
+
     if (!empty($ids_cuentas) && !in_array(0, $ids_cuentas) && !in_array("0", $ids_cuentas)) {
         $placeholders = implode(',', array_fill(0, count($ids_cuentas), '?'));
         $whereCommon .= " AND t.idcuenta IN ($placeholders) ";
@@ -46,6 +47,17 @@ function getMovimientos($pdo, $filters) {
 
     if ($tipo_fiscal === 'fiscales') $whereCommon .= " AND t.fiscal = 1 ";
     elseif ($tipo_fiscal === 'nofiscales') $whereCommon .= " AND t.fiscal = 0 ";
+
+    // Filtro de usuario: se aplica en el propio SQL (no en PHP) para que, al filtrar,
+    // el usuario no vea ni un rastro de los movimientos/saldos de otros usuarios.
+    $whereUsuario = "";
+    $paramsUsuario = [];
+    if ($filtrar_usuarios) {
+        $placeholdersUsu = implode(',', array_fill(0, count($lista_usuarios), '?'));
+        $whereUsuario = " AND t.usuario IN ($placeholdersUsu) ";
+        $paramsUsuario = $lista_usuarios;
+    }
+    $labelSaldoAnterior = $filtrar_usuarios ? 'SALDO ANTERIOR (USUARIO FILTRADO)' : 'SALDO ANTERIOR (REAL)';
 
     // --- MODO 1: SOLO SALDOS (RESUMEN) ---
     // En "Solo Saldos" devolvemos el saldo REAL de la cuenta (ignoramos filtro de usuario para no dar info parcial falsa)
@@ -65,38 +77,38 @@ function getMovimientos($pdo, $filters) {
 
     // --- MODO 2: DESGLOSADO POR CUENTA (AGRUPADO) ---
     if ($desglosar) {
-        // A. Saldos Anteriores GLOBALES
-        $sqlAnt = "SELECT t.idcuenta, (SUM(t.debe) - SUM(t.haber)) as saldo_ant 
-                   FROM cccuentastesoreria t 
-                   WHERE t.fecha < ? $whereCommon 
+        // A. Saldos Anteriores (respeta el filtro de usuario si está activo)
+        $sqlAnt = "SELECT t.idcuenta, (SUM(t.debe) - SUM(t.haber)) as saldo_ant
+                   FROM cccuentastesoreria t
+                   WHERE t.fecha < ? $whereCommon $whereUsuario
                    GROUP BY t.idcuenta";
-        $finalParamsAnt = array_merge([$desde], $paramsCommon);
+        $finalParamsAnt = array_merge([$desde], $paramsCommon, $paramsUsuario);
         $stmtAnt = $pdo->prepare($sqlAnt);
         $stmtAnt->execute($finalParamsAnt);
         $saldosIniciales = $stmtAnt->fetchAll(PDO::FETCH_KEY_PAIR);
 
-        // B. Movimientos GLOBALES
+        // B. Movimientos (respeta el filtro de usuario si está activo)
         $sqlMov = "SELECT t.fecha as Fecha, t.numerodeasiento as NumAsiento, m.medio as Cuenta, m.id as IDCuenta,
-                          t.descripcion as Detalle, t.debe as Debe, t.haber as Haber, t.fiscal as Fiscal, t.usuario as Usuario 
+                          t.descripcion as Detalle, t.debe as Debe, t.haber as Haber, t.fiscal as Fiscal, t.usuario as Usuario
                    FROM cccuentastesoreria t
                    INNER JOIN mediosdepago m ON t.idcuenta = m.id
-                   WHERE t.fecha >= ? AND t.fecha <= ? $whereCommon
+                   WHERE t.fecha >= ? AND t.fecha <= ? $whereCommon $whereUsuario
                    ORDER BY m.medio ASC, t.fecha ASC, t.id ASC";
-        $finalParamsMov = array_merge([$desde, $hasta], $paramsCommon);
+        $finalParamsMov = array_merge([$desde, $hasta], $paramsCommon, $paramsUsuario);
         $stmtMov = $pdo->prepare($sqlMov);
         $stmtMov->execute($finalParamsMov);
         $movimientos = $stmtMov->fetchAll(PDO::FETCH_ASSOC);
 
-        // C. Procesar y Filtrar
+        // C. Agrupar por cuenta
         $data = [];
         $cuentasProcesadas = [];
         $movsPorCuenta = [];
-        
+
         foreach($movimientos as $mov) {
             $movsPorCuenta[$mov['IDCuenta']][] = $mov;
             $cuentasProcesadas[$mov['IDCuenta']] = $mov['Cuenta'];
         }
-        
+
         foreach($saldosIniciales as $idCta => $saldo) {
             if(!isset($cuentasProcesadas[$idCta])) {
                 $n = $pdo->query("SELECT medio FROM mediosdepago WHERE id = $idCta")->fetchColumn();
@@ -107,115 +119,56 @@ function getMovimientos($pdo, $filters) {
 
         foreach($cuentasProcesadas as $idCta => $nombreCta) {
             $saldoActual = floatval($saldosIniciales[$idCta] ?? 0);
-            
-            $rowsCuenta = [];
-            $rowsCuenta[] = ['Tipo' => 'SALDO_INICIAL', 'Fecha' => $desde, 'NumAsiento' => 0, 'Cuenta' => $nombreCta, 'Detalle' => 'SALDO ANTERIOR (REAL)', 'Debe'=>0, 'Haber'=>0, 'Fiscal'=>0, 'Fiscal_Badge'=>'', 'Saldo' => $saldoActual, 'Usuario' => '-'];
 
-            $hiddenDebe = 0;
-            $hiddenHaber = 0;
-            $hayMovimientos = false;
+            $rowsCuenta = [];
+            $rowsCuenta[] = ['Tipo' => 'SALDO_INICIAL', 'Fecha' => $desde, 'NumAsiento' => 0, 'Cuenta' => $nombreCta, 'Detalle' => $labelSaldoAnterior, 'Debe'=>0, 'Haber'=>0, 'Fiscal'=>0, 'Fiscal_Badge'=>'', 'Saldo' => $saldoActual, 'Usuario' => '-'];
 
             if(isset($movsPorCuenta[$idCta])) {
                 foreach($movsPorCuenta[$idCta] as $r) {
-                    $saldoActual += ($r['Debe'] - $r['Haber']); // Saldo siempre se actualiza con TODO
-                    
-                    // Filtrar visualización
-                    if ($filtrar_usuarios && !in_array((string)$r['Usuario'], $lista_usuarios)) {
-                        $hiddenDebe += $r['Debe'];
-                        $hiddenHaber += $r['Haber'];
-                        $hayMovimientos = true; // Hay actividad aunque esté oculta
-                        continue;
-                    }
-
-                    $hayMovimientos = true;
+                    $saldoActual += ($r['Debe'] - $r['Haber']);
                     $r['Tipo'] = 'MOVIMIENTO';
-                    $r['Saldo'] = $saldoActual; 
+                    $r['Saldo'] = $saldoActual;
                     $r['Fiscal_Badge'] = ($r['Fiscal'] == 1) ? '<span class="badge bg-success">F</span>' : '<span class="badge bg-secondary">N</span>';
                     $rowsCuenta[] = $r;
                 }
             }
 
-            // Si hay movimientos ocultos, agregar fila de compensación
-            if ($hiddenDebe > 0 || $hiddenHaber > 0) {
-                $rowsCuenta[] = [
-                    'Tipo' => 'MOVIMIENTO',
-                    'Fecha' => '-',
-                    'NumAsiento' => 0,
-                    'Cuenta' => $nombreCta,
-                    'Detalle' => 'MOVIMIENTOS DE OTROS USUARIOS (AGRUPADO)',
-                    'Debe' => $hiddenDebe,
-                    'Haber' => $hiddenHaber,
-                    'Fiscal' => 0,
-                    'Fiscal_Badge' => '-',
-                    'Saldo' => $saldoActual, // Saldo final real
-                    'Usuario' => 'VARIOS'
-                ];
-            }
-
-            if ($hayMovimientos || !$filtrar_usuarios) {
-                $data[] = ['Tipo' => 'SEPARATOR', 'Cuenta' => $nombreCta];
-                foreach($rowsCuenta as $row) {
-                    $data[] = $row;
-                }
+            $data[] = ['Tipo' => 'SEPARATOR', 'Cuenta' => $nombreCta];
+            foreach($rowsCuenta as $row) {
+                $data[] = $row;
             }
         }
         return $data;
     }
 
     // --- MODO 3: DETALLE GLOBAL ---
-    
-    $sqlAnt = "SELECT SUM(t.debe) - SUM(t.haber) FROM cccuentastesoreria t WHERE t.fecha < ? $whereCommon";
-    $finalParamsAnt = array_merge([$desde], $paramsCommon);
+
+    $sqlAnt = "SELECT SUM(t.debe) - SUM(t.haber) FROM cccuentastesoreria t WHERE t.fecha < ? $whereCommon $whereUsuario";
+    $finalParamsAnt = array_merge([$desde], $paramsCommon, $paramsUsuario);
     $stmtAnt = $pdo->prepare($sqlAnt);
     $stmtAnt->execute($finalParamsAnt);
     $saldo = floatval($stmtAnt->fetchColumn() ?: 0);
 
-    $sql = "SELECT t.fecha as Fecha, t.numerodeasiento as NumAsiento, m.medio as Cuenta, 
-                   t.descripcion as Detalle, t.debe as Debe, t.haber as Haber, t.fiscal as Fiscal, t.usuario as Usuario 
+    $sql = "SELECT t.fecha as Fecha, t.numerodeasiento as NumAsiento, m.medio as Cuenta,
+                   t.descripcion as Detalle, t.debe as Debe, t.haber as Haber, t.fiscal as Fiscal, t.usuario as Usuario
             FROM cccuentastesoreria t
             INNER JOIN mediosdepago m ON t.idcuenta = m.id
-            WHERE t.fecha >= ? AND t.fecha <= ? $whereCommon
+            WHERE t.fecha >= ? AND t.fecha <= ? $whereCommon $whereUsuario
             ORDER BY t.fecha ASC, t.id ASC";
-    
-    $finalParamsMov = array_merge([$desde, $hasta], $paramsCommon);
+
+    $finalParamsMov = array_merge([$desde, $hasta], $paramsCommon, $paramsUsuario);
     $stmt = $pdo->prepare($sql);
     $stmt->execute($finalParamsMov);
     $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     $data = [];
-    $data[] = ['Tipo' => 'GLOBAL', 'Fecha' => $desde, 'NumAsiento' => 0, 'Cuenta' => '-', 'Detalle' => 'SALDO ANTERIOR (REAL)', 'Debe'=>0, 'Haber'=>0, 'Fiscal'=>0, 'Saldo'=>$saldo, 'Usuario' => '-'];
-
-    $hiddenDebe = 0;
-    $hiddenHaber = 0;
+    $data[] = ['Tipo' => 'GLOBAL', 'Fecha' => $desde, 'NumAsiento' => 0, 'Cuenta' => '-', 'Detalle' => $labelSaldoAnterior, 'Debe'=>0, 'Haber'=>0, 'Fiscal'=>0, 'Saldo'=>$saldo, 'Usuario' => '-'];
 
     foreach ($rows as $r) {
         $saldo += ($r['Debe'] - $r['Haber']);
-
-        if ($filtrar_usuarios && !in_array((string)$r['Usuario'], $lista_usuarios)) {
-            $hiddenDebe += $r['Debe'];
-            $hiddenHaber += $r['Haber'];
-            continue;
-        }
-
         $r['Saldo'] = $saldo;
         $r['Fiscal_Badge'] = ($r['Fiscal'] == 1) ? '<span class="badge bg-success">F</span>' : '<span class="badge bg-secondary">N</span>';
         $data[] = $r;
-    }
-
-    if ($hiddenDebe > 0 || $hiddenHaber > 0) {
-        $data[] = [
-            'Tipo' => 'GLOBAL',
-            'Fecha' => '-',
-            'NumAsiento' => 0,
-            'Cuenta' => '-',
-            'Detalle' => 'MOVIMIENTOS DE OTROS USUARIOS (AGRUPADO)',
-            'Debe' => $hiddenDebe,
-            'Haber' => $hiddenHaber,
-            'Fiscal' => 0,
-            'Saldo' => $saldo,
-            'Usuario' => 'VARIOS',
-            'Fiscal_Badge' => '-'
-        ];
     }
 
     return $data;

@@ -176,6 +176,16 @@ require_once 'check_access.php';
     let cachedRawData = null; // Para la exportación
     let vistaActual = 'movimientos';
     let cachedAperturas = null;
+    const ordenMovimientos = erpOrdenarTabla('#tablaCajasUsuarios', () => currentData, renderPagina, [
+        {campo:'fecha', tipo:'fecha'}, 'observaciones', 'compasoc',
+        {campo:'debe_calc', tipo:'numero'}, {campo:'haber_calc', tipo:'numero'},
+        {campo:'saldo_acumulado', tipo:'numero'}
+    ]);
+    const ordenAperturas = erpOrdenarTabla('#tablaAperturas', () => cachedAperturas, () => renderAperturas(cachedAperturas), [
+        {campo:'abiertael', tipo:'fecha'}, 'usuario_apertura', {campo:'saldoinicial', tipo:'numero'},
+        {campo:'cerradael', tipo:'fecha'}, 'usuario_cierre', {campo:'saldofinal', tipo:'numero'},
+        {campo:'estado', tipo:'numero'}
+    ]);
 
     async function init() {
         // Inicializar Select2
@@ -278,6 +288,7 @@ require_once 'check_access.php';
 
             cachedRawData = result.data; // Guardar original para exportar
             procesarSaldos(result.data);
+            ordenMovimientos.aplicar();
 
             pagActual = 1; window.pagActual = 1;
             renderPagina();
@@ -318,6 +329,7 @@ require_once 'check_access.php';
             if (result.status === 'error') throw new Error(result.error);
 
             cachedAperturas = result.data || [];
+            ordenAperturas.aplicar();
             renderAperturas(cachedAperturas);
 
         } catch (error) {

@@ -18,7 +18,7 @@ try {
                     id, 
                     DATE_FORMAT(fecha, '%d-%m-%Y') AS fecha_f,
                     CONCAT(letracomp, ' ', LPAD(PtoVta, 4, '0'), '-', LPAD(numcomp, 8, '0')) AS numcomp,
-                    total - COALESCE(
+                    COALESCE(importectacte, total) - COALESCE(
                         (SELECT SUM(importepagado) FROM cobrosfacturasclientes 
                          WHERE idpago = tickets.id AND tablapago = 'tickets'), 0
                     ) AS pendiente
@@ -37,7 +37,7 @@ try {
                     id, 
                     DATE_FORMAT(fecha, '%d-%m-%Y') AS fecha_f,
                     CONCAT(letracomp, ' ', LPAD(PtoVta, 4, '0'), '-', LPAD(numcomp, 8, '0')) AS num_factura,
-                    total - COALESCE(
+                    COALESCE(importectacte, total) - COALESCE(
                         (SELECT SUM(importepagado) FROM cobrosfacturasclientes 
                          WHERE idfactura = tickets.id), 0
                     ) AS pendiente

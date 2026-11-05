@@ -71,6 +71,10 @@ require_once 'check_access.php';
                     <label class="form-label-custom">RAMA CLIENTE</label>
                     <select id="cmbRamaCliente" class="form-select select2-filter trigger-filter"></select>
                 </div>
+                <div class="col-12 col-md-3 d-none" id="grupoFiltroDepositoVentas">
+                    <label class="form-label-custom">DEPÓSITO</label>
+                    <select id="cmbDeposito" class="form-select select2-filter trigger-filter"></select>
+                </div>
             </div>
         </form>
     </div>
@@ -261,6 +265,12 @@ require_once 'check_access.php';
             </div>
             <div class="col-12 col-xl-6">
                 <section class="ventas-chart-panel">
+                    <h5><i class="fa-solid fa-user-gear"></i> Ventas por usuario</h5>
+                    <div class="ventas-chart-canvas"><canvas id="chartUsuarios"></canvas></div>
+                </section>
+            </div>
+            <div class="col-12 col-xl-6">
+                <section class="ventas-chart-panel">
                     <h5><i class="fa-solid fa-layer-group"></i> Distribución por rubro</h5>
                     <div class="ventas-chart-canvas"><canvas id="chartRubros"></canvas></div>
                 </section>
@@ -310,19 +320,20 @@ require_once 'check_access.php';
 (function() {
     let timeoutBusqueda = null;
     let listadoVentas = [];
+    const ordenTabla = erpOrdenarTabla('#tablaVentas', () => listadoVentas, renderPagina, [
+        {campo:'Fecha', tipo:'fecha'}, 'Tipo', 'Numero', 'Codigo', 'Descripcion',
+        {campo:'Cantidad', tipo:'numero'}, {campo:'Total', tipo:'numero'}, {campo:'Imp_Int', tipo:'numero'},
+        {campo:'IVA', tipo:'numero'}, {campo:'Neto', tipo:'numero'}, 'Rubro',
+        {campo:'IIBB', tipo:'numero'}, {campo:'Costo', tipo:'numero'}, 'Usuario', 'Vendedor',
+        'Proveedor', 'Cliente', {campo:'Iva_compras', tipo:'numero'}, 'Marca',
+        {campo:'Porc_Descuento', tipo:'numero'}
+    ]);
     let pagActual = 1, pagTotal = 1, pagTam = 20;
     let ventasCharts = [];
     
     window.pagActual = 1; window.pagTotal = 1;
 
     async function init() {
-        $('.select2-filter').select2({
-            dropdownParent: $('#main-content'),
-            width: '100%',
-            placeholder: 'SELECCIONE...',
-            allowClear: true
-        });
-
         // Configurar listeners automáticos con Debounce de 800ms
         $('.trigger-filter').on('input change', function() {
             clearTimeout(timeoutBusqueda);
@@ -356,7 +367,7 @@ require_once 'check_access.php';
 
             const fill = (id, items, valKey, textKey) => {
                 const el = $('#' + id);
-                el.empty().append(new Option('SELECCIONE...', '', true, true));
+                el.empty().append(new Option('TODOS', '', true, true));
                 items.forEach(i => el.append(new Option(i[textKey], i[valKey], false, false)));
             };
 
@@ -369,12 +380,26 @@ require_once 'check_access.php';
             fill('cmbRamaCliente', data.ramas, 'id', 'rama');
             
             const elProv = $('#cmbProvincia');
-            elProv.empty().append(new Option('SELECCIONE...', '', true, true));
+            elProv.empty().append(new Option('TODOS', '', true, true));
             data.provincias.forEach(p => elProv.append(new Option(p, p, false, false)));
 
             const elVend = $('#cmbVendedor');
-            elVend.empty().append(new Option('SELECCIONE...', '', true, true));
+            elVend.empty().append(new Option('TODOS', '', true, true));
             data.vendedores.forEach(v => elVend.append(new Option(v.nombre, v.id, false, false)));
+
+            if (data.multideposito_habilitado) {
+                const elDep = $('#cmbDeposito');
+                elDep.empty().append(new Option('TODOS', '', true, true));
+                data.depositos.forEach(d => elDep.append(new Option(d.nombre, d.id, false, false)));
+                $('#grupoFiltroDepositoVentas').removeClass('d-none');
+            }
+
+            // Primero se cargan las opciones y luego se crea Select2, para que
+            // la opción vacía TODOS sea visible y seleccionable en cada filtro.
+            $('.select2-filter').select2({
+                dropdownParent: $('#main-content'),
+                width: '100%'
+            }).val('').trigger('change.select2');
 
         } catch (error) {
             console.error(error);
@@ -398,7 +423,8 @@ require_once 'check_access.php';
             familia: $('#cmbFamilia').val() || null,
             unidad_id: $('#cmbUnidad').val() || null,
             provincia: $('#cmbProvincia').val() || null,
-            rama_id: $('#cmbRamaCliente').val() || null
+            rama_id: $('#cmbRamaCliente').val() || null,
+            deposito_id: $('#cmbDeposito').val() || null
         };
     }
 
@@ -425,6 +451,7 @@ require_once 'check_access.php';
             if (res.status !== 'ok') throw new Error(res.error || 'Error desconocido');
             
             listadoVentas = res.data || [];
+            ordenTabla.aplicar();
             
             // Recálculo global para los totales del pie (Toda la data, no solo la paginada)
             let sumTotal = 0, sumCosto = 0, sumUtilidad = 0;
@@ -677,6 +704,13 @@ require_once 'check_access.php';
         ventasCharts.push(new Chart(document.getElementById('chartVendedores'), {
             type: 'bar',
             data: { labels: vendedores.map(([nombre]) => nombre), datasets: [{ label: 'Venta total', data: vendedores.map(([, total]) => total), backgroundColor: palette[4] }] },
+            options: { responsive: true, maintainAspectRatio: false, scales: { x: axis, y: axis }, plugins: { legend: { display: false }, tooltip } }
+        }));
+
+        const usuarios = top(aggregate(r => r.Usuario || 'SIN USUARIO', r => r.Total));
+        ventasCharts.push(new Chart(document.getElementById('chartUsuarios'), {
+            type: 'bar',
+            data: { labels: usuarios.map(([nombre]) => nombre), datasets: [{ label: 'Venta total', data: usuarios.map(([, total]) => total), backgroundColor: palette[2] }] },
             options: { responsive: true, maintainAspectRatio: false, scales: { x: axis, y: axis }, plugins: { legend: { display: false }, tooltip } }
         }));
 

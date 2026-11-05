@@ -14,11 +14,16 @@ try {
                         c.id AS 'ID', 
                         c.codigo AS 'Codigo', 
                         c.concepto AS 'Concepto', 
+                        c.habilitada AS 'Habilitada',
                         c.cuentacontable AS 'Num Cuenta Cont.',
                         p.descripcion AS 'Cuenta Contable'
                     FROM conceptosgastos c
                     LEFT JOIN plandecuentas p ON c.cuentacontable = p.numcuenta
-                    ORDER BY c.concepto ASC";
+                    WHERE 1=1";
+            if ($action === 'list' && ($_GET['solo_habilitados'] ?? '') === '1') {
+                $sql .= " AND c.habilitada = 1";
+            }
+            $sql .= " ORDER BY c.concepto ASC";
             
             $stmt = $pdo->prepare($sql);
             $stmt->execute();
@@ -63,6 +68,22 @@ try {
                 $msg = "Registro agregado correctamente.";
             }
             echo json_encode(['success' => true, 'message' => $msg]);
+            break;
+
+        case 'set_habilitada':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') throw new Exception('Método no permitido.');
+            $data = json_decode(file_get_contents('php://input'), true);
+            $id = filter_var($data['id'] ?? null, FILTER_VALIDATE_INT);
+            $habilitada = $data['habilitada'] ?? null;
+            if (!$id || !in_array($habilitada, [0, 1], true)) throw new Exception('Estado de concepto inválido.');
+            $stmt = $pdo->prepare('UPDATE conceptosgastos SET habilitada = ? WHERE id = ?');
+            $stmt->execute([$habilitada, $id]);
+            if ($stmt->rowCount() === 0) {
+                $existe = $pdo->prepare('SELECT 1 FROM conceptosgastos WHERE id = ?');
+                $existe->execute([$id]);
+                if (!$existe->fetchColumn()) throw new Exception('No se encontró el concepto.');
+            }
+            echo json_encode(['success' => true]);
             break;
 
         case 'delete':

@@ -51,16 +51,19 @@ require_once 'check_access.php';
                         <option value="FISCALES">SÓLO FISCALES</option>
                         <option value="NO_FISCALES">SÓLO NO FISCALES</option>
                         <option value="1">FACTURA A</option>
+                        <option value="2">NOTA DE DÉBITO A</option>
                         <option value="3">NOTA DE CRÉDITO A</option>
                         <option value="6">FACTURA B</option>
+                        <option value="7">NOTA DE DÉBITO B</option>
                         <option value="8">NOTA DE CRÉDITO B</option>
                         <option value="11">FACTURA C</option>
+                        <option value="12">NOTA DE DÉBITO C</option>
                         <option value="13">NOTA DE CRÉDITO C</option>
                         <option value="1000">REMITOS</option>
                     </select>
                 </div>
 
-                <div class="col-12 col-md-3 border-md-start border-secondary px-md-3">
+                <div class="col-12 col-md-5 border-md-start border-secondary px-md-3">
                     <label class="form-label-custom">FILTRO POR IMPORTE</label>
                     <div class="input-group input-group-sm mb-2">
                         <select id="cmb-logic-imp" class="form-select filter-auto" style="max-width: 90px;">
@@ -75,10 +78,6 @@ require_once 'check_access.php';
                         <input class="form-check-input filter-auto" type="checkbox" id="chk-solo-pend">
                         <label class="form-check-label text-muted small" for="chk-solo-pend" style="cursor:pointer">SÓLO PENDIENTES DE PAGO</label>
                     </div>
-                </div>
-
-                <div class="col-12 col-md-2 border-md-start border-secondary text-center d-none d-md-flex flex-column justify-content-center">
-                    <img src="logo.png" style="max-height: 40px; opacity: 0.2; filter: grayscale(1);">
                 </div>
             </div>
         </div>
@@ -124,12 +123,13 @@ require_once 'check_access.php';
                         <th class="text-end">NETO</th>
                         <th class="text-end">IVA</th>
                         <th class="text-end text-accent">TOTAL</th>
+                        <th class="text-center">FISCAL</th>
                         <th class="text-center">ESTADO</th>
                         <th class="text-center">ACCIONES</th>
                     </tr>
                 </thead>
                 <tbody id="tbody-compras">
-                    <tr><td colspan="10" class="text-center p-5 text-muted italic">Haga clic en ACTUALIZAR para cargar datos</td></tr>
+                    <tr><td colspan="11" class="text-center p-5 text-muted italic">Haga clic en ACTUALIZAR para cargar datos</td></tr>
                 </tbody>
             </table>
         </div>
@@ -267,6 +267,12 @@ require_once 'check_access.php';
 <script>
 (function() {
     let listado = [];
+    const ordenTabla = erpOrdenarTabla('#tabla-compras', () => listado, renderPagina, [
+        {campo:'Fecha', tipo:'fecha'}, {campo:'Fecha Vencimiento', tipo:'fecha'}, 'Tipo',
+        'Num Factura', 'Proveedor', {campo:'Neto', tipo:'numero'},
+        {campo:'IVA Total', tipo:'numero'}, {campo:'Total', tipo:'numero'},
+        {campo:'Fiscal', tipo:'numero'}, 'Estado', null
+    ]);
     let pagActual = 1, pagTotal = 1, pagTam = 20;
     
     window.pagActual = 1; window.pagTotal = 1;
@@ -281,7 +287,9 @@ require_once 'check_access.php';
     function configurarListeners() {
         $('#btn-buscar').click(buscar);
         $('#btn-excel').click(exportarExcel);
-        $('#btn-arca').click(exportarArca);
+        // El Libro IVA Digital ahora se genera desde Contabilidad > Impuestos > Libro IVA
+        // (alícuotas por línea, percepciones en su campo y ventas + compras).
+        $('#btn-arca').click(() => loadModule('libro_iva.php'));
 
         $('.filter-auto').on('change', buscar);
         let timerImp;
@@ -316,6 +324,7 @@ require_once 'check_access.php';
             
             if (res.success) { 
                 listado = res.data; 
+                ordenTabla.aplicar();
                 updateTotals(res.resumen); 
             } else {
                 listado = [];
@@ -350,19 +359,20 @@ require_once 'check_access.php';
     function renderTabla(datos) {
         const tbody = $('#tbody-compras').empty();
         
-        if (datos.length === 0) { 
-            tbody.append('<tr><td colspan="10" class="text-center p-5 text-muted small opacity-50 italic">No se encontraron comprobantes.</td></tr>'); 
-            return; 
+        if (datos.length === 0) {
+            tbody.append('<tr><td colspan="11" class="text-center p-5 text-muted small opacity-50 italic">No se encontraron comprobantes.</td></tr>');
+            return;
         }
 
         datos.forEach((f, idx) => {
             const absoluteIdx = (pagActual - 1) * pagTam + idx;
             const isNC = [3, 8, 13, 101].includes(parseInt(f.tc_cod));
             const rowClass = isNC ? 'bg-warning bg-opacity-10' : '';
-            
+            const puedeEditarFiscal = f.Estado !== 'Pagada';
+
             const fv = f['Fecha Vencimiento'] ? f['Fecha Vencimiento'].split('-').reverse().join('-') : '-';
             const ff = f['Fecha'] ? f['Fecha'].split('-').reverse().join('-') : '-';
-            
+
             tbody.append(`
                 <tr class="${rowClass} pointer">
                     <td class="ps-3">${ff}</td>
@@ -373,6 +383,11 @@ require_once 'check_access.php';
                     <td class="text-end">$ ${parseFloat(f.Neto).toFixed(2)}</td>
                     <td class="text-end">$ ${parseFloat(f['IVA Total']).toFixed(2)}</td>
                     <td class="text-end fw-bold text-accent">$ ${parseFloat(f.Total).toFixed(2)}</td>
+                    <td class="text-center">
+                        ${puedeEditarFiscal
+                            ? `<button class="btn btn-sm ${f.Fiscal == 1 ? 'btn-success' : 'btn-secondary'} py-0 px-2 border-0" onclick="window.toggleFiscal(${absoluteIdx})" title="Cambiar fiscalidad">${f.Fiscal == 1 ? 'SI' : 'NO'}</button>`
+                            : `<span class="badge ${f.Fiscal == 1 ? 'bg-success' : 'bg-secondary'} opacity-75">${f.Fiscal == 1 ? 'SI' : 'NO'}</span>`}
+                    </td>
                     <td class="text-center"><span class="badge ${f.Estado === 'Pagada' ? 'bg-success text-white' : 'bg-warning text-dark'} opacity-75">${f.Estado}</span></td>
                     <td class="text-center">
                         <div class="btn-group btn-group-sm shadow-sm">
@@ -425,6 +440,12 @@ require_once 'check_access.php';
                 <div class="erp-card-row">
                     <span class="erp-card-label">Neto / IVA</span>
                     <span class="erp-card-value">$ ${parseFloat(f.Neto).toFixed(2)} / $ ${parseFloat(f['IVA Total']).toFixed(2)}</span>
+                </div>
+                <div class="erp-card-row">
+                    <span class="erp-card-label">Fiscal</span>
+                    <span class="erp-card-value">${f.Estado === 'Pagada'
+                        ? (f.Fiscal == 1 ? 'SI' : 'NO')
+                        : `<button class="btn btn-sm ${f.Fiscal == 1 ? 'btn-success' : 'btn-secondary'} py-0 px-2 border-0" onclick="window.toggleFiscal(${absoluteIdx})">${f.Fiscal == 1 ? 'SI' : 'NO'}</button>`}</span>
                 </div>
                 <div class="erp-card-row pt-2 mt-1 border-top" style="border-color: rgba(255,255,255,0.05) !important;">
                     <span class="erp-card-label">Total</span>
@@ -554,6 +575,19 @@ require_once 'check_access.php';
             if (res.success) { Swal.fire('Éxito', 'Comprobante eliminado.', 'success'); buscar(); }
             else Swal.fire('Error', res.error, 'error');
         }
+    };
+
+    window.toggleFiscal = async (absoluteIdx) => {
+        const f = listado[absoluteIdx];
+        const nuevoValor = f.Fiscal == 1 ? 0 : 1;
+        const conf = await Swal.fire({ title: `¿Marcar ${f.Tipo} ${f['Num Factura']} como ${nuevoValor ? 'FISCAL' : 'NO FISCAL'}?`, icon: 'question', showCancelButton: true }).then(r => r.isConfirmed);
+        if (!conf) return;
+        const res = await fetch('api_proveedores_facturas_admin.php?action=update_field', {
+            method: 'POST', headers: { ...commonHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: f.ID, field: 'fiscal', value: nuevoValor })
+        }).then(r => r.json());
+        if (res.success) { f.Fiscal = nuevoValor; renderPagina(); }
+        else Swal.fire('Error', res.error, 'error');
     };
 
     window.unimputeNC = async (absoluteIdx) => {

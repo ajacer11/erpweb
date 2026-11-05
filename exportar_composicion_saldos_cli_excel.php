@@ -17,11 +17,11 @@ $stmtP = $pdo->prepare("SELECT fecha, id, saldoaimputar as p FROM pagos WHERE cl
 $stmtP->execute([$cliente_id]);
 $pagos = $stmtP->fetchAll();
 
-$stmtNC = $pdo->prepare("SELECT fecha, CONCAT(letracomp,' ',LPAD(PtoVta,4,'0'),'-',LPAD(numcomp,8,'0')) as n, total - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idpago = tickets.id AND tablapago = 'tickets'), 0) as p FROM tickets WHERE cliente = ? AND pagada = 0 AND tipocomp IN (3, 8, 13, 101) HAVING p > 0.01");
+$stmtNC = $pdo->prepare("SELECT fecha, CONCAT(letracomp,' ',LPAD(PtoVta,4,'0'),'-',LPAD(numcomp,8,'0')) as n, COALESCE(importectacte, total) - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idpago = tickets.id AND tablapago = 'tickets'), 0) as p FROM tickets WHERE cliente = ? AND pagada = 0 AND tipocomp IN (3, 8, 13, 101) HAVING p > 0.01");
 $stmtNC->execute([$cliente_id]);
 $nc = $stmtNC->fetchAll();
 
-$stmtF = $pdo->prepare("SELECT fecha, CONCAT(letracomp,' ',LPAD(PtoVta,4,'0'),'-',LPAD(numcomp,8,'0')) as n, total - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0) as p FROM tickets WHERE cliente = ? AND pagada = 0 AND tipocomp NOT IN (3, 8, 13, 101) HAVING p > 0.01");
+$stmtF = $pdo->prepare("SELECT fecha, CONCAT(letracomp,' ',LPAD(PtoVta,4,'0'),'-',LPAD(numcomp,8,'0')) as n, COALESCE(importectacte, total) - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0) as p FROM tickets WHERE cliente = ? AND pagada = 0 AND tipocomp NOT IN (3, 8, 13, 101) HAVING p > 0.01");
 $stmtF->execute([$cliente_id]);
 $facturas = $stmtF->fetchAll();
 

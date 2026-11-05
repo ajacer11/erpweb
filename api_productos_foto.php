@@ -1,14 +1,19 @@
 <?php
 /**
- * api_productos_foto.php - Subida/borrado de la foto de un producto.
+ * api_productos_foto.php - Subida/borrado de fotos de un producto (hasta 5).
  *
  * Arquitectura multi-tenant en un solo dominio/webroot: las fotos NO se
  * guardan en la base de datos (el sistema de escritorio VB.NET las guardaba
  * como BLOB en `fotosproductos`, algo que se descartó a propósito acá) ni
  * sueltas en una carpeta compartida entre clientes. Se guardan en disco,
- * separadas por CUIT: img/productos/{cuit}/{codigo}.jpg — esa carpeta tiene
- * un .htaccess que bloquea el acceso HTTP directo; solo se sirven a través
- * de img_producto.php, que valida sesión + tenant antes de leer el archivo.
+ * separadas por CUIT: img/productos/{cuit}/{codigo}[_{slot}].jpg — esa
+ * carpeta tiene un .htaccess que bloquea el acceso HTTP directo; solo se
+ * sirven a través de img_producto.php (con sesión) o img_producto_publico.php
+ * (con token), que validan tenant antes de leer el archivo.
+ *
+ * Slots: 1 es la foto de portada y usa el nombre histórico sin sufijo
+ * ({codigo}.jpg), por compatibilidad con lo que ya existía. Los slots 2 a
+ * MAX_SLOTS son imágenes adicionales y usan sufijo ({codigo}_2.jpg, etc.).
  *
  * Toda imagen subida se reprocesa con GD y se guarda como JPEG (evita
  * acumular archivos gigantes de cámaras/celulares y unifica el formato).
@@ -18,6 +23,7 @@ require_once 'check_api_access.php';
 const MAX_BYTES = 6 * 1024 * 1024; // 6MB de entrada; el JPEG re-codificado queda mucho más chico
 const MAX_DIM = 1000;              // lado máximo del lado más largo, en píxeles
 const JPEG_QUALITY = 82;
+const MAX_SLOTS = 5;
 
 function tenantDir(): string {
     $cuit = preg_replace('/[^a-zA-Z0-9]/', '', $_SESSION['tenant_cuit'] ?? '');
@@ -31,6 +37,19 @@ function safeFileName(string $codigo): string {
     return $safe;
 }
 
+function slotValido($slot): int {
+    $slot = (int)$slot;
+    if ($slot < 1 || $slot > MAX_SLOTS) {
+        throw new Exception('Posición de imagen inválida (debe ser entre 1 y ' . MAX_SLOTS . ').');
+    }
+    return $slot;
+}
+
+function nombreBase(string $codigo, int $slot): string {
+    $safe = safeFileName($codigo);
+    return $slot === 1 ? $safe : "{$safe}_{$slot}";
+}
+
 try {
     $method = $_SERVER['REQUEST_METHOD'];
     $action = $_GET['action'] ?? ($method === 'POST' && isset($_FILES['foto']) ? 'upload' : ($_POST['action'] ?? ''));
@@ -38,6 +57,7 @@ try {
     if ($method === 'POST' && $action === 'upload') {
         $codigo = trim($_POST['codigo'] ?? '');
         if ($codigo === '') throw new Exception('Falta el código de producto.');
+        $slot = slotValido($_POST['slot'] ?? 1);
 
         // El producto debe existir realmente en la base del tenant conectado.
         $stmt = $pdo->prepare("SELECT codigo FROM alb_productos WHERE codigo = ? LIMIT 1");
@@ -83,12 +103,13 @@ try {
             throw new Exception('No se pudo crear la carpeta de imágenes del tenant.');
         }
 
-        $fileName = safeFileName($codigo) . '.jpg';
+        $base = nombreBase($codigo, $slot);
+        $fileName = "$base.jpg";
         $destPath = "$dir/$fileName";
 
-        // Limpiar variantes previas en otro formato (si alguna vez se guardó png/webp).
+        // Limpiar variantes previas en otro formato de ese mismo slot (si alguna vez se guardó png/webp).
         foreach (['jpg', 'jpeg', 'png', 'webp'] as $ext) {
-            $old = "$dir/" . safeFileName($codigo) . ".$ext";
+            $old = "$dir/$base.$ext";
             if (is_file($old)) @unlink($old);
         }
 
@@ -101,7 +122,8 @@ try {
         echo json_encode([
             'success' => true,
             'message' => 'Foto guardada correctamente.',
-            'url' => 'img_producto.php?codigo=' . urlencode($codigo) . '&v=' . time()
+            'slot' => $slot,
+            'url' => 'img_producto.php?codigo=' . urlencode($codigo) . '&slot=' . $slot . '&v=' . time()
         ]);
         exit;
     }
@@ -110,11 +132,13 @@ try {
         $input = json_decode(file_get_contents('php://input'), true) ?: $_POST;
         $codigo = trim($input['codigo'] ?? '');
         if ($codigo === '') throw new Exception('Falta el código de producto.');
+        $slot = slotValido($input['slot'] ?? 1);
 
         $dir = tenantDir();
+        $base = nombreBase($codigo, $slot);
         $borrado = false;
         foreach (['jpg', 'jpeg', 'png', 'webp'] as $ext) {
-            $path = "$dir/" . safeFileName($codigo) . ".$ext";
+            $path = "$dir/$base.$ext";
             if (is_file($path)) { @unlink($path); $borrado = true; }
         }
 

@@ -32,7 +32,7 @@ try {
             stockcomprometido as 'Stock Comprometido', 
             stockmin as 'Stock Min.', 
             rubro as 'Rubro', 
-            (SELECT Marcas.marca from Marcas WHERE Marcas.id = historicoproductos.marca) as 'Marca', 
+            (SELECT Marcas.marca from Marcas WHERE Marcas.id = historicoproductos.marca) as 'Marca',
             preciocosto as 'Costo Final', 
             Proveedor as 'Proveedor', 
             sinivacosto as 'Neto Costo', 

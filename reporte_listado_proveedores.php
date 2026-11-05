@@ -81,6 +81,9 @@ require_once 'check_access.php';
     (function() {
         const ENTITY = 'proveedores';
         let currentData = [];
+        const ordenTabla = erpOrdenarTabla('#tablaListado', () => currentData, renderPagina,
+            () => currentData.length ? Object.keys(currentData[0]).map(k =>
+                ({campo:k, tipo:/^(id|.*saldo.*|.*importe.*|.*total.*)$/i.test(k) ? 'numero' : 'texto'})) : []);
         let pagActual = 1, pagTotal = 1, pagTam = 20;
         window.pagActual = 1; window.pagTotal = 1;
 
@@ -92,6 +95,7 @@ require_once 'check_access.php';
                 const res = await resp.json();
                 if (res.status === 'ok') {
                     currentData = res.data || [];
+                    ordenTabla.aplicar();
                     pagActual = 1; window.pagActual = 1;
                     renderPagina();
                 } else {
@@ -133,6 +137,7 @@ require_once 'check_access.php';
                 th.innerText = k.toUpperCase();
                 thead.appendChild(th);
             });
+            ordenTabla.pintar();
 
             data.forEach(r => {
                 const tr = document.createElement('tr');

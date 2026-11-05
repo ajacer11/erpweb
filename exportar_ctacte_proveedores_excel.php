@@ -55,7 +55,7 @@ if ($solo_saldos) {
     }
 
     // 2. Consulta de Movimientos
-    $comprobante_case = "CASE m.tabla WHEN 'facturasdecompra' THEN (SELECT CASE tipocomp WHEN 1 THEN 'FCA' WHEN 3 THEN 'NCA' WHEN 6 THEN 'FCB' WHEN 8 THEN 'NCB' WHEN 100 THEN 'TKT' WHEN 11 THEN 'FCC' ELSE 'Otro' END FROM facturasdecompra WHERE id = m.compasoc) WHEN 'pagoaproveedores' THEN 'Pago' END AS Tipo_Comprobante, CASE m.tabla WHEN 'facturasdecompra' THEN (SELECT numfact FROM facturasdecompra WHERE id = m.compasoc) WHEN 'pagoaproveedores' THEN (SELECT id FROM pagoaproveedores WHERE numcomp = m.compasoc) END AS Num_Comprobante";
+    $comprobante_case = "CASE m.tabla WHEN 'facturasdecompra' THEN (SELECT CASE tipocomp WHEN 1 THEN 'FCA' WHEN 2 THEN 'NDA' WHEN 3 THEN 'NCA' WHEN 6 THEN 'FCB' WHEN 7 THEN 'NDB' WHEN 8 THEN 'NCB' WHEN 100 THEN 'TKT' WHEN 11 THEN 'FCC' WHEN 12 THEN 'NDC' ELSE 'Otro' END FROM facturasdecompra WHERE id = m.compasoc) WHEN 'pagoaproveedores' THEN 'Pago' WHEN 'anulacion_pagoaproveedores' THEN 'Anulación pago' END AS Tipo_Comprobante, CASE m.tabla WHEN 'facturasdecompra' THEN (SELECT numfact FROM facturasdecompra WHERE id = m.compasoc) WHEN 'pagoaproveedores' THEN COALESCE(NULLIF(m.idpago, 0), (SELECT id FROM pagoaproveedores WHERE numcomp = m.compasoc AND proveedor = m.proveedor LIMIT 1)) WHEN 'anulacion_pagoaproveedores' THEN m.idpago END AS Num_Comprobante";
     
     $sql = "SELECT m.proveedor AS idproveedor, DATE_FORMAT(m.fecha, '%d/%m/%Y') AS Fecha, (SELECT razon FROM Proveedores WHERE id = m.proveedor) AS Proveedor, $comprobante_case, ROUND(m.facturas,2) AS Facturas, ROUND(m.pagos,2) AS Pagos FROM moviemientosccproveedores m WHERE m.id > 0 $where_prov $fecha_sql $fisco_sql ORDER BY $orden_sql";
     $stmtMain = $pdo->query($sql);
@@ -91,14 +91,14 @@ header("Content-Disposition: attachment; filename=\"$filename\"");
                 <th class="header">ID</th>
                 <th class="header">PROVEEDOR</th>
                 <th class="header">ULT. MOV</th>
-                <th class="header">FACTURADO (+)</th>
+                <th class="header">DEBE / CARGOS (+)</th>
                 <th class="header">PAGADO (-)</th>
                 <th class="header">SALDO</th>
             <?php else: ?>
                 <th class="header">FECHA</th>
                 <th class="header">PROVEEDOR</th>
                 <th class="header">COMPROBANTE</th>
-                <th class="header">FACTURAS</th>
+                <th class="header">DEBE / CARGOS</th>
                 <th class="header">PAGOS</th>
                 <th class="header">SALDO ACUM.</th>
             <?php endif; ?>

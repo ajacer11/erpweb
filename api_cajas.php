@@ -24,7 +24,7 @@ try {
             $stmt = $pdo->prepare("SELECT c.id, c.descripcion as nombre 
                                   FROM controlcajas ctrl 
                                   JOIN cajas c ON ctrl.idcaja = c.id 
-                                  WHERE ctrl.usuario = ? AND ctrl.cerradael IS NULL 
+                                  WHERE ctrl.usuario = ? AND (ctrl.cerradael IS NULL OR ctrl.cerradael = '0000-00-00 00:00:00')
                                   ORDER BY ctrl.id DESC LIMIT 1");
             $stmt->execute([$usuario_nombre]);
             $caja = $stmt->fetch();
@@ -65,9 +65,20 @@ try {
             $pdo->beginTransaction();
 
             // Verificar apertura previa en controlcajas (cerradael IS NULL)
-            $stmtCheck = $pdo->prepare("SELECT COUNT(*) FROM controlcajas WHERE usuario = ? AND cerradael IS NULL");
+            $stmtCheck = $pdo->prepare("SELECT COUNT(*) FROM controlcajas WHERE usuario = ? AND (cerradael IS NULL OR cerradael = '0000-00-00 00:00:00')");
             $stmtCheck->execute([$usuario_nombre]);
             if ($stmtCheck->fetchColumn() > 0) throw new Exception("Ya tienes una caja abierta registrada.");
+
+            // Auto-saneo: 'cajas.usuarioactivo' tiene UNIQUE KEY, así que si una
+            // apertura anterior quedó mal cerrada (corte de luz, edición manual de
+            // controlcajas, etc.) puede quedar otro puesto marcado con el nombre de
+            // este usuario aunque controlcajas ya no muestre nada abierto — el
+            // UPDATE de más abajo explota con SQLSTATE[23000] Duplicate entry al
+            // intentar abrir CUALQUIER caja. Como recién se confirmó arriba que no
+            // tiene ninguna apertura vigente, cualquier fila marcada con su nombre
+            // es basura de una sesión anterior y se puede liberar con seguridad.
+            $pdo->prepare("UPDATE cajas SET estado = 0, usuarioactivo = NULL WHERE usuarioactivo = ? AND id != ?")
+                ->execute([$usuario_nombre, $id_puesto]);
 
             // Identificar cuenta para saldo inicial
             $stmtAcc = $pdo->prepare("SELECT id FROM mediosdepago WHERE puestoasociado = ? LIMIT 1");
@@ -106,7 +117,7 @@ try {
 
             // Buscar registro abierto
             $stmtCtrl = $pdo->prepare("SELECT id, idcaja FROM controlcajas 
-                                      WHERE usuario = ? AND cerradael IS NULL 
+                                      WHERE usuario = ? AND (cerradael IS NULL OR cerradael = '0000-00-00 00:00:00')
                                       ORDER BY id DESC LIMIT 1");
             $stmtCtrl->execute([$usuario_nombre]);
             $ctrlRecord = $stmtCtrl->fetch();
@@ -162,7 +173,7 @@ try {
 
             $pdo->beginTransaction();
 
-            $stmtCtrl = $pdo->prepare("SELECT id, idcaja, usuario FROM controlcajas WHERE id = ? AND cerradael IS NULL LIMIT 1");
+            $stmtCtrl = $pdo->prepare("SELECT id, idcaja, usuario FROM controlcajas WHERE id = ? AND (cerradael IS NULL OR cerradael = '0000-00-00 00:00:00') LIMIT 1");
             $stmtCtrl->execute([$id_control]);
             $ctrlRecord = $stmtCtrl->fetch();
             if (!$ctrlRecord) throw new Exception("Esa caja ya no figura abierta (puede haberse cerrado recién).");
@@ -207,7 +218,7 @@ try {
             $pdo->beginTransaction();
 
             // 1. Validar si el usuario tiene caja abierta
-            $stmtCtrl = $pdo->prepare("SELECT id, idcaja FROM controlcajas WHERE usuario = ? AND cerradael IS NULL ORDER BY id DESC LIMIT 1");
+            $stmtCtrl = $pdo->prepare("SELECT id, idcaja FROM controlcajas WHERE usuario = ? AND (cerradael IS NULL OR cerradael = '0000-00-00 00:00:00') ORDER BY id DESC LIMIT 1");
             $stmtCtrl->execute([$usuario_nombre]);
             $ctrl = $stmtCtrl->fetch();
             if (!$ctrl) throw new Exception("No tienes una caja abierta. No puedes realizar retiros.");
@@ -283,13 +294,12 @@ try {
 
             // 7. Generar Asientos en LIBRODIARIO
             $concepto = "RETIRO A CAJA CENTRAL - " . $usuario_nombre;
-            $stmtInsLD = $pdo->prepare("INSERT INTO librodiario (fecha, numasiento, cuenta, debe, haber, detalle, idejercicio, periodo, usuario) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            
+
             // a. CAJA CENTRAL (Entra dinero -> DEBE)
-            $stmtInsLD->execute([$fecha, $num_asiento_contable, $cuentaDes['cuentacontable'], $importe, 0, $concepto, $ejercicio_id, $periodoActual, $usuario_nombre]);
-            
+            grabarLineaAsiento($pdo, $num_asiento_contable, $fecha, $cuentaDes['cuentacontable'], $importe, 0, $ctrl['id'], 'controlcajas', 0, $usuario_nombre, $concepto, $ejercicio_id, $periodoActual);
+
             // b. CAJA USUARIO (Sale dinero -> HABER)
-            $stmtInsLD->execute([$fecha, $num_asiento_contable, $cuentaOri['cuentacontable'], 0, $importe, $concepto, $ejercicio_id, $periodoActual, $usuario_nombre]);
+            grabarLineaAsiento($pdo, $num_asiento_contable, $fecha, $cuentaOri['cuentacontable'], 0, $importe, $ctrl['id'], 'controlcajas', 0, $usuario_nombre, $concepto, $ejercicio_id, $periodoActual);
 
             // 8. Generar Movimientos de Tesorería (cccuentastesoreria)
             $stmtInsTeso = $pdo->prepare("INSERT INTO cccuentastesoreria (idcuenta, fecha, debe, haber, numerodeasiento, descripcion, usuario, tabla) VALUES (?, ?, ?, ?, ?, ?, ?, 'retiro_central')");
@@ -301,7 +311,7 @@ try {
             $stmtInsTeso->execute([$cuentaDes['id'], $fecha, $importe, 0, $num_asiento_teso, $concepto, $usuario_nombre]);
 
             $pdo->commit();
-            echo json_encode(['success' => true, 'message' => 'Retiro a Caja Central registrado correctamente. Asiento Contable Nº ' . $num_asiento_contable]);
+            echo json_encode(['success' => true, 'comprobante_id' => $num_asiento_teso, 'message' => 'Retiro a Caja Central registrado correctamente. Asiento Contable Nº ' . $num_asiento_contable]);
             break;
 
         // Listar cajas destino disponibles
@@ -312,7 +322,7 @@ try {
                                   JOIN mediosdepago m ON c.id = m.puestoasociado 
                                   JOIN controlcajas cc ON c.id = cc.idcaja 
                                   WHERE c.estado = 1 
-                                  AND cc.cerradael IS NULL 
+                                  AND (cc.cerradael IS NULL OR cc.cerradael = '0000-00-00 00:00:00')
                                   AND m.tipodecuenta = 'Caja de Usuarios' 
                                   AND c.usuarioactivo != ? 
                                   ORDER BY c.descripcion ASC");
@@ -331,7 +341,7 @@ try {
             $pdo->beginTransaction();
 
             // 1. Validar Caja Origen (Usuario Actual)
-            $stmtCtrl = $pdo->prepare("SELECT id, idcaja FROM controlcajas WHERE usuario = ? AND cerradael IS NULL ORDER BY id DESC LIMIT 1");
+            $stmtCtrl = $pdo->prepare("SELECT id, idcaja FROM controlcajas WHERE usuario = ? AND (cerradael IS NULL OR cerradael = '0000-00-00 00:00:00') ORDER BY id DESC LIMIT 1");
             $stmtCtrl->execute([$usuario_nombre]);
             $ctrl = $stmtCtrl->fetch();
             if (!$ctrl) throw new Exception("No tienes una caja abierta. No puedes realizar transferencias.");
@@ -350,7 +360,7 @@ try {
             $stmtDesCheck = $pdo->prepare("SELECT c.id, c.descripcion, c.usuarioactivo 
                                           FROM cajas c 
                                           JOIN controlcajas cc ON c.id = cc.idcaja 
-                                          WHERE c.id = ? AND c.estado = 1 AND cc.cerradael IS NULL");
+                                          WHERE c.id = ? AND c.estado = 1 AND (cc.cerradael IS NULL OR cc.cerradael = '0000-00-00 00:00:00')");
             $stmtDesCheck->execute([$id_caja_destino]);
             $cajaDesData = $stmtDesCheck->fetch();
             if (!$cajaDesData) throw new Exception("La caja de destino no está disponible o fue cerrada recientemente.");
@@ -409,11 +419,10 @@ try {
             $concepto = "TRANSF. A CAJA " . $cajaDesData['descripcion'] . " (" . $cajaDesData['usuarioactivo'] . ")";
 
             // LIBRODIARIO
-            $stmtInsLD = $pdo->prepare("INSERT INTO librodiario (fecha, numasiento, cuenta, debe, haber, detalle, idejercicio, periodo, usuario) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
             // a. DESTINO (Entra -> DEBE)
-            $stmtInsLD->execute([$fecha, $num_asiento_contable, $cuentaDes['cuentacontable'], $importe, 0, $concepto, $ejercicio_id, $periodoActual, $usuario_nombre]);
+            grabarLineaAsiento($pdo, $num_asiento_contable, $fecha, $cuentaDes['cuentacontable'], $importe, 0, $ctrl['id'], 'controlcajas', 0, $usuario_nombre, $concepto, $ejercicio_id, $periodoActual);
             // b. ORIGEN (Sale -> HABER)
-            $stmtInsLD->execute([$fecha, $num_asiento_contable, $cuentaOri['cuentacontable'], 0, $importe, $concepto, $ejercicio_id, $periodoActual, $usuario_nombre]);
+            grabarLineaAsiento($pdo, $num_asiento_contable, $fecha, $cuentaOri['cuentacontable'], 0, $importe, $ctrl['id'], 'controlcajas', 0, $usuario_nombre, $concepto, $ejercicio_id, $periodoActual);
 
             // TESORERÍA
             $stmtInsTeso = $pdo->prepare("INSERT INTO cccuentastesoreria (idcuenta, fecha, debe, haber, numerodeasiento, descripcion, usuario, tabla) VALUES (?, ?, ?, ?, ?, ?, ?, 'transf_cajas')");
@@ -423,7 +432,7 @@ try {
             $stmtInsTeso->execute([$cuentaDes['id'], $fecha, $importe, 0, $num_asiento_teso, $concepto, $usuario_nombre]);
 
             $pdo->commit();
-            echo json_encode(['success' => true, 'message' => 'Transferencia registrada correctamente. Asiento Nº ' . $num_asiento_contable]);
+            echo json_encode(['success' => true, 'comprobante_id' => $num_asiento_teso, 'message' => 'Transferencia registrada correctamente. Asiento Nº ' . $num_asiento_contable]);
             break;
 
         // NUEVO CASO: Arqueo y Ajuste de Caja
@@ -434,7 +443,7 @@ try {
             $pdo->beginTransaction();
 
             // 1. Validar Caja Abierta del Usuario
-            $stmtCtrl = $pdo->prepare("SELECT id, idcaja FROM controlcajas WHERE usuario = ? AND cerradael IS NULL ORDER BY id DESC LIMIT 1");
+            $stmtCtrl = $pdo->prepare("SELECT id, idcaja FROM controlcajas WHERE usuario = ? AND (cerradael IS NULL OR cerradael = '0000-00-00 00:00:00') ORDER BY id DESC LIMIT 1");
             $stmtCtrl->execute([$usuario_nombre]);
             $ctrl = $stmtCtrl->fetch();
             if (!$ctrl) throw new Exception("No tienes una caja abierta para realizar ajustes.");
@@ -464,11 +473,19 @@ try {
                 exit();
             }
 
-            // 5. Obtener Cuenta Contable de Ajuste (Desde cuentaspredeterminadas ID 1)
-            // Según instrucción: tabla cuentaspredeterminadas en el id 1 el campo 'ajuste'
-            $stmtConfig = $pdo->query("SELECT ajuste FROM cuentaspredeterminadas WHERE id = 1");
-            $cuenta_ajuste_contable = $stmtConfig->fetchColumn();
-            if (!$cuenta_ajuste_contable) throw new Exception("No está configurada la cuenta contable de Ajuste (cuentaspredeterminadas ID 1).");
+            // 5. Contrapartida: el medio de tesorería de tipo 'Ajuste' ("Ajuste de Cajas", cuenta Diferencias de
+            //    Caja), igual que el sistema anterior: el ajuste mueve la caja Y ese medio en tesorería, y el
+            //    asiento va contra su cuenta. cuentaspredeterminadas.ajuste es la diferencia de INVENTARIOS
+            //    (ajustes de stock): usarla acá imputaba los ajustes de caja a la cuenta equivocada.
+            $stmtMedioAj = $pdo->query("SELECT id, cuentacontable FROM mediosdepago WHERE tipodecuenta = 'Ajuste' AND habilitado = 1 ORDER BY id");
+            $mediosAjuste = array_values(array_filter($stmtMedioAj->fetchAll(PDO::FETCH_ASSOC), fn($m) => cuentaContableExiste($pdo, $m['cuentacontable'])));
+            if (count($mediosAjuste) !== 1) {
+                throw new Exception(count($mediosAjuste) === 0
+                    ? "No hay un medio de tesorería de tipo 'Ajuste' habilitado con cuenta contable (ej. 'Ajuste de Cajas'). Configúrelo en Tesorería > Cuentas."
+                    : "Hay más de un medio de tesorería de tipo 'Ajuste' habilitado; deje uno solo para los ajustes de caja.");
+            }
+            $medioAjuste = $mediosAjuste[0];
+            $cuenta_ajuste_contable = trim((string) $medioAjuste['cuentacontable']);
 
             // 6. VALIDACIÓN DE EJERCICIO Y PERÍODO (CRÍTICO)
             $fecha = date('Y-m-d');
@@ -511,7 +528,6 @@ try {
             // 8. Generar Asientos
             $concepto = "AJUSTE DE CAJA - " . $usuario_nombre . " (DIF: " . number_format($diferencia, 2) . ")";
             
-            $stmtInsLD = $pdo->prepare("INSERT INTO librodiario (fecha, numasiento, cuenta, debe, haber, detalle, idejercicio, periodo, usuario) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
             $stmtInsTeso = $pdo->prepare("INSERT INTO cccuentastesoreria (idcuenta, fecha, debe, haber, numerodeasiento, descripcion, usuario, tabla) VALUES (?, ?, ?, ?, ?, ?, ?, 'ajuste_caja')");
 
             if ($diferencia < 0) {
@@ -521,13 +537,13 @@ try {
 
                 // Libro Diario
                 // 1. Pérdida (Ajuste) al DEBE
-                $stmtInsLD->execute([$fecha, $num_asiento_contable, $cuenta_ajuste_contable, $importe_ajuste, 0, $concepto, $ejercicio_id, $periodoActual, $usuario_nombre]);
+                grabarLineaAsiento($pdo, $num_asiento_contable, $fecha, $cuenta_ajuste_contable, $importe_ajuste, 0, $ctrl['id'], 'controlcajas', 0, $usuario_nombre, $concepto, $ejercicio_id, $periodoActual);
                 // 2. Caja al HABER
-                $stmtInsLD->execute([$fecha, $num_asiento_contable, $cuentaCaja['cuentacontable'], 0, $importe_ajuste, $concepto, $ejercicio_id, $periodoActual, $usuario_nombre]);
+                grabarLineaAsiento($pdo, $num_asiento_contable, $fecha, $cuentaCaja['cuentacontable'], 0, $importe_ajuste, $ctrl['id'], 'controlcajas', 0, $usuario_nombre, $concepto, $ejercicio_id, $periodoActual);
 
-                // Tesorería (Solo movimiento de caja)
-                // Salida al HABER
+                // Tesorería: sale de la caja (HABER) y entra al medio de Ajuste (DEBE)
                 $stmtInsTeso->execute([$cuentaCaja['id'], $fecha, 0, $importe_ajuste, $num_asiento_teso, $concepto, $usuario_nombre]);
+                $stmtInsTeso->execute([$medioAjuste['id'], $fecha, $importe_ajuste, 0, $num_asiento_teso, $concepto, $usuario_nombre]);
 
             } else {
                 // SOBRANTE DE CAJA (Entra Dinero a Caja -> Debe)
@@ -536,17 +552,17 @@ try {
 
                 // Libro Diario
                 // 1. Caja al DEBE
-                $stmtInsLD->execute([$fecha, $num_asiento_contable, $cuentaCaja['cuentacontable'], $importe_ajuste, 0, $concepto, $ejercicio_id, $periodoActual, $usuario_nombre]);
+                grabarLineaAsiento($pdo, $num_asiento_contable, $fecha, $cuentaCaja['cuentacontable'], $importe_ajuste, 0, $ctrl['id'], 'controlcajas', 0, $usuario_nombre, $concepto, $ejercicio_id, $periodoActual);
                 // 2. Ganancia (Ajuste) al HABER
-                $stmtInsLD->execute([$fecha, $num_asiento_contable, $cuenta_ajuste_contable, 0, $importe_ajuste, $concepto, $ejercicio_id, $periodoActual, $usuario_nombre]);
+                grabarLineaAsiento($pdo, $num_asiento_contable, $fecha, $cuenta_ajuste_contable, 0, $importe_ajuste, $ctrl['id'], 'controlcajas', 0, $usuario_nombre, $concepto, $ejercicio_id, $periodoActual);
 
-                // Tesorería
-                // Entrada al DEBE
+                // Tesorería: entra a la caja (DEBE) y sale del medio de Ajuste (HABER)
                 $stmtInsTeso->execute([$cuentaCaja['id'], $fecha, $importe_ajuste, 0, $num_asiento_teso, $concepto, $usuario_nombre]);
+                $stmtInsTeso->execute([$medioAjuste['id'], $fecha, 0, $importe_ajuste, $num_asiento_teso, $concepto, $usuario_nombre]);
             }
 
             $pdo->commit();
-            echo json_encode(['success' => true, 'message' => 'Ajuste realizado correctamente. Diferencia ajustada: $ ' . number_format($diferencia, 2)]);
+            echo json_encode(['success' => true, 'comprobante_id' => $num_asiento_teso, 'message' => 'Ajuste realizado correctamente. Diferencia ajustada: $ ' . number_format($diferencia, 2)]);
             break;
 
         default:

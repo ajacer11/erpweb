@@ -60,6 +60,7 @@ if (!isset($_SESSION['usuario_id'])) {
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="tabla_ordenamiento.js?v=20260916"></script>
 
     <script>
         let currentUrl = "";

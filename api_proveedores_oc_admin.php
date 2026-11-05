@@ -9,12 +9,7 @@ $action = $_GET['action'] ?? '';
 try {
     switch ($action) {
         case 'list':
-        case 'export_excel':
-            if ($action === 'list') {
-                $data = json_decode(file_get_contents('php://input'), true);
-            } else {
-                $data = $_GET;
-            }
+            $data = json_decode(file_get_contents('php://input'), true);
 
             $desde = $data['desde'] ?? date('Y-m-d', strtotime('-1 month'));
             $hasta = $data['hasta'] ?? date('Y-m-d');
@@ -49,26 +44,6 @@ try {
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
             $resultados = $stmt->fetchAll();
-
-            if ($action === 'export_excel') {
-                header('Content-Type: application/vnd.ms-excel; charset=utf-8');
-                header('Content-Disposition: attachment; filename=pedidos_proveedores_' . date('Ymd') . '.xls');
-                echo "\xEF\xBB\xBF<table border='1'><thead><tr style='background-color: #001020; color: #00ffff;'>";
-                if (!empty($resultados)) {
-                    foreach (array_keys($resultados[0]) as $col) echo "<th>" . strtoupper($col) . "</th>";
-                    echo "</tr></thead><tbody>";
-                    foreach ($resultados as $row) {
-                        echo "<tr>";
-                        foreach ($row as $k => $v) {
-                            $style = (is_numeric($v) && $k !== 'Nro Pedido') ? "text-align: right;" : "";
-                            echo "<td style='$style'>" . htmlspecialchars($v) . "</td>";
-                        }
-                        echo "</tr>";
-                    }
-                }
-                echo "</tbody></table>";
-                exit;
-            }
 
             echo json_encode(['success' => true, 'data' => $resultados]);
             break;

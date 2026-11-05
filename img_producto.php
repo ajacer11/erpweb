@@ -29,6 +29,11 @@ if ($codigo === '') {
     exit;
 }
 
+// Slot 1 = foto de portada (nombre histórico sin sufijo, {codigo}.jpg).
+// Slots 2 a 5 = imágenes adicionales ({codigo}_{slot}.jpg). Ver api_productos_foto.php.
+$slot = (int)($_GET['slot'] ?? 1);
+if ($slot < 1 || $slot > 5) $slot = 1;
+
 require_once 'db.php';
 
 // El código debe corresponder a un producto real del tenant conectado.
@@ -41,6 +46,7 @@ if (!$stmt->fetch()) {
 
 $cuit = preg_replace('/[^a-zA-Z0-9]/', '', $_SESSION['tenant_cuit']);
 $safeCode = preg_replace('/[^a-zA-Z0-9_\-\.]/', '_', $codigo);
+$safeCode = $slot === 1 ? $safeCode : "{$safeCode}_{$slot}";
 $dir = __DIR__ . "/img/productos/$cuit";
 
 $mimeByExt = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'webp' => 'image/webp'];
@@ -56,10 +62,14 @@ foreach ($mimeByExt as $ext => $mime) {
     }
 }
 
-// Fallback: foto legacy guardada como BLOB (formato viejo del sistema VB.NET)
-$stmtBlob = $pdo->prepare("SELECT imagen FROM fotosproductos WHERE codigo = ? ORDER BY id DESC LIMIT 1");
-$stmtBlob->execute([$codigo]);
-$row = $stmtBlob->fetch(PDO::FETCH_ASSOC);
+// Fallback: foto legacy guardada como BLOB (formato viejo del sistema VB.NET).
+// Solo existe una por producto, así que solo aplica al slot de portada.
+$row = null;
+if ($slot === 1) {
+    $stmtBlob = $pdo->prepare("SELECT imagen FROM fotosproductos WHERE codigo = ? ORDER BY id DESC LIMIT 1");
+    $stmtBlob->execute([$codigo]);
+    $row = $stmtBlob->fetch(PDO::FETCH_ASSOC);
+}
 
 if ($row && !empty($row['imagen'])) {
     $mime = 'image/jpeg';

@@ -256,7 +256,13 @@ require_once 'check_access.php';
                 const res = await resp.json();
                 
                 if (res.success) {
-                    Swal.fire({title: 'Éxito', text: res.message, icon: 'success', background: '#001020', color: '#fff'});
+                    // Un código que no está en el padrón no es un error de proceso, pero
+                    // tampoco se aplicó: si no se avisa, el cartel de "Éxito" hace creer
+                    // que los precios cambiaron cuando la base quedó igual.
+                    const conErrores = (res.errores || []).length > 0
+                                       || (res.no_encontrados || 0) > 0
+                                       || (res.sin_codigo || 0) > 0;
+                    Swal.fire({title: conErrores ? 'Completado con observaciones' : 'Éxito', text: res.message, icon: conErrores ? 'warning' : 'success', background: '#001020', color: '#fff', customClass: {htmlContainer: 'text-start'}, didOpen: (el) => { el.querySelector('.swal2-html-container').style.whiteSpace = 'pre-line'; }});
                     document.getElementById('panelPreview').classList.add('d-none');
                     document.getElementById('emptyState').classList.remove('d-none');
                     document.getElementById('frmUpload').reset();

@@ -37,8 +37,8 @@ try {
                     END AS Tipo,
                     CONCAT(LPAD(PtoVta, 4, '0'),'-',LPAD(numcomp, 8, '0')) AS 'Num Factura',
                     total AS Total,
-                    COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0) AS Cobrado,
-                    total - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0) AS Saldo,
+                    total - COALESCE(importectacte, total) + COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0) AS Cobrado,
+                    COALESCE(importectacte, total) - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0) AS Saldo,
                     DATE_FORMAT(fecha, '%d/%m/%Y') as 'Fecha Fac',
                     (tipocomp < 100) as Fiscal
                 FROM tickets 

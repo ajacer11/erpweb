@@ -213,6 +213,7 @@ $inicio_mes = date('Y-m-01');
 (function() {
     let listadoCompleto = [];
     let currentMode = 'listado';
+    let filtroUsuarioActivo = false;
     let pagActual = 1;
     let pagTam = 20;
     let pagTotal = 1;
@@ -314,6 +315,7 @@ $inicio_mes = date('Y-m-01');
 
         let valUsu = $('#cmbUsuario').val();
         let idsUsuarios = (valUsu === 'multiple') ? usuariosSeleccionados.map(u => u.id) : (valUsu ? [valUsu] : []);
+        filtroUsuarioActivo = idsUsuarios.length > 0;
 
         const soloSaldos = $('#chkSoloSaldos').is(':checked');
         const payload = {
@@ -412,8 +414,12 @@ $inicio_mes = date('Y-m-01');
                 }
             });
             if(mode !== 'desglosado' && listadoCompleto.length > 0) {
+                // El backend ya filtra por usuario en el SQL: si hay filtro activo, el Saldo de
+                // la última fila es el saldo acumulado solo de ese/esos usuario/s (no mezcla
+                // datos de otros usuarios).
                 const ultimo = listadoCompleto[listadoCompleto.length-1];
-                tfoot.innerHTML = `<td colspan="8" class="text-end pe-3 text-uppercase text-white-50">Saldo Final Global:</td><td class="text-end pe-3 fw-bold text-accent fs-5">$ ${formatMoney(ultimo.Saldo)}</td><td></td>`;
+                const etiqueta = filtroUsuarioActivo ? 'Total Usuario(s) Filtrado(s):' : 'Saldo Final Global:';
+                tfoot.innerHTML = `<td colspan="8" class="text-end pe-3 text-uppercase text-white-50">${etiqueta}</td><td class="text-end pe-3 fw-bold text-accent fs-5">$ ${formatMoney(ultimo.Saldo)}</td><td></td>`;
             }
         }
         tbody.innerHTML = html;

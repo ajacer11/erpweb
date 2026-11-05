@@ -59,11 +59,12 @@ require_once 'check_access.php';
                         <th>CONCEPTO / DESCRIPCIÓN</th>
                         <th>Nº CUENTA CONTABLE</th>
                         <th>NOMBRE CUENTA CONTABLE</th>
-                        <th style="width: 120px;" class="text-center">ACCIONES</th>
+                        <th class="text-center">ESTADO</th>
+                        <th style="width: 180px;" class="text-center">ACCIONES</th>
                     </tr>
                 </thead>
                 <tbody id="tbody-conceptos">
-                    <tr><td colspan="5" class="text-center p-5 text-muted"><div class="spinner-border text-info"></div></td></tr>
+                    <tr><td colspan="6" class="text-center p-5 text-muted"><div class="spinner-border text-info"></div></td></tr>
                 </tbody>
             </table>
         </div>
@@ -178,7 +179,7 @@ require_once 'check_access.php';
     }
 
     async function buscar() {
-        const tbody = $('#tbody-conceptos').html('<tr><td colspan="5" class="text-center p-5"><div class="spinner-border text-info"></div></td></tr>');
+        const tbody = $('#tbody-conceptos').html('<tr><td colspan="6" class="text-center p-5"><div class="spinner-border text-info"></div></td></tr>');
         try {
             const res = await fetch('api_conceptos_compra.php?action=list', { headers: commonHeaders }).then(r => r.json());
             if (res.success) {
@@ -208,7 +209,7 @@ require_once 'check_access.php';
         $('#lbl-total-regs').text(dataToRender.length);
 
         if (dataToRender.length === 0) {
-            tbody.append('<tr><td colspan="5" class="text-center p-5 text-muted small">No se encontraron conceptos con los filtros aplicados</td></tr>');
+            tbody.append('<tr><td colspan="6" class="text-center p-5 text-muted small">No se encontraron conceptos con los filtros aplicados</td></tr>');
             return;
         }
 
@@ -222,9 +223,11 @@ require_once 'check_access.php';
                     <td class="text-white">${c.Concepto}</td>
                     <td class="text-muted">${c['Num Cuenta Cont.']}</td>
                     <td><small>${c['Cuenta Contable']}</small></td>
+                    <td class="text-center"><span class="badge ${Number(c.Habilitada) === 1 ? 'bg-success' : 'bg-secondary'}">${Number(c.Habilitada) === 1 ? 'HABILITADO' : 'DESHABILITADO'}</span></td>
                     <td class="text-center">
                         <div class="btn-group btn-group-sm shadow-sm">
                             <button class="btn btn-outline-info" onclick="window.editConc(${originalIdx})" title="Editar"><i class="fas fa-edit"></i></button>
+                            <button class="btn ${Number(c.Habilitada) === 1 ? 'btn-outline-warning' : 'btn-outline-success'}" onclick="window.toggleConc(${originalIdx})" title="${Number(c.Habilitada) === 1 ? 'Deshabilitar' : 'Habilitar'}"><i class="fas ${Number(c.Habilitada) === 1 ? 'fa-ban' : 'fa-check'}"></i></button>
                             <button class="btn btn-outline-danger" onclick="window.delConc(${originalIdx})" title="Eliminar"><i class="fas fa-trash-alt"></i></button>
                         </div>
                     </td>
@@ -251,6 +254,22 @@ require_once 'check_access.php';
     }
 
     window.editConc = (idx) => openModal(listado[idx]);
+
+    window.toggleConc = async (idx) => {
+        const c = listado[idx];
+        const habilitada = Number(c.Habilitada) === 1 ? 0 : 1;
+        try {
+            const res = await fetch('api_conceptos_compra.php?action=set_habilitada', {
+                method: 'POST',
+                headers: { ...commonHeaders, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: c.ID, habilitada })
+            }).then(r => r.json());
+            if (!res.success) throw new Error(res.error || 'No se pudo cambiar el estado.');
+            await buscar();
+        } catch (e) {
+            Swal.fire('Error', e.message, 'error');
+        }
+    };
 
     window.delConc = async (idx) => {
         const c = listado[idx];

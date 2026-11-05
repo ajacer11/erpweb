@@ -5,8 +5,12 @@
  */
 // SEGURIDAD CENTRALIZADA (Check Access)
 require_once 'check_access.php';
+require_once 'permisos_helpers.php';
 $hoy = date('Y-m-d');
 $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
+
+$configRow = $pdo->query("SELECT permitireditardescripcion FROM configuracion ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+$puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) === 1) && puedeEditarDescripcionPedidos();
 ?>
 
 <style>
@@ -18,11 +22,20 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
     .grid-container { flex-grow: 1; overflow-y: auto; background: #000a1a; border: 1px solid #445566; border-radius: 6px; }
 
     /* Totales Panel */
-    .card-totales { 
-        background-color: #0d1b2a !important; 
-        border: 1px solid #445566; 
+    .card-totales {
+        background-color: #0d1b2a !important;
+        border: 1px solid #445566;
         color: white;
-        margin-top: auto; 
+        margin-top: auto;
+    }
+    /* En modo claro este panel quedaba ilegible: stylesglobal.css adapta
+       .text-white y .text-white-50 al tema (pasan a texto oscuro), pero el fondo
+       de acá estaba clavado con !important, así que daba texto oscuro sobre
+       fondo oscuro. Sólo se corrige el tema claro; el oscuro queda igual. */
+    [data-theme="light"] .card-totales {
+        background-color: var(--bg-card) !important;
+        border-color: var(--border-color);
+        color: var(--text-main);
     }
     .lbl-total-main { font-size: 1.4rem; color: var(--accent); }
 
@@ -34,6 +47,12 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
         display: inline-block; white-space: nowrap; vertical-align: middle;
         margin-left: 3px;
     }
+
+    /* Control de preparacion (solo en pantalla, no se guarda) */
+    .chk-preparado { width: 18px; height: 18px; cursor: pointer; accent-color: #22c55e; vertical-align: middle; }
+    #gridPedidos tr.item-preparado td { background-color: rgba(34,197,94,0.15) !important; }
+    #gridPedidos tr.item-preparado td:nth-child(3) { text-decoration: line-through; }
+    .erp-card.item-preparado { border-color: #16a34a !important; background-color: rgba(34,197,94,0.12) !important; }
 
     /* Inputs Grilla */
     .select-grid { height: 100%; width: 100%; background: transparent; color: white; border: none; appearance: none; text-align: center; cursor: pointer; }
@@ -54,6 +73,10 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
             border-top: 2px solid var(--accent);
             padding: 15px; padding-bottom: 20px;
             margin-top: 0;
+        }
+        /* Mismo caso que arriba: en mobile el panel fija otro fondo oscuro. */
+        [data-theme="light"] .card-totales {
+            background-color: var(--bg-card) !important;
         }
         .lbl-total-main { font-size: 1.5rem; text-align: right; display: block; }
     }
@@ -154,6 +177,9 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
             <div class="col-12 col-md-6 col-lg-1">
                 <button class="btn btn-sm btn-info w-100 fw-bold" onclick="agregarItem()" id="btnAgregarItem">AGREGAR</button>
             </div>
+            <div class="col-12 col-md-6 col-lg-1">
+                <button type="button" class="btn btn-sm btn-warning w-100 fw-bold" onclick="abrirLineaManual()"><i class="fas fa-keyboard"></i> MANUAL</button>
+            </div>
         </div>
         <input type="hidden" id="hdnProdId"><input type="hidden" id="hdnProdImpInt">
         <input type="hidden" id="hdnProdIVA"><input type="hidden" id="hdnProdRubro">
@@ -161,11 +187,27 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
         <input type="hidden" id="txtProdTela"><input type="hidden" id="txtProdColor">
     </div>
 
+    <!-- BUSCADOR DENTRO DEL PEDIDO + PROGRESO DE PREPARACION -->
+    <div class="d-flex align-items-center gap-2 mb-2 flex-shrink-0 flex-wrap">
+        <div class="input-group input-group-sm" style="max-width: 380px;">
+            <span class="input-group-text bg-dark text-white-50 border-secondary"><i class="fas fa-search"></i></span>
+            <input type="text" id="txtFiltroItems" class="form-control bg-dark text-white border-secondary" placeholder="Buscar en el pedido (código o descripción)..." autocomplete="off">
+            <button class="btn btn-outline-secondary" type="button" onclick="limpiarFiltroItems()" title="Limpiar"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="form-check form-switch mb-0 small">
+            <input class="form-check-input" type="checkbox" id="chkOcultarPreparados" onchange="aplicarFiltroItems()">
+            <label class="form-check-label text-white-50" for="chkOcultarPreparados">Ocultar preparados</label>
+        </div>
+        <span class="small text-white-50">Preparados: <span id="lblPreparados" class="text-success fw-bold">0/0</span></span>
+        <span class="small text-warning d-none" id="lblFiltroInfo"></span>
+    </div>
+
     <!-- GRILLA DESKTOP -->
     <div class="erp-table-wrap grid-container mb-2">
         <table class="table table-dark table-sm table-hover mb-0" id="gridPedidos">
             <thead class="bg-black sticky-top border-bottom border-secondary">
                 <tr>
+                    <th class="text-center text-success" rowspan="2" style="width: 34px;" title="Preparado en caja (solo en pantalla, no se guarda)"><i class="fas fa-box"></i></th>
                     <th class="ps-2 text-white-50" rowspan="2" style="width: 80px;">CÓDIGO</th>
                     <th class="text-white-50" rowspan="2">DESCRIPCIÓN</th>
                     <th class="text-center text-white-50" rowspan="2" style="width: 50px;">LISTA</th>
@@ -200,6 +242,8 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
         <div class="row align-items-center g-2">
             <div class="col-12 col-md-8 d-none d-md-block text-white-50 small">
                 <div class="d-flex gap-3">
+                    <span>Items: <span id="lblItems" class="text-white">0</span></span>
+                    <span>Cant: <span id="lblCant" class="text-white">0</span></span>
                     <span>Neto: <span id="lblNeto" class="text-white">$0.00</span></span>
                     <span>IVA: <span id="lblIVA" class="text-white">$0.00</span></span>
                     <span>Imp.Int: <span id="lblImpInt" class="text-white">$0.00</span></span>
@@ -240,11 +284,54 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
     </div>
 </div>
 
+<!-- Modal Línea Manual -->
+<div class="modal fade" id="mod_manual_line" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-warning border-opacity-50" style="background-color: #001020;">
+            <div class="modal-header bg-warning bg-opacity-10">
+                <h6 class="modal-title fw-bold text-warning"><i class="fas fa-keyboard me-2"></i>AGREGAR FILA MANUAL</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label-custom">CANTIDAD</label>
+                        <input type="number" id="ml_cant" class="form-control bg-dark text-white border-secondary fw-bold text-center" value="1" min="1">
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label-custom">ALÍCUOTA DE IVA</label>
+                        <select id="ml_iva" class="form-select bg-dark text-white border-secondary">
+                            <option value="0">0%</option>
+                            <option value="10.5">10.5%</option>
+                            <option value="21" selected>21%</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label-custom">DETALLE / DESCRIPCIÓN</label>
+                        <input type="text" id="ml_det" class="form-control bg-dark text-white border-secondary" placeholder="Ingrese descripción del ítem...">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label-custom text-accent">IMPORTE (IVA INCLUIDO)</label>
+                        <input type="number" step="0.01" id="ml_total" class="form-control bg-dark text-white border-secondary text-end fw-bold fs-5" placeholder="0.00">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer d-flex gap-2">
+                <button class="btn btn-danger fw-bold px-3" data-bs-dismiss="modal">CANCELAR</button>
+                <button class="btn btn-success fw-bold flex-grow-1" onclick="confirmarLineaManual()">
+                    <i class="fas fa-plus me-2"></i>AGREGAR
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 (function() {
     let items = [];
     let searchTimeout = null;
     const pedidoId = parseInt($('#hdnEditPedidoId').val());
+    const PUEDE_EDITAR_DESC = <?php echo $puedeEditarDescPedidos ? 'true' : 'false'; ?>;
 
     async function init() {
         const h = {'X-Requested-With': 'XMLHttpRequest'};
@@ -396,6 +483,42 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
         $('#txtProdCodigo').focus();
     }
 
+    window.abrirLineaManual = function() {
+        if (!$('#cmbCliente').val()) return Swal.fire('Atención', 'Seleccione un cliente primero.', 'warning');
+        $('#ml_cant').val(1);
+        $('#ml_det').val('');
+        $('#ml_total').val('');
+        $('#ml_iva').val(21);
+        $('#mod_manual_line').modal('show');
+        setTimeout(() => $('#ml_cant').focus().select(), 500);
+    }
+
+    window.confirmarLineaManual = function() {
+        const prod = $('#ml_det').val().trim();
+        const totalFinalU = parseFloat($('#ml_total').val());
+        const alicuota = parseFloat($('#ml_iva').val());
+        let cant = parseFloat($('#ml_cant').val());
+
+        if (!prod || isNaN(totalFinalU) || totalFinalU <= 0) {
+            return Swal.fire('Error', 'Complete descripción e importe mayor a cero.', 'warning');
+        }
+        if (isNaN(cant) || cant <= 0) cant = 1;
+
+        const netoU = totalFinalU / (1 + alicuota / 100);
+        const lista = parseInt($('#cmbListaGlobal').val()) || 1;
+
+        items.push({
+            codigo: 'LM', descripcion: prod, rubro: 'Otros',
+            cantidad: cant, precio: netoU, descuento: 0, lista: lista,
+            iva_pct: alicuota, impint_unit: 0,
+            precios_cache: { siniva: netoU, siniva2: netoU, siniva3: netoU, siniva4: netoU, siniva5: netoU, siniva6: netoU, siniva7: netoU, siniva8: netoU },
+            promo_label: null, promo_id: null
+        });
+
+        renderGrid();
+        $('#mod_manual_line').modal('hide');
+    }
+
     /**
      * Llama al motor de evaluación de promociones y actualiza el descuento
      * de cada ítem si una promo lo supera. Solo aplica si no hay desc. manual mayor.
@@ -438,7 +561,7 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
     function renderGrid() {
         const tb = $('#tbodyPedidos'); tb.empty();
         const wrapCards = $('#tblCards'); wrapCards.empty();
-        let tNeto = 0, tIva = 0, tImp = 0;
+        let tNeto = 0, tIva = 0, tImp = 0, tCant = 0;
 
         items.forEach((it, i) => {
             const pLista = parseFloat(it.precio);
@@ -448,6 +571,7 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
             const subtotalL = pFinalU * it.cantidad;
 
             tNeto += (pNetoU * it.cantidad); tIva += (pIvaU * it.cantidad); tImp += (it.impint_unit * it.cantidad);
+            tCant += it.cantidad;
 
             let selectLista = `<select class="select-grid" onchange="cambiarListaItem(${i}, this.value)">`;
             for(let L=1; L<=8; L++) selectLista += `<option value="${L}" ${it.lista == L ? 'selected' : ''}>L${L}</option>`;
@@ -466,10 +590,16 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
                 : '';
 
             // RENDERIZADO PC
+            const prepClass = it.preparado ? 'item-preparado' : '';
+            const chkPrep = `<input type="checkbox" class="chk-preparado" data-idx="${i}" ${it.preparado ? 'checked' : ''} onchange="togglePreparado(${i}, this.checked)" title="Preparado en caja">`;
+
             tb.append(`
-                <tr>
+                <tr data-idx="${i}" class="${prepClass}">
+                    <td class="text-center align-middle">${chkPrep}</td>
                     <td class="ps-2 text-white fw-bold align-middle">${it.codigo}</td>
-                    <td class="text-white-50 text-truncate align-middle" style="max-width: 200px;">${it.descripcion}${promoBadge}</td>
+                    <td class="text-white-50 text-truncate align-middle" style="max-width: 200px;">${(PUEDE_EDITAR_DESC && it.codigo !== 'LM')
+                    ? `<input type="text" class="input-grid text-white-50" style="width:100%;" value="${it.descripcion}" onchange="cambiarDescripcionProductoItem(${i}, this.value)">`
+                    : it.descripcion}${promoBadge}</td>
                     <td class="p-0 align-middle">${selectLista}</td>
                     <td class="text-end text-muted border-start border-secondary bg-dark bg-opacity-25">$ ${formatMoney(pLista)}</td>
                     <td class="text-end text-warning bg-dark bg-opacity-25">$ ${formatMoney(pNetoU)}</td>
@@ -485,13 +615,18 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
 
             // RENDERIZADO MOBILE
             wrapCards.append(`
-                <div class="erp-card mb-2">
-                    <div class="erp-card-header mb-1">
+                <div class="erp-card mb-2 ${prepClass}" data-idx="${i}">
+                    <div class="erp-card-header mb-1 d-flex justify-content-between align-items-start">
                         <div>
-                            <div class="erp-card-title text-white" style="font-size: 13px; max-width: 250px;">${it.descripcion}</div>
+                            <div class="erp-card-title text-white" style="font-size: 13px; max-width: 250px;">${(PUEDE_EDITAR_DESC && it.codigo !== 'LM')
+                    ? `<input type="text" class="form-control form-control-sm bg-dark text-white border-secondary" value="${it.descripcion}" onchange="cambiarDescripcionProductoItem(${i}, this.value)">`
+                    : it.descripcion}</div>
                             <small class="text-accent" style="font-size: 11px;">CÓDIGO: ${it.codigo}</small>
                             ${promoBadgeMobile}
                         </div>
+                        <label class="d-flex align-items-center gap-1 small text-success fw-bold mb-0" style="cursor:pointer;">
+                            ${chkPrep} PREP.
+                        </label>
                     </div>
                     
                     <div class="row g-1 mb-2 px-2">
@@ -534,13 +669,62 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
             `);
         });
 
+        // La cantidad admite decimales (step 0.01), pero en la practica casi
+        // siempre son enteras: se muestran sin decimales salvo que los tenga.
+        $('#lblItems').text(items.length);
+        $('#lblCant').text(Number.isInteger(tCant) ? tCant : tCant.toFixed(2));
         $('#lblNeto').text('$ ' + formatMoney(tNeto)); $('#lblIVA').text('$ ' + formatMoney(tIva));
         $('#lblImpInt').text('$ ' + formatMoney(tImp)); $('#lblTotal').text('$ ' + formatMoney(tNeto + tIva + tImp));
+        aplicarFiltroItems();
     }
+
+    // --- Buscador dentro del pedido y control de preparacion ---
+    // El flag "preparado" vive solo en memoria (items[i].preparado): no se
+    // envia al guardar, por eso se pierde al recargar la pantalla.
+    const normalizarTxt = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
+
+    window.aplicarFiltroItems = function() {
+        const terminos = normalizarTxt($('#txtFiltroItems').val()).split(/\s+/).filter(Boolean);
+        const ocultarPrep = $('#chkOcultarPreparados').is(':checked');
+        let visibles = 0, preparados = 0;
+
+        items.forEach((it, i) => {
+            if (it.preparado) preparados++;
+            const texto = normalizarTxt(it.codigo + ' ' + it.descripcion);
+            const coincide = terminos.every(t => texto.includes(t));
+            const mostrar = coincide && !(ocultarPrep && it.preparado);
+            if (mostrar) visibles++;
+            $(`#tbodyPedidos tr[data-idx="${i}"], #tblCards .erp-card[data-idx="${i}"]`).toggleClass('d-none', !mostrar);
+        });
+
+        $('#lblPreparados').text(`${preparados}/${items.length}`);
+        const filtrando = terminos.length > 0 || ocultarPrep;
+        $('#lblFiltroInfo').toggleClass('d-none', !filtrando).text(`Mostrando ${visibles} de ${items.length}`);
+    };
+
+    window.limpiarFiltroItems = function() {
+        $('#txtFiltroItems').val('').focus();
+        aplicarFiltroItems();
+    };
+
+    window.togglePreparado = function(i, marcado) {
+        if (!items[i]) return;
+        items[i].preparado = !!marcado;
+        // Sincroniza el checkbox de la otra vista (PC / mobile) sin re-renderizar
+        $(`.chk-preparado[data-idx="${i}"]`).prop('checked', !!marcado);
+        $(`#tbodyPedidos tr[data-idx="${i}"], #tblCards .erp-card[data-idx="${i}"]`).toggleClass('item-preparado', !!marcado);
+        aplicarFiltroItems();
+    };
+
+    $(document).off('input.filtroItems').on('input.filtroItems', '#txtFiltroItems', aplicarFiltroItems);
+    $(document).off('keydown.filtroItems').on('keydown.filtroItems', '#txtFiltroItems', function(e) {
+        if (e.key === 'Escape') limpiarFiltroItems();
+    });
 
     window.cambiarListaItem = (i, v) => { items[i].lista = parseInt(v); items[i].precio = parseFloat(items[i].precios_cache[v==1?'siniva':'siniva'+v]||0); renderGrid(); };
     window.cambiarCantItem  = (i, v) => { items[i].cantidad = parseFloat(v) || 1; evaluarPromociones().then(() => renderGrid()); };
     window.cambiarDescItem  = (i, v) => { items[i].descuento = parseFloat(v) || 0; items[i].promo_label = null; items[i].promo_id = null; renderGrid(); };
+    window.cambiarDescripcionProductoItem = (i, v) => { if (!PUEDE_EDITAR_DESC) return; items[i].descripcion = String(v).trim() || items[i].descripcion; renderGrid(); };
     window.remItem = (i) => { items.splice(i,1); renderGrid(); };
 
     window.abrirModalProductos = (q = '') => { $('#txtBusquedaProd').val(q); buscarEnModal(q); $('#modalBuscarProd').modal('show'); setTimeout(() => $('#txtBusquedaProd').focus(), 500); }
@@ -575,8 +759,9 @@ $pedidoId = isset($_GET['id']) ? intval($_GET['id']) : 0;
             observaciones: $('#txtObsPedido').val(), descuento_gral: $('#txtDescGral').val(), 
             items: items.map(i => ({
                 codigo: i.codigo, descripcion: i.descripcion, cantidad: i.cantidad, 
-                precio_unitario: i.precio, descuento: i.descuento, lista: i.lista, 
+                precio_unitario: i.precio, descuento: i.descuento, lista: i.lista,
                 imp_int_unit: i.impint_unit, iva_pct: i.iva_pct,
+                poriva: i.codigo === 'LM' ? i.iva_pct : null,
                 promo_id: i.promo_id || null
             }))
         };

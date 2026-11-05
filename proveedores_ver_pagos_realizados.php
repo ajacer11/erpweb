@@ -104,11 +104,12 @@ require_once 'check_access.php';
                         <th class="text-center">FISCAL</th>
                         <th class="text-end text-accent">TOTAL</th>
                         <th class="text-center">ESTADO</th>
+                        <th class="text-center">ACCIONES</th>
                     </tr>
                 </thead>
                 <tbody id="tbodyPagos">
                     <tr>
-                        <td colspan="11" class="text-center py-5 text-muted italic">
+                        <td colspan="12" class="text-center py-5 text-muted italic">
                             INGRESE LOS FILTROS Y PRESIONE BUSCAR
                         </td>
                     </tr>
@@ -198,7 +199,7 @@ require_once 'check_access.php';
         const formData = new FormData(form);
         const params = new URLSearchParams(formData).toString();
         
-        tbody.html('<tr><td colspan="11" class="text-center py-5"><div class="spinner-border text-info spinner-border-sm me-2"></div> BUSCANDO...</td></tr>');
+        tbody.html('<tr><td colspan="12" class="text-center py-5"><div class="spinner-border text-info spinner-border-sm me-2"></div> BUSCANDO...</td></tr>');
         tblCards.html('<div class="text-center text-muted p-5"><div class="spinner-border text-info spinner-border-sm me-2"></div> BUSCANDO...</div>');
         $('#panel-totales').addClass('d-none');
 
@@ -254,21 +255,23 @@ require_once 'check_access.php';
         tbody.empty();
 
         if (data.length === 0) {
-            tbody.append('<tr><td colspan="11" class="text-center py-5 text-muted opacity-50 italic">NO SE ENCONTRARON PAGOS CON ESTOS FILTROS</td></tr>');
+            tbody.append('<tr><td colspan="12" class="text-center py-5 text-muted opacity-50 italic">NO SE ENCONTRARON PAGOS CON ESTOS FILTROS</td></tr>');
             return;
         }
 
         data.forEach((p, idx) => {
             const absoluteIdx = (pagActual - 1) * pagTam + idx;
             const isAnulado = p.Estado == 1000;
-            
+            const isImputado = parseInt(p.Imputado || 0) > 0;
+
             const total = parseFloat(p.Total || 0);
             const imp1 = parseFloat(p.mp1imp || 0);
             const imp2 = parseFloat(p.mp2imp || 0);
-            
+
             const rowClass = isAnulado ? 'text-decoration-line-through text-muted opacity-50' : '';
             const btnFiscalClass = p.Fiscal == 1 ? 'btn-success' : 'btn-secondary';
             const textFiscal = p.Fiscal == 1 ? 'SI' : 'NO';
+            const tituloFiscal = isImputado ? 'Pago ya imputado: no se puede cambiar la fiscalidad' : 'Cambiar fiscalidad';
 
             tbody.append(`
                 <tr class="${rowClass}">
@@ -281,11 +284,15 @@ require_once 'check_access.php';
                     <td class="text-end text-danger">${imp2 > 0 ? '$ ' + imp2.toLocaleString('es-AR', {minimumFractionDigits: 2}) : '-'}</td>
                     <td class="text-center"><span class="badge bg-secondary text-light">${(p.Usuario || '').toUpperCase()}</span></td>
                     <td class="text-center">
-                        <button class="btn btn-sm ${btnFiscalClass} py-0 px-2 border-0" onclick="window.toggleFiscal(${absoluteIdx})" ${isAnulado ? 'disabled' : ''}>${textFiscal}</button>
+                        <button class="btn btn-sm ${btnFiscalClass} py-0 px-2 border-0" onclick="window.toggleFiscal(${absoluteIdx})" title="${tituloFiscal}" ${(isAnulado || isImputado) ? 'disabled' : ''}>${textFiscal}</button>
                     </td>
                     <td class="text-end fw-bold text-accent">$ ${total.toLocaleString('es-AR', {minimumFractionDigits: 2})}</td>
                     <td class="text-center">
                         ${isAnulado ? '<span class="badge bg-danger border border-danger">ANULADO</span>' : '<span class="badge bg-success border border-success">ACTIVO</span>'}
+                    </td>
+                    <td class="text-center">
+                        ${!isAnulado ? `<button class="btn btn-danger btn-sm" onclick="window.anularPagoProveedor(${absoluteIdx})" title="Anular pago"><i class="fas fa-trash-alt"></i> ANULAR</button>` : ''}
+                    ${!isAnulado && isImputado ? `<button class="btn btn-outline-secondary btn-sm" onclick="window.desimputarPago(${absoluteIdx})" title="Desimputar pago"><i class="fas fa-unlink"></i></button>` : '-'}
                     </td>
                 </tr>
             `);
@@ -303,11 +310,12 @@ require_once 'check_access.php';
         data.forEach((p, idx) => {
             const absoluteIdx = (pagActual - 1) * pagTam + idx;
             const isAnulado = p.Estado == 1000;
-            
+            const isImputado = parseInt(p.Imputado || 0) > 0;
+
             const total = parseFloat(p.Total || 0);
             const imp1 = parseFloat(p.mp1imp || 0);
             const imp2 = parseFloat(p.mp2imp || 0);
-            
+
             const rowClass = isAnulado ? 'opacity-50 grayscale' : '';
             const txtEstado = isAnulado ? 'ANULADO' : 'ACTIVO';
             const badgeEstadoStyle = isAnulado ? 'background:rgba(220,53,69,.2);color:#dc3545;border:1px solid #dc3545;' : 'background:rgba(40,167,69,.2);color:#28a745;border:1px solid #28a745;';
@@ -353,12 +361,16 @@ require_once 'check_access.php';
                     <span class="erp-card-value price fs-6 ${isAnulado ? 'text-decoration-line-through' : ''}">$ ${total.toLocaleString('es-AR', {minimumFractionDigits: 2})}</span>
                 </div>
                 <div class="erp-card-actions flex-wrap gap-1 mt-2">
-                    <button class="btn btn-outline-secondary btn-sm flex-fill fw-bold" onclick="window.toggleFiscal(${absoluteIdx})" ${isAnulado ? 'disabled' : ''}>
+                    <button class="btn btn-outline-secondary btn-sm flex-fill fw-bold" onclick="window.toggleFiscal(${absoluteIdx})" title="${isImputado ? 'Pago ya imputado: no se puede cambiar la fiscalidad' : 'Cambiar fiscalidad'}" ${(isAnulado || isImputado) ? 'disabled' : ''}>
                         <i class="fas fa-balance-scale me-1"></i> ${txtFiscal}
                     </button>
                     <button class="btn btn-info btn-sm flex-fill fw-bold" onclick="window.modificarFechaPago(${absoluteIdx})">
                         <i class="fas fa-calendar-alt me-1"></i> FECHA
                     </button>
+                    ${!isAnulado ? `<button class="btn btn-danger btn-sm" onclick="window.anularPagoProveedor(${absoluteIdx})" title="Anular pago"><i class="fas fa-trash-alt"></i> ANULAR</button>` : ''}
+                    ${!isAnulado && isImputado ? `<button class="btn btn-outline-warning btn-sm flex-fill fw-bold" onclick="window.desimputarPago(${absoluteIdx})">
+                        <i class="fas fa-unlink me-1"></i> DESIMPUTAR
+                    </button>` : ''}
                 </div>
             </div>`;
             
@@ -517,6 +529,47 @@ require_once 'check_access.php';
             }
         } catch(e) {
             Swal.fire('Error', 'Falla al cambiar estado fiscal', 'error');
+        }
+    };
+
+    window.anularPagoProveedor = async (idx) => {
+        const p = listadoActual[idx];
+        const result = await Swal.fire({title: '¿Anular pago?', text: `Se anulará el pago #${p['Num Pago']} y todas sus imputaciones. Las facturas recuperarán el saldo correspondiente.`, icon: 'warning', showCancelButton: true, confirmButtonText: 'ANULAR PAGO', cancelButtonText: 'CANCELAR'});
+        if (!result.isConfirmed) return;
+        try {
+            const response = await fetch('api_pagos_realizados_prv.php?action=annul', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}, body: JSON.stringify({id: p['Num Pago'], confirmar_imputaciones: true})});
+            const res = await response.json();
+            if (!res.success) throw new Error(res.error || 'No se pudo anular.');
+            await Swal.fire('Anulado', 'Pago e imputaciones anulados.', 'success');
+            cargarReporte();
+        } catch (e) { Swal.fire('Error', e.message, 'error'); }
+    };
+
+    window.desimputarPago = async (absoluteIdx) => {
+        const p = listadoActual[absoluteIdx];
+        const conf = await Swal.fire({
+            title: '¿Desimputar pago?',
+            text: `Se liberará el saldo del pago #${p['Num Pago'].toString().padStart(8, '0')} y la(s) factura(s) asociadas volverán a estado PENDIENTE.`,
+            icon: 'warning',
+            showCancelButton: true
+        }).then(r => r.isConfirmed);
+        if (!conf) return;
+
+        try {
+            const res = await fetch('api_pagos_realizados_prv.php?action=unimpute_pago', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify({ id: p['Num Pago'] })
+            });
+            const result = await res.json();
+            if (result.success) {
+                Swal.fire({ icon: 'success', title: 'Éxito', text: 'Pago desimputado correctamente.', timer: 1800, showConfirmButton: false });
+                cargarReporte();
+            } else {
+                Swal.fire('Error', result.error, 'error');
+            }
+        } catch (e) {
+            Swal.fire('Error', 'Falla de conexión', 'error');
         }
     };
 

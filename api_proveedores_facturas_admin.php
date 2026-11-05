@@ -18,6 +18,7 @@ function mapearTipoCompArca($tipoStr) {
     if ($t == "NDB") return "007";
     if ($t == "NCB") return "008";
     if ($t == "FCC") return "011";
+    if ($t == "NDC") return "012";
     if ($t == "NCC") return "013";
     return "099";
 }
@@ -88,8 +89,8 @@ try {
                         DATE_FORMAT(a.fechavencimiento, '%Y-%m-%d') AS 'Fecha Vencimiento', 
                         DATE_FORMAT(a.fecharegistro, '%d-%m-%Y %H:%i:%s') AS 'Fecha Registro',
                         CASE a.tipocomp 
-                            WHEN 1 THEN 'FCA' WHEN 3 THEN 'NCA' WHEN 1000 THEN 'REM' WHEN 6 THEN 'FCB' 
-                            WHEN 8 THEN 'NCB' WHEN 100 THEN 'TKT' WHEN 101 THEN 'TDC' WHEN 11 THEN 'FCC' 
+                            WHEN 1 THEN 'FCA' WHEN 2 THEN 'NDA' WHEN 3 THEN 'NCA' WHEN 1000 THEN 'REM' WHEN 6 THEN 'FCB' WHEN 7 THEN 'NDB'
+                            WHEN 8 THEN 'NCB' WHEN 100 THEN 'TKT' WHEN 101 THEN 'TDC' WHEN 11 THEN 'FCC' WHEN 12 THEN 'NDC'
                             WHEN 13 THEN 'NCC' ELSE 'Otro' 
                         END AS 'Tipo',
                         a.PV, a.numfact,
@@ -268,6 +269,15 @@ try {
 
         case 'update_field':
             $data = json_decode(file_get_contents('php://input'), true);
+            $camposPermitidos = ['fecha', 'fechavencimiento', 'notas', 'fiscal'];
+            if (!in_array($data['field'], $camposPermitidos)) throw new Exception("Campo no editable.");
+
+            if ($data['field'] === 'fiscal') {
+                $stmtChk = $pdo->prepare("SELECT estado FROM facturasdecompra WHERE id = ?");
+                $stmtChk->execute([$data['id']]);
+                if ($stmtChk->fetchColumn() == 2) throw new Exception("No se puede modificar la fiscalidad de una factura ya pagada.");
+            }
+
             $pdo->beginTransaction();
             $pdo->prepare("UPDATE facturasdecompra SET {$data['field']} = ? WHERE id = ?")->execute([$data['value'], $data['id']]);
             if ($data['field'] === 'fecha') {

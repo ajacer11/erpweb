@@ -48,7 +48,12 @@ $titulo = $id_cliente ? "CARGANDO CLIENTE $id_cliente..." : "NUEVO CLIENTE";
             </div>
             <div class="col-md-2">
                 <label class="form-label-custom">Nro Documento</label>
-                <input type="text" class="form-control" name="numdoc" id="numdoc">
+                <div class="input-group">
+                    <input type="text" class="form-control" name="numdoc" id="numdoc">
+                    <button type="button" class="btn btn-outline-info" id="btnAutocompletarCuit" title="Autocompletar por CUIT (consulta el padrón de AFIP)">
+                        <i class="fas fa-magic"></i>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -80,9 +85,28 @@ $titulo = $id_cliente ? "CARGANDO CLIENTE $id_cliente..." : "NUEVO CLIENTE";
                             <option value="">SELECCIONE...</option>
                             <option value="BUENOS AIRES">BUENOS AIRES</option>
                             <option value="CABA">CABA</option>
-                            <option value="MENDOZA">MENDOZA</option>
-                            <option value="SANTA FE">SANTA FE</option>
+                            <option value="CATAMARCA">CATAMARCA</option>
+                            <option value="CHACO">CHACO</option>
+                            <option value="CHUBUT">CHUBUT</option>
                             <option value="CÓRDOBA">CÓRDOBA</option>
+                            <option value="CORRIENTES">CORRIENTES</option>
+                            <option value="ENTRE RÍOS">ENTRE RÍOS</option>
+                            <option value="FORMOSA">FORMOSA</option>
+                            <option value="JUJUY">JUJUY</option>
+                            <option value="LA PAMPA">LA PAMPA</option>
+                            <option value="LA RIOJA">LA RIOJA</option>
+                            <option value="MENDOZA">MENDOZA</option>
+                            <option value="MISIONES">MISIONES</option>
+                            <option value="NEUQUÉN">NEUQUÉN</option>
+                            <option value="RÍO NEGRO">RÍO NEGRO</option>
+                            <option value="SALTA">SALTA</option>
+                            <option value="SAN JUAN">SAN JUAN</option>
+                            <option value="SAN LUIS">SAN LUIS</option>
+                            <option value="SANTA CRUZ">SANTA CRUZ</option>
+                            <option value="SANTA FE">SANTA FE</option>
+                            <option value="SANTIAGO DEL ESTERO">SANTIAGO DEL ESTERO</option>
+                            <option value="TIERRA DEL FUEGO, ANTÁRTIDA E ISLAS DEL ATLÁNTICO SUR">TIERRA DEL FUEGO, ANTÁRTIDA E ISLAS DEL ATLÁNTICO SUR</option>
+                            <option value="TUCUMÁN">TUCUMÁN</option>
                         </select>
                     </div>
                     <div class="col-md-4"><label class="form-label-custom">Teléfono</label><input type="text" class="form-control" name="telefono"></div>
@@ -188,6 +212,76 @@ $titulo = $id_cliente ? "CARGANDO CLIENTE $id_cliente..." : "NUEVO CLIENTE";
             if (result === 10) result = 9;
             return result === parseInt(cuit[10]);
         }
+
+        const ALIAS_PROVINCIA_AFIP = {
+            'CIUDAD AUTONOMA BUENOS AIRES': 'CABA',
+            'CIUDAD AUTONOMA DE BUENOS AIRES': 'CABA',
+            'CIUDAD AUTÓNOMA DE BUENOS AIRES': 'CABA',
+            'CAPITAL FEDERAL': 'CABA',
+            'CORDOBA': 'CÓRDOBA',
+            'ENTRE RIOS': 'ENTRE RÍOS',
+            'NEUQUEN': 'NEUQUÉN',
+            'RIO NEGRO': 'RÍO NEGRO',
+            'TUCUMAN': 'TUCUMÁN',
+            'TIERRA DEL FUEGO, ANTARTIDA E ISLAS DEL ATLANTICO SUR': 'TIERRA DEL FUEGO, ANTÁRTIDA E ISLAS DEL ATLÁNTICO SUR'
+        };
+
+        function setSelectConAutoAgregado(el, valor) {
+            if (!valor) return;
+            const opt = Array.from(el.options).find(o => o.value.toUpperCase() === valor.toUpperCase());
+            if (opt) {
+                $(el).val(opt.value).trigger('change');
+            } else {
+                const nuevaOpt = new Option(valor, valor, true, true);
+                $(el).append(nuevaOpt).trigger('change');
+            }
+        }
+
+        async function autocompletarPorCuit() {
+            const tipodoc = document.getElementById('tipodoc').value;
+            const numdocEl = document.getElementById('numdoc');
+            const cuit = numdocEl.value.replace(/[-_]/g, '').trim();
+
+            if (tipodoc !== 'CUIT') {
+                return Swal.fire({ icon: 'warning', title: 'Atención', text: 'Seleccioná "CUIT" como Tipo Doc para poder autocompletar.', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
+            }
+            if (!validarCUIT(cuit)) {
+                return Swal.fire({ icon: 'warning', title: 'CUIT inválido', text: 'Ingresá un CUIT válido de 11 dígitos.', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
+            }
+
+            const btn = document.getElementById('btnAutocompletarCuit');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            try {
+                const resp = await fetch(`api_clientes.php?action=consultar_padron&cuit=${cuit}`, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                const res = await resp.json();
+                if (!res.success) throw new Error(res.error || 'No se pudo consultar el padrón.');
+
+                const d = res.data;
+                const frm = document.getElementById('frmCliente');
+                if (d.razonSocial) frm.querySelector('[name="razon"]').value = d.razonSocial;
+                if (d.domicilio) frm.querySelector('[name="domicilio"]').value = d.domicilio;
+                if (d.localidad) frm.querySelector('[name="localidad"]').value = d.localidad;
+                if (d.codPostal) frm.querySelector('[name="cp"]').value = d.codPostal;
+                if (d.provincia) {
+                    const provNorm = ALIAS_PROVINCIA_AFIP[d.provincia.toUpperCase().trim()] || d.provincia;
+                    setSelectConAutoAgregado(frm.querySelector('[name="provincia"]'), provNorm);
+                }
+                if (d.condicionFiscal) {
+                    setSelectConAutoAgregado(frm.querySelector('[name="condicionfiscal"]'), d.condicionFiscal.toUpperCase());
+                }
+
+                Swal.fire({ icon: 'success', title: 'Datos completados desde el padrón', toast: true, position: 'top-end', showConfirmButton: false, timer: 2200 });
+            } catch (e) {
+                Swal.fire('No se pudo autocompletar', e.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-magic"></i>';
+            }
+        }
+        document.getElementById('btnAutocompletarCuit').addEventListener('click', autocompletarPorCuit);
 
         async function initCombos() {
             try {

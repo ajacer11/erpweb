@@ -49,16 +49,18 @@ if ($action === 'get_data') {
             CASE m.tabla 
                 WHEN 'facturasdecompra' THEN (
                     SELECT CASE tipocomp 
-                        WHEN 1 THEN 'FCA' WHEN 3 THEN 'NCA' WHEN 6 THEN 'FCB' WHEN 8 THEN 'NCB' WHEN 100 THEN 'TKT' WHEN 101 THEN 'TDC' WHEN 11 THEN 'FCC' WHEN 13 THEN 'NCC' WHEN 1000 THEN 'REMITO' ELSE 'Otro' 
+                        WHEN 1 THEN 'FCA' WHEN 2 THEN 'NDA' WHEN 3 THEN 'NCA' WHEN 6 THEN 'FCB' WHEN 7 THEN 'NDB' WHEN 8 THEN 'NCB' WHEN 100 THEN 'TKT' WHEN 101 THEN 'TDC' WHEN 11 THEN 'FCC' WHEN 12 THEN 'NDC' WHEN 13 THEN 'NCC' WHEN 1000 THEN 'REMITO' ELSE 'Otro'
                     END 
                     FROM facturasdecompra WHERE id = m.compasoc
                 ) 
                 WHEN 'recibos' THEN 'REC' 
-                WHEN 'pagoaproveedores' THEN 'Pago'
+                WHEN 'pagoaproveedores' THEN (SELECT CASE WHEN estado = 1000 THEN 'Pago anulado' ELSE 'Pago' END FROM pagoaproveedores WHERE id = m.idpago LIMIT 1)
+                WHEN 'anulacion_pagoaproveedores' THEN 'Anulación pago'
             END AS Tipo_Comprobante,
             CASE m.tabla 
                 WHEN 'facturasdecompra' THEN (SELECT numfact FROM facturasdecompra WHERE id = m.compasoc) 
-                WHEN 'pagoaproveedores' THEN (SELECT id FROM pagoaproveedores WHERE numcomp = m.compasoc)
+                WHEN 'pagoaproveedores' THEN COALESCE(NULLIF(m.idpago, 0), (SELECT id FROM pagoaproveedores WHERE numcomp = m.compasoc AND proveedor = m.proveedor LIMIT 1))
+                WHEN 'anulacion_pagoaproveedores' THEN m.idpago
             END AS Num_Comprobante";
 
         $data = [];

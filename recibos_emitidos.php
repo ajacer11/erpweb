@@ -632,7 +632,6 @@ require_once 'check_access.php';
 
     window.anularRecibo = async (idx) => {
         const r = listado[idx];
-        if (r['Imputado a'] && r['Imputado a'] !== '') return Swal.fire('Atención', 'Desimpute el recibo antes de anular.', 'warning');
         
         const { value: annulDate } = await Swal.fire({ 
             title: 'Anular Recibo', 
@@ -645,11 +644,11 @@ require_once 'check_access.php';
         if (!annulDate) return;
         if (annulDate > new Date().toISOString().split('T')[0]) return Swal.fire('Error', 'No se permite fecha futura.', 'error');
         
-        if (await Swal.fire({ title: '¿Confirmar?', text: `Se anulará el recibo #${r['Num Recibo']}`, icon: 'warning', showCancelButton: true }).then(x => x.isConfirmed)) {
+        if (await Swal.fire({ title: '¿Confirmar?', text: `Se anulará el recibo #${r['Num Recibo']} y se quitarán todas sus imputaciones. Las facturas recuperarán el saldo correspondiente.`, icon: 'warning', showCancelButton: true }).then(x => x.isConfirmed)) {
             const res = await fetch('api_recibos.php?action=annul', { 
                 method: 'POST', 
                 headers: { ...commonHeaders, 'Content-Type': 'application/json' }, 
-                body: JSON.stringify({ id: r['Num Recibo'], annul_date: annulDate }) 
+                body: JSON.stringify({ id: r['Num Recibo'], annul_date: annulDate, confirmar_imputaciones: true })
             }).then(r => r.json());
             
             if (res.success) { 

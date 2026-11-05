@@ -30,6 +30,80 @@ function multidepositoHabilitado(PDO $pdo): bool
     return $cache;
 }
 
+/**
+ * URL del logo del depósito (servido por api_depositos.php?action=logo), o null si no tiene
+ * y el caller cae al de configuración. Lleva el hash del logo para que el navegador lo cachee
+ * y lo vuelva a pedir solo si cambia.
+ */
+function logoDepositoUrl(PDO $pdo, ?int $idDeposito): ?string
+{
+    if (!$idDeposito) {
+        return null;
+    }
+    $stmt = $pdo->prepare('SELECT MD5(logo) FROM depositos WHERE id = ? AND logo IS NOT NULL AND OCTET_LENGTH(logo) > 0');
+    $stmt->execute([$idDeposito]);
+    $hash = $stmt->fetchColumn();
+    return $hash ? 'api_depositos.php?action=logo&id=' . $idDeposito . '&v=' . $hash : null;
+}
+
+/**
+ * Resuelve los datos comerciales usados al facturar. En multidepósito cada
+ * campo vacío cae individualmente a Datos de la Empresa; la identidad fiscal
+ * (razón, CUIT, IVA, IIBB e inicio de actividad) siempre pertenece al tenant.
+ */
+function datosEmisorFacturacion(PDO $pdo, string $usuario, ?int $idDeposito = null): array
+{
+    $empresa = $pdo->query('SELECT * FROM datosempresa ORDER BY id DESC LIMIT 1')->fetch(PDO::FETCH_ASSOC) ?: [];
+    $resultado = $empresa;
+    $resultado['pdv'] = (int) ($empresa['puntodeventa'] ?? 0);
+    $resultado['id_deposito'] = null;
+    $resultado['deposito_nombre'] = '';
+
+    if (multidepositoHabilitado($pdo)) {
+        $idDeposito = $idDeposito ?: depositoDeTrabajo($pdo, $usuario);
+        $stmt = $pdo->prepare('SELECT * FROM depositos WHERE id = ? AND habilitado = 1 AND estransito = 0');
+        $stmt->execute([$idDeposito]);
+        $deposito = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$deposito) throw new Exception('El depósito de trabajo no está disponible.');
+
+        $mapa = [
+            'domicilio' => 'domicilio', 'localidad' => 'localidad', 'provincia' => 'provincia',
+            'telefono' => 'telefono', 'email' => 'email', 'cp' => 'codigopostal'
+        ];
+        foreach ($mapa as $destino => $origen) {
+            if (trim((string) ($deposito[$origen] ?? '')) !== '') $resultado[$destino] = $deposito[$origen];
+        }
+        $resultado['pdv'] = (int) ($deposito['puntodeventa'] ?? 0) > 0
+            ? (int) $deposito['puntodeventa'] : (int) ($empresa['puntodeventa'] ?? 0);
+        $resultado['puntodeventa'] = $resultado['pdv'];
+        $resultado['id_deposito'] = (int) $idDeposito;
+        $resultado['deposito_nombre'] = (string) $deposito['nombre'];
+    }
+
+    $requeridos = [
+        'razon' => 'Razón social', 'domicilio' => 'Domicilio', 'localidad' => 'Localidad',
+        'provincia' => 'Provincia', 'cuit' => 'CUIT', 'condicioniva' => 'Condición frente al IVA',
+        'numiibb' => 'Ingresos Brutos', 'fechainicioact' => 'Fecha de inicio de actividades'
+    ];
+    $faltantes = [];
+    foreach ($requeridos as $campo => $etiqueta) {
+        if (trim((string) ($resultado[$campo] ?? '')) === '') $faltantes[] = $etiqueta;
+    }
+    $fechaInicio = (string) ($resultado['fechainicioact'] ?? '');
+    $fechaObj = DateTime::createFromFormat('!Y-m-d', $fechaInicio);
+    $fechaValida = $fechaObj instanceof DateTime
+        && $fechaObj->format('Y-m-d') === $fechaInicio
+        && $fechaObj <= new DateTime('today');
+    if ($fechaInicio !== '' && !$fechaValida) {
+        $faltantes = array_values(array_filter($faltantes, fn($v) => $v !== 'Fecha de inicio de actividades'));
+        $faltantes[] = 'Fecha de inicio de actividades válida';
+    }
+    if ((int) $resultado['pdv'] < 1) $faltantes[] = 'Punto de venta';
+    $resultado['faltantes'] = $faltantes;
+    $resultado['completo'] = count($faltantes) === 0;
+    return $resultado;
+}
+
 function depositoPorDefecto(PDO $pdo): ?int
 {
     $id = (int) $pdo->query('SELECT deposito_default_id FROM configuracion LIMIT 1')->fetchColumn();

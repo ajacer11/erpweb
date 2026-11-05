@@ -142,8 +142,13 @@ try {
 
                 // 7. SI ES BANCOS -> Impacto en ccbancos
                 if($row['tipo'] === 'Bancos' && !empty($row['cuentabancaria']) && $row['cuentabancaria'] > 0) {
-                    $sqlBan = "INSERT INTO ccbancos (cuenta, debe, haber, fecha, compasoc, tabla, detalle, fiscal, observacion) VALUES (?,?,?,?,?, 'cccuentastesoreria', 'Movimiento Tesorería', 1, ?)";
-                    $pdo->prepare($sqlBan)->execute([$row['cuentabancaria'], $row['debe'], $row['haber'], $fecha, $num_asiento_teso, $obs]);
+                    // El saldo corrido se calcula igual que en el resto de los movimientos
+                    // bancarios (antes quedaba en 0 y cortaba la cadena de saldos).
+                    $stSaldoBan = $pdo->prepare("SELECT saldo FROM ccbancos WHERE cuenta = ? ORDER BY id DESC LIMIT 1 FOR UPDATE");
+                    $stSaldoBan->execute([$row['cuentabancaria']]);
+                    $saldoBan = round((float) ($stSaldoBan->fetchColumn() ?: 0) + (float) $row['debe'] - (float) $row['haber'], 2);
+                    $sqlBan = "INSERT INTO ccbancos (cuenta, debe, haber, saldo, fecha, compasoc, tabla, detalle, fiscal, observacion) VALUES (?,?,?,?,?,?, 'cccuentastesoreria', 'Movimiento Tesorería', 1, ?)";
+                    $pdo->prepare($sqlBan)->execute([$row['cuentabancaria'], $row['debe'], $row['haber'], $saldoBan, $fecha, $num_asiento_teso, $obs]);
                 }
             }
 

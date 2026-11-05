@@ -65,7 +65,7 @@ try {
                         WHERE id = ?";
                 $params[] = $id;
             } else {
-                $sql = "INSERT INTO cuentaspropias (referencia, banco, sucursal, numsucursal, numcuenta, cbu, alias, tipocuenta, moneda) 
+                $sql = "INSERT INTO cuentaspropias (referencia, banco, sucursal, numsucursal, numcuenta, numcbu, alias, tipocuenta, moneda) 
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
             }
 

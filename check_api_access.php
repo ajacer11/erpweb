@@ -2,14 +2,36 @@
 /**
  * check_api_access.php - CONTROL DE SEGURIDAD BÁSICO PARA ENDPOINTS JSON
  * Incluir este archivo al inicio de todas las APIs.
- * Verifica: AJAX + Sesión Activa + Identificación de Empresa + Estado del Usuario.
+ * Verifica: AJAX (salvo descargas del navegador) + Sesión Activa + Identificación de Empresa + Estado del Usuario.
  */
 
 header('Content-Type: application/json');
+// Las APIs devuelven datos operativos que pueden cambiar entre dos consultas
+// consecutivas (precios, stock, clientes, etc.). Evitar que el navegador
+// reutilice una respuesta GET anterior después de editar un producto.
+header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+header('Pragma: no-cache');
+header('Expires: 0');
 date_default_timezone_set('America/Argentina/Buenos_Aires');
 
-// 1. SEGURIDAD TÉCNICA (AJAX ONLY)
-if (!isset($_SERVER['HTTP_X_REQUESTED_WITH']) || strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) != 'xmlhttprequest') {
+// 1. SEGURIDAD TÉCNICA. Los enlaces de descarga abren un GET normal del
+// navegador, sin X-Requested-With. La excepción se limita a estas acciones;
+// todas las demás acciones de estas APIs continúan requiriendo AJAX.
+$script = basename($_SERVER['SCRIPT_NAME'] ?? '');
+$descargasNavegador = [
+    'api_importar_productos.php' => ['download_template'],
+    'api_importar_clientes.php' => ['download_template'],
+    'api_importar_proveedores.php' => ['download_template'],
+    'api_importar_precios.php' => ['download_template', 'backup'],
+    'api_transportes_import.php' => ['download_template'],
+    'api_conceptos_compra.php' => ['export_excel'],
+    'api_depositos.php' => ['logo'], // <img> del encabezado
+];
+$descargaNavegador = ($_SERVER['REQUEST_METHOD'] ?? '') === 'GET'
+    && in_array($_GET['action'] ?? null, $descargasNavegador[$script] ?? [], true);
+$esAjax = isset($_SERVER['HTTP_X_REQUESTED_WITH'])
+    && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest';
+if (!$esAjax && !$descargaNavegador) {
     http_response_code(403);
     echo json_encode(['status' => 'error', 'error' => 'Acceso directo no permitido. Use la aplicación.']);
     exit();

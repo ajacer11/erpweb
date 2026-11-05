@@ -88,7 +88,8 @@
         "Los 21 campos de las cuatro pestañas son obligatorios: si falta uno solo (aunque esté en una pestaña distinta a la que se está mirando), el guardado se rechaza indicando cuál falta.",
         "No existe un guardado parcial por pestaña: el botón GUARDAR CAMBIOS actualiza toda la configuración de una sola vez, así que conviene revisar las cuatro pestañas antes de guardar.",
         "Solo se pueden elegir cuentas habilitadas e imputables, igual que en el resto de las pantallas de carga contable.",
-        "La cuenta de Comisiones a Vendedores y la de Cheques Rechazados a Cobrar existen como campos separados porque antes se usaba la misma cuenta que Proveedores (para comisiones) o la de Deudores por Ventas (para cheques rechazados); si se dejan sin revisar tras una migración de datos antigua, pueden no reflejar la separación esperada."
+        "La cuenta de Comisiones a Vendedores y la de Cheques Rechazados a Cobrar existen como campos separados porque antes se usaba la misma cuenta que Proveedores (para comisiones) o la de Deudores por Ventas (para cheques rechazados); si se dejan sin revisar tras una migración de datos antigua, pueden no reflejar la separación esperada.",
+        "'Aranceles y Comisiones de Tarjetas' es la cuenta de gasto que usan las liquidaciones de tarjeta (Fondos > Tarjetas y Cupones) para aranceles, comisiones y otros descuentos. Es opcional: solo hace falta si se registran liquidaciones con aranceles."
       ],
       "funcionamiento_interno": "Esta pantalla no genera asientos: guarda un único registro de configuración con la cuenta contable asignada a cada proceso automático. Cuando un módulo como Facturación, Compras, Cobranzas, Pagos a Proveedores o Ajustes de Stock necesita imputar un movimiento y el elemento involucrado (un producto, un proveedor, un medio de pago, etc.) no tiene definida su propia cuenta contable particular, el sistema recurre a la cuenta configurada acá como respaldo general; si tampoco hay una cuenta de respaldo válida configurada, el proceso automático que intenta generar el asiento se detiene con un error en lugar de imputar a una cuenta vacía o inexistente. Por eso, dejar un campo sin completar acá no rompe esta pantalla, pero puede hacer fallar la generación automática de asientos en otros módulos del sistema el día que se necesite esa cuenta de respaldo.",
       "relacionado": [
@@ -139,7 +140,7 @@
         "Solo se muestran los clientes donde la diferencia supera diez centavos; diferencias menores se consideran redondeo y no aparecen en el listado.",
         "Si no aparece ningún registro, significa que no se encontraron inconsistencias entre cuenta corriente y facturas pendientes."
       ],
-      "funcionamiento_interno": "Recorre todos los clientes y, para cada uno, suma por un lado el saldo registrado en su cuenta corriente y por otro lado el total de las facturas marcadas como pendientes de cobro; luego compara ambos valores y lista únicamente los clientes donde no coinciden, para que se pueda investigar el origen del desvío.",
+      "funcionamiento_interno": "Recorre todos los clientes y, para cada uno, suma por un lado el saldo registrado en su cuenta corriente y por otro lado lo que queda pendiente de cobro en sus facturas (la parte que se envió a cuenta corriente menos lo ya cobrado); luego compara ambos valores y lista únicamente los clientes donde no coinciden, para que se pueda investigar el origen del desvío.",
       "relacionado": [
         "clientes_cuenta_corriente.php",
         "facturas_pend_cli.php",
@@ -160,14 +161,16 @@
       ],
       "tips": [
         "Cargar una cuenta bancaria acá no alcanza por sí solo para poder depositar cheques o registrar movimientos contra ella: además hace falta crear (o editar) una cuenta de tesorería de tipo 'Bancos' en Fondos > Cuentas de Tesorería y vincularla a esta cuenta bancaria. Si ese vínculo no existe, acciones como depositar un cheque o marcar un cheque propio como pagado fallan avisando que la cuenta bancaria no tiene un medio de pago de Tesorería vinculado.",
-        "El banco/entidad tiene que existir previamente en 'Administrar Entidades Bancarias' antes de poder elegirlo al cargar una cuenta bancaria."
+        "El banco/entidad tiene que existir previamente en 'Administrar Entidades Bancarias' antes de poder elegirlo al cargar una cuenta bancaria.",
+        "Para controlar los movimientos de una cuenta contra el extracto del banco usar Conciliación Bancaria (mismo menú), que también muestra el Mayor Bancario con el saldo de la cuenta."
       ],
       "funcionamiento_interno": "Mantiene el registro maestro de las cuentas bancarias propias de la empresa, con sus datos identificatorios (entidad, sucursal, tipo de cuenta, moneda, número de cuenta, CBU y alias). Estas cuentas quedan disponibles como opción al vincular una cuenta de tesorería de tipo Bancos, y son las que después se usan como destino de depósitos de cheques y como origen de cheques propios emitidos, siempre que ese vínculo con la tesorería esté configurado.",
       "relacionado": [
         "bancos_entidades.php",
         "bancos_cuenta_add.php",
         "tesoreria_nueva_cuenta.php",
-        "informe_tesoreria.php"
+        "informe_tesoreria.php",
+        "bancos_conciliacion.php"
       ]
     },
     "bancos_entidades.php": {
@@ -342,23 +345,119 @@
     "certificado_descargar.php": {
       "titulo": "Descargar Certificado para ARCA",
       "categoria": "Administrador > Configuración > Descargar Certificado para ARCA",
-      "resumen": "Pantalla técnica para generar el archivo de solicitud de certificado digital que se necesita presentar en el portal de ARCA/AFIP para poder emitir facturas electrónicas. Genera un archivo que luego se sube manualmente al sitio de ARCA.",
-      "cuando_usarla": "Al configurar por primera vez la facturación electrónica de la empresa, o cuando vence o hay que renovar el certificado digital utilizado para comunicarse con ARCA.",
+      "resumen": "Primer paso para habilitar la factura electrónica. El sistema genera un archivo de solicitud de certificado; con ese archivo, en el sitio de ARCA se obtiene el certificado digital, se autoriza el servicio de Facturación Electrónica y se da de alta el punto de venta; al final se sube el certificado al sistema. Esta ayuda explica todo el procedimiento, con capturas de cada pantalla de ARCA.",
+      "cuando_usarla": "Al configurar por primera vez la facturación electrónica de la empresa, o cuando el certificado está por vencer (dura 2 años) y hay que renovarlo.",
       "como_se_usa": [
-        "Ingresar el CUIT de la empresa emisora (sin guiones).",
-        "Ingresar un nombre de alias que va a usarse como identificador del certificado; debe coincidir exactamente con el que luego se cree en el portal de ARCA.",
-        "Definir el nombre del archivo a descargar (el sistema le agrega la extensión correspondiente).",
-        "Presionar 'Generar y Descargar' para que el archivo se descargue en la computadora.",
-        "Subir ese archivo al portal de ARCA/AFIP para obtener el certificado autorizado."
+        "ANTES DE EMPEZAR: hace falta la clave fiscal de ARCA del titular del CUIT con nivel 3 o superior (si es una sociedad, la de la persona que la administra en ARCA). Conviene hacer todo de corrido y en este orden.",
+        "EN EL SISTEMA (esta pantalla): escribir el CUIT de la empresa (11 números, sin guiones) y un nombre de alias, por ejemplo 'facturacion2026' (sin espacios ni acentos). Anotar el alias: en ARCA hay que escribirlo exactamente igual. Presionar 'Generar y Descargar': se descarga a la computadora el archivo de solicitud (termina en .csr).",
+        "EN ARCA: entrar a arca.gob.ar con el CUIT y la clave fiscal. En el buscador de la página de inicio escribir 'certificados digitales' y elegir 'Administración de Certificados Digitales'.",
+        "Presionar 'Agregar alias'.",
+        "En 'Alias' escribir el mismo alias que se usó en el sistema. En 'Seleccionar archivo' elegir el archivo de solicitud descargado en el paso 2. Presionar 'Agregar alias'.",
+        "Vuelve la lista de certificados, ahora con el alias. Presionar 'Ver' en esa fila.",
+        "Se ve el certificado con su fecha de vencimiento y el estado VALIDO. Descargarlo con el ícono de la columna 'Descargar' y guardarlo en la computadora: es el archivo que se sube al sistema en el paso 15.",
+        "AUTORIZAR LA FACTURA ELECTRÓNICA: volver a la página de inicio de ARCA y entrar a 'Administrador de relaciones'.",
+        "Presionar 'ADHERIR SERVICIO'.",
+        "En la lista de organismos, presionar el logo de ARCA y después 'WebServices'.",
+        "En la lista de servicios elegir 'Facturación Electrónica' (no 'Factura Electrónica con Detalle - MTXCA' ni 'Factura electrónica de exportación').",
+        "Se abre 'Incorporar nueva Relación' con el servicio Facturación Electrónica. En la fila 'Representante' presionar 'BUSCAR'.",
+        "En 'Computador Fiscal' elegir el alias creado en el paso 5 y presionar 'CONFIRMAR'. De vuelta en la pantalla anterior, presionar 'CONFIRMAR' otra vez. Sin esta autorización el certificado existe pero ARCA rechaza las facturas.",
+        "PUNTO DE VENTA: en el buscador de ARCA escribir 'puntos de venta' y entrar a 'Administración de puntos de venta y domicilios' > 'A/B/M de Puntos de Venta' > 'Agregar'. Cargar un número de punto de venta nuevo (que no se use para facturar desde la web de ARCA ni desde otro sistema), un nombre de fantasía y el domicilio. En 'Sistema' elegir 'Factura Electronica - Monotributo - Web Services' si la empresa es monotributista, o 'RECE para aplicativo y web services' si es Responsable Inscripto. Presionar 'Aceptar' y anotar el número.",
+        "EN EL SISTEMA: en 'Subir Certificado Generado en ARCA' elegir el certificado descargado en el paso 7 y guardarlo.",
+        "EN EL SISTEMA: cargar el número de punto de venta del paso 14 en Datos de la Empresa (si se trabaja con varios depósitos, en el depósito que corresponda).",
+        "PRUEBA: emitir una factura de bajo importe y verificar que obtenga CAE. Si fue solo de prueba, anularla con una nota de crédito."
       ],
       "tips": [
-        "El alias ingresado en esta pantalla debe coincidir exactamente con el que se use al crear el certificado en el sitio de ARCA, de lo contrario la facturación electrónica no va a funcionar."
+        "El alias tiene que ser exactamente igual en el sistema y en ARCA (mayúsculas, guiones bajos, etc.).",
+        "Si en el paso 3 no aparece 'Administración de Certificados Digitales', hay que habilitarlo primero: 'Administrador de relaciones' > 'ADHERIR SERVICIO' > logo de ARCA > 'Servicios Interactivos' > 'Administración de Certificados Digitales'. Después cerrar sesión y volver a entrar.",
+        "Si en el paso 13 el alias no aparece en 'Computador Fiscal', el certificado no se terminó de crear: revisar los pasos 5 a 7.",
+        "El certificado vence a los 2 años. Para renovarlo: generar una nueva solicitud en esta pantalla con el mismo alias, en ARCA entrar al alias ('Ver') y usar 'Agregar certificado', descargar el nuevo y subirlo al sistema. La autorización (pasos 8 a 13) y el punto de venta (paso 14) no hace falta repetirlos.",
+        "Errores al facturar: si ARCA responde que no hay autorización para el servicio, falta el paso 13 (o se hizo con otro alias). Si responde que el punto de venta no existe o no corresponde, revisar el paso 14 y el número cargado en el sistema.",
+        "Si ARCA no muestra el domicilio al dar de alta el punto de venta, hay que regularizarlo en ARCA antes de seguir.",
+        "Los nombres y la ubicación de los menús de ARCA pueden cambiar con el tiempo; si algo no coincide con las capturas, buscar la opción con el buscador de ARCA."
       ],
-      "funcionamiento_interno": "Genera un archivo de solicitud de certificado (un tipo de archivo que sirve para pedir un certificado digital) usando los datos ingresados, y lo entrega para que el usuario lo descargue y lo presente en el portal de ARCA. Este paso es previo a subir el certificado ya autorizado en la pantalla de 'Subir Certificado'.",
+      "funcionamiento_interno": "El sistema genera la solicitud de certificado firmada con la clave privada de la empresa y la entrega para descargar. Con esa solicitud ARCA emite el certificado digital, que identifica al sistema como 'computador fiscal' de la empresa. Una vez subido el certificado y autorizado el servicio de Facturación Electrónica, el sistema le pide a ARCA el CAE de cada comprobante fiscal usando el punto de venta configurado.",
       "relacionado": [
         "certificado_subir.php",
         "empresa_datos.php"
-      ]
+      ],
+      "capturas": {
+        "2": [
+          {
+            "src": "img/ayuda/arca/01_buscar_certificados_digitales.jpg",
+            "alt": "Buscador de ARCA: Administración de Certificados Digitales"
+          }
+        ],
+        "3": [
+          {
+            "src": "img/ayuda/arca/02_agregar_alias.jpg",
+            "alt": "Botón Agregar alias"
+          }
+        ],
+        "4": [
+          {
+            "src": "img/ayuda/arca/03_alias_y_archivo_solicitud.jpg",
+            "alt": "Alias y selección del archivo de solicitud"
+          }
+        ],
+        "5": [
+          {
+            "src": "img/ayuda/arca/04_ver_alias.jpg",
+            "alt": "Lista de certificados: Ver"
+          }
+        ],
+        "6": [
+          {
+            "src": "img/ayuda/arca/05_descargar_certificado.jpg",
+            "alt": "Detalle del certificado y botón Descargar"
+          }
+        ],
+        "7": [
+          {
+            "src": "img/ayuda/arca/06_administrador_de_relaciones.jpg",
+            "alt": "Administrador de relaciones en la página de inicio"
+          }
+        ],
+        "8": [
+          {
+            "src": "img/ayuda/arca/07_adherir_servicio.jpg",
+            "alt": "Botón ADHERIR SERVICIO"
+          }
+        ],
+        "9": [
+          {
+            "src": "img/ayuda/arca/08_arca_webservices.jpg",
+            "alt": "Logo de ARCA y opción WebServices"
+          }
+        ],
+        "10": [
+          {
+            "src": "img/ayuda/arca/09_facturacion_electronica.jpg",
+            "alt": "Servicio Facturación Electrónica"
+          }
+        ],
+        "11": [
+          {
+            "src": "img/ayuda/arca/10_buscar_representante.jpg",
+            "alt": "Incorporar nueva Relación: BUSCAR representante"
+          }
+        ],
+        "12": [
+          {
+            "src": "img/ayuda/arca/11_elegir_computador_fiscal.jpg",
+            "alt": "Elegir el computador fiscal (alias) y CONFIRMAR"
+          }
+        ],
+        "13": [
+          {
+            "src": "img/ayuda/arca/12_punto_venta_monotributo.png",
+            "alt": "Alta de punto de venta para monotributistas"
+          },
+          {
+            "src": "img/ayuda/arca/13_punto_venta_responsable_inscripto.png",
+            "alt": "Alta de punto de venta para Responsables Inscriptos"
+          }
+        ]
+      }
     },
     "certificado_subir.php": {
       "titulo": "Subir Certificado Generado en ARCA",
@@ -371,9 +470,10 @@
         "Esperar la confirmación de que el certificado se cargó correctamente."
       ],
       "tips": [
-        "El archivo a subir debe ser el que ARCA entrega luego de aprobar la solicitud generada en la pantalla de 'Descargar Certificado', no el archivo de solicitud en sí."
+        "El archivo a subir debe ser el que ARCA entrega luego de aprobar la solicitud generada en la pantalla de 'Descargar Certificado', no el archivo de solicitud en sí.",
+        "Es uno de los últimos pasos del procedimiento completo, explicado con capturas en la ayuda de 'Descargar Certificado para ARCA': además de subir el certificado, en ARCA el servicio de Facturación Electrónica tiene que estar autorizado para el alias y el punto de venta para web services dado de alta y cargado en el sistema."
       ],
-      "funcionamiento_interno": "Guarda el archivo de certificado subido y lo deja disponible para que el sistema lo use al comunicarse con los servidores de ARCA al momento de emitir comprobantes electrónicos. Sin un certificado válido cargado, la facturación electrónica no puede funcionar.",
+      "funcionamiento_interno": "Guarda el archivo de certificado subido y lo deja disponible para que el sistema lo use al comunicarse con los servidores de ARCA al momento de emitir comprobantes electrónicos. Solo se aceptan archivos .crt o .pem. Subir un certificado nuevo reemplaza al anterior. Sin un certificado válido cargado, la facturación electrónica no puede funcionar.",
       "relacionado": [
         "certificado_descargar.php",
         "empresa_datos.php"
@@ -467,7 +567,7 @@
       "resumen": "Es el formulario para dar de alta un cliente nuevo o editar los datos de uno existente en el padrón. Reúne en pestañas los datos de identificación fiscal, ubicación, condiciones comerciales, logística y contactos adicionales del cliente.",
       "cuando_usarla": "Se usa cuando llega un cliente nuevo y hay que cargarlo en el sistema, o cuando hay que corregir o completar datos de un cliente que ya existe (por ejemplo su vendedor asignado, dirección o condición de cuenta corriente).",
       "como_se_usa": [
-        "Completar Razón Social, Condición Fiscal y Tipo/Número de Documento.",
+        "Completar Razón Social, Condición Fiscal y Tipo/Número de Documento. Si el Tipo de Documento es CUIT, se puede presionar el botón de la varita mágica junto al número para autocompletar Razón Social, Domicilio, Localidad, Código Postal, Provincia y Condición Fiscal consultando el padrón de AFIP.",
         "En la pestaña UBICACIÓN cargar domicilio, localidad, provincia y datos de contacto.",
         "En la pestaña COMERCIAL elegir la lista de precios que se le aplicará y, si corresponde, habilitar la cuenta corriente indicando los días de gracia para pagar.",
         "En la pestaña LOGÍSTICA asignar vendedor, transporte, unidad de negocio y rama comercial.",
@@ -477,9 +577,10 @@
       "tips": [
         "Si el Tipo de Documento es CUIT, el sistema valida automáticamente que el número sea válido antes de guardar.",
         "Habilitar la Cuenta Corriente es lo que permite después venderle a ese cliente 'a cuenta' y hacerle seguimiento de saldo.",
-        "Si se entra a esta pantalla desde un cliente ya cargado, el título cambia a 'EDITAR' y trae los datos existentes para modificarlos."
+        "Si se entra a esta pantalla desde un cliente ya cargado, el título cambia a 'EDITAR' y trae los datos existentes para modificarlos.",
+        "El botón de autocompletar por CUIT consulta el padrón real de AFIP: si el nombre de la provincia que devuelve AFIP no coincide exactamente con ninguna opción del combo (por ejemplo 'CIUDAD AUTONOMA BUENOS AIRES'), el sistema la reconoce como 'CABA'; si fuera una provincia que no está en el combo, la agrega como opción nueva en vez de descartarla."
       ],
-      "funcionamiento_interno": "Al guardar, el sistema valida los datos ingresados y los guarda en el padrón de clientes, ya sea creando un registro nuevo o actualizando uno existente. Los combos de vendedor, transporte, unidad y rama se completan automáticamente consultando las listas vigentes del sistema al abrir la pantalla.",
+      "funcionamiento_interno": "Al guardar, el sistema valida los datos ingresados y los guarda en el padrón de clientes, ya sea creando un registro nuevo o actualizando uno existente. Los combos de vendedor, transporte, unidad y rama se completan automáticamente consultando las listas vigentes del sistema al abrir la pantalla. El botón de autocompletar por CUIT consulta, a través del propio sistema, el servicio de padrón de AFIP (constancia de inscripción) para traer razón social, domicilio, localidad, código postal, provincia y condición fiscal del CUIT ingresado.",
       "relacionado": [
         "clientes_admin.php",
         "clientes_import.php",
@@ -616,14 +717,17 @@
       "tips": [
         "No se pueden combinar en el mismo cobro facturas fiscales (con CAE/factura electrónica) y no fiscales.",
         "Si el cliente no tiene deuda pendiente, el sistema pregunta si se desea registrar un 'pago a cuenta' sin comprobantes asociados.",
-        "Al elegir un medio de pago tipo cheque, el importe se calcula automáticamente sumando los cheques cargados en la ventana emergente."
+        "Al elegir un medio de pago tipo cheque, el importe se calcula automáticamente sumando los cheques cargados en la ventana emergente.",
+        "Si la venta se cobró en parte en el momento y en parte con cuenta corriente, acá figura pendiente solo la parte de cuenta corriente.",
+        "Si el medio de cobro es de tipo Tarjetas, se pide la tarjeta, las cuotas y opcionalmente el número de cupón (cuando hay tarjetas cargadas en Fondos > Tarjetas y Cupones); queda un cupón pendiente para la liquidación. Al anular el recibo, el cupón se anula o, si ya se liquidó, se compensa en la próxima liquidación."
       ],
       "funcionamiento_interno": "El sistema busca las facturas pendientes del cliente elegido, calcula los saldos, y al confirmar registra un recibo de cobro que descuenta el importe pagado (más retenciones) de las facturas seleccionadas, actualizando el saldo de cuenta corriente del cliente. Si se cargaron cheques, estos quedan registrados en la cartera de valores para su seguimiento posterior.",
       "relacionado": [
         "clientes_cuenta_corriente.php",
         "clientes_imputar_nc.php",
         "cheques_cartera.php",
-        "clientes_ctas_por_vendedor.php"
+        "clientes_ctas_por_vendedor.php",
+        "tarjetas_liquidaciones.php"
       ]
     },
     "codigos_mod.php": {
@@ -651,37 +755,48 @@
     "comprobantes_emitidos.php": {
       "titulo": "Comprobantes Emitidos",
       "categoria": "Facturación > Comprobantes Emitidos",
-      "resumen": "Informe detallado de todos los comprobantes de venta emitidos (facturas, notas de crédito, tickets), con filtros por fecha, cliente, vendedor, tipo de comprobante, medio de pago, unidad de negocio, provincia y rama. Incluye una vista de gráficos con la evolución de ventas y los principales clientes, vendedores y ramas.",
-      "cuando_usarla": "Se usa para consultar el historial de facturación, verificar comprobantes emitidos a un cliente puntual, controlar comprobantes que quedaron sin autorización fiscal (CAE) o generar una nota de crédito a partir de un comprobante ya emitido.",
+      "resumen": "Informe detallado de todos los comprobantes de venta emitidos (facturas, notas de crédito, tickets), con filtros por fecha, cliente, vendedor, usuario que facturó, tipo de comprobante, medio de pago, unidad de negocio, provincia y rama. Incluye una vista de gráficos con la evolución de ventas y los principales clientes, vendedores, usuarios y ramas.",
+      "cuando_usarla": "Se usa para consultar el historial de facturación, verificar comprobantes emitidos a un cliente puntual, controlar comprobantes que quedaron sin autorización fiscal (CAE), revisar la facturación de un usuario/cajero puntual, generar una nota de crédito a partir de un comprobante ya emitido, o corregir con qué medios se cobró una venta.",
       "como_se_usa": [
         "Definir el rango de fechas y si se filtra por fecha de factura o de remito.",
-        "Activar los interruptores de los filtros adicionales que se necesiten (cliente, vendedor, tipo de comprobante, medio de pago, unidad de negocio, provincia, rama).",
+        "Activar los interruptores de los filtros adicionales que se necesiten (cliente, vendedor, usuario, tipo de comprobante, medio de pago, unidad de negocio, provincia, rama).",
         "Presionar CONSULTAR para traer los resultados (o esperar, ya que algunos filtros consultan automáticamente).",
         "Revisar el listado, los totales generales, o pasar a la pestaña GRÁFICOS para ver la evolución visual.",
-        "Desde cada fila se puede VER/imprimir el comprobante, re-solicitar el CAE si quedó pendiente, o generar una Nota de Crédito asociada.",
+        "Desde cada fila se puede VER/imprimir el comprobante, re-solicitar el CAE si quedó pendiente, generar una Nota de Crédito asociada o, con el permiso correspondiente, MODIFICAR LOS MEDIOS DE COBRO (ícono verde de billetes).",
+        "Para modificar los medios de cobro: en la ventana se ven los medios con que se cobró; elegir uno o dos medios nuevos con sus importes (tienen que sumar lo mismo que el cobro original: al escribir un importe, el otro medio toma el resto), escribir el motivo y GUARDAR.",
         "Exportar a Excel si se necesita el detalle fuera del sistema."
       ],
       "tips": [
         "Los comprobantes marcados con 'SIN CAE' no lograron obtener la autorización fiscal de ARCA; desde ahí mismo se puede reintentar la solicitud.",
         "No se puede generar una Nota de Crédito sobre otro comprobante que ya sea una nota de crédito.",
-        "Al re-solicitar CAE de una nota de crédito antigua puede pedirse indicar el comprobante original asociado."
+        "Al re-solicitar CAE de una nota de crédito antigua puede pedirse indicar el comprobante original asociado.",
+        "El filtro USUARIO busca por el nombre de usuario que emitió el comprobante (quien facturó), que no siempre coincide con el VENDEDOR asignado a la venta; sirve por ejemplo para revisar la facturación de un cajero puntual sin importar a qué vendedor se le haya cargado cada venta.",
+        "En la pestaña GRÁFICOS hay un panel de 'Facturación por usuario' además del de 'Facturación por vendedor', para comparar de un vistazo cuánto facturó cada usuario del sistema en el período consultado.",
+        "Modificar los medios de cobro no cambia el total del comprobante (ya tiene CAE): solo cómo se reparte entre medios. Tampoco borra ni corrige lo grabado por la venta: registra movimientos de ajuste con fecha del día en que se hace el cambio, solo por la diferencia de cada medio, en tesorería, caja, bancos, cuenta corriente del cliente y un asiento contable.",
+        "Si en el cambio hay efectivo (antes o después), el ajuste de efectivo se hace en la caja abierta de quien modifica, aunque la venta se haya cobrado en otra caja; sin caja abierta no se puede. Por eso, si la venta se cobró en efectivo de otra caja, después del cambio el comprobante muestra el efectivo de la caja actual.",
+        "No deja dejar la cuenta corriente por debajo de lo que ya se imputó con recibos (o, en una nota de crédito, de lo ya aplicado a facturas): primero hay que ajustar las imputaciones. Tampoco deja pasar a cuenta corriente a un cliente que no la tiene habilitada, ni usar medios que no estén disponibles para ventas.",
+        "Cada modificación queda registrada con usuario, fecha, motivo, medios anteriores y nuevos, número de asiento y caja usada.",
+        "El botón de modificar medios de cobro solo aparece a los administradores y a los usuarios con el permiso especial 'Permitir modificar medios de cobro de comprobantes emitidos' (Niveles de Acceso).",
+        "Si al modificar los medios de cobro entra o sale una tarjeta, se genera un cupón por la diferencia; al agregar una tarjeta se pide cuál y las cuotas."
       ],
-      "funcionamiento_interno": "El sistema consulta el historial de comprobantes de venta aplicando los filtros indicados, calcula subtotales, IVA y totales considerando que las notas de crédito restan en vez de sumar, y arma tanto la tabla detallada como los gráficos agregados. La re-solicitud de CAE se comunica con el servicio de facturación electrónica de ARCA para intentar obtener la autorización pendiente.",
+      "funcionamiento_interno": "El sistema consulta el historial de comprobantes de venta aplicando los filtros indicados, calcula subtotales, IVA y totales considerando que las notas de crédito restan en vez de sumar, y arma tanto la tabla detallada como los gráficos agregados. La re-solicitud de CAE se comunica con el servicio de facturación electrónica de ARCA para intentar obtener la autorización pendiente. Al modificar los medios de cobro, el sistema compara medio por medio lo cobrado antes con lo nuevo y, solo por la diferencia, registra contramovimientos con la fecha del día: un movimiento de tesorería por cada medio, el ajuste en la caja abierta del usuario (y su saldo) si hay efectivo, en la cuenta bancaria si el medio es de un banco, en la cuenta corriente del cliente si el medio es cuenta corriente, y un asiento contable con cada medio contra su cuenta (que balancea porque el total no cambia). En una nota de crédito los signos se invierten. Después actualiza en el comprobante los medios que muestra e imprime, cuánto quedó en cuenta corriente y si está pagado, y guarda la modificación en un registro de auditoría.",
       "relacionado": [
         "newfactura.php",
         "clientes_cuenta_corriente.php",
-        "reporte_ventas_informe.php"
+        "reporte_ventas_informe.php",
+        "niveles_acceso.php",
+        "cajas_cerrar.php"
       ]
     },
     "config_general.php": {
       "titulo": "Configuración General",
       "categoria": "Administrador > Configuración > Configuración General",
-      "resumen": "Panel central de parámetros globales del sistema, organizado en cuatro pestañas: General, Ventas y Stock, Fiscal e Impuestos, y Visual e Impresión. Acá se define comportamiento que afecta a todos los usuarios por igual, no es una configuración personal de cada empleado. En la pestaña General se carga el logo que se imprime en los comprobantes y algunos parámetros de comportamiento del mostrador. En Ventas y Stock se decide si se puede vender con stock negativo, modificar precios manualmente, cambiar la lista de precios, agrupar productos repetidos en el ticket, imputar cobros automáticamente y si se admiten Notas de Crédito/Débito, además de qué cliente y qué tipo de comprobante aparecen predeterminados al abrir una venta nueva. En Fiscal e Impuestos se carga la alícuota de Ingresos Brutos y si la empresa actúa como agente de retención de IVA, Ganancias o IIBB, además de las reglas de descuentos y recargos globales y si los tickets se emiten discriminando IVA o no. En Visual e Impresión se define el formato de impresión predeterminado (hoja A4 o ticket térmico de 80/58mm) y algunas opciones de cómo se ve el comprobante impreso. Varios de estos parámetros tienen efecto inmediato y comprobado en otras pantallas (sobre todo en Facturar), mientras que otros quedan guardados pero, al día de esta revisión, no se encontró en el código ningún lugar que realmente los aplique; se detalla cuáles en los tips para no dar por sentado un comportamiento que en realidad no ocurre.",
+      "resumen": "Panel central de parámetros globales del sistema, organizado en cuatro pestañas: General, Ventas y Stock, Fiscal e Impuestos, y Visual e Impresión. Acá se define comportamiento que afecta a todos los usuarios por igual, no es una configuración personal de cada empleado. En la pestaña General se carga el logo que se imprime en los comprobantes y algunos parámetros de comportamiento del mostrador. En Ventas y Stock se decide si se puede vender con stock negativo, modificar precios manualmente, cambiar la lista de precios, agrupar productos repetidos en el ticket, imputar cobros automáticamente y si se admiten Notas de Crédito y, por separado, Notas de Débito, además de qué cliente y qué tipo de comprobante aparecen predeterminados al abrir una venta nueva. En Fiscal e Impuestos se carga la alícuota de Ingresos Brutos y si la empresa actúa como agente de retención de IVA, Ganancias o IIBB, además de las reglas de descuentos y recargos globales y si los tickets se emiten discriminando IVA o no. En Visual e Impresión se define el formato de impresión predeterminado (hoja A4 o ticket térmico de 80/58mm) y algunas opciones de cómo se ve el comprobante impreso. Varios de estos parámetros tienen efecto inmediato y comprobado en otras pantallas (sobre todo en Facturar), mientras que otros quedan guardados pero, al día de esta revisión, no se encontró en el código ningún lugar que realmente los aplique; se detalla cuáles en los tips para no dar por sentado un comportamiento que en realidad no ocurre.",
       "cuando_usarla": "Se usa al configurar el sistema por primera vez o cuando hay que cambiar una política general de la empresa: habilitar o restringir algo en el proceso de venta, cambiar el formato de impresión predeterminado, activar retenciones fiscales, o definir qué comprobante y qué cliente aparecen por defecto al abrir la pantalla de Facturar.",
       "como_se_usa": [
         "Ir a la pestaña correspondiente al parámetro que se quiere cambiar: General, Ventas y Stock, Fiscal e Impuestos o Visual e Impresión.",
         "En General, subir o cambiar el logo que va a aparecer en facturas, notas y tickets (PNG, JPG o WebP, hasta 2 MB), y ajustar dónde queda el cursor al abrir una venta nueva (en la cantidad o en el código de producto).",
-        "En Ventas y Stock, tildar o destildar los interruptores de comportamiento (stock negativo, modificar precio, cambiar lista, agrupar productos, imputar cobros, admitir Notas de Crédito/Débito) y elegir, si se quiere, un cliente y un tipo de comprobante predeterminados para agilizar el mostrador.",
+        "En Ventas y Stock, tildar o destildar los interruptores de comportamiento (stock negativo, modificar precio, cambiar lista, agrupar productos, imputar cobros, admitir Notas de Crédito, admitir Notas de Débito) y elegir, si se quiere, un cliente y un tipo de comprobante predeterminados para agilizar el mostrador.",
         "En Fiscal e Impuestos, cargar la alícuota de Ingresos Brutos, marcar si la empresa es agente de retención de IVA, Ganancias o IIBB, y decidir si se habilitan descuentos y recargos globales y si los tickets salen sin discriminar IVA.",
         "En Visual e Impresión, elegir el formato de impresión predeterminado y las opciones de cómo se arma la lista de ítems y el comprobante impreso.",
         "Presionar GUARDAR CAMBIOS para aplicar la nueva configuración."
@@ -691,16 +806,45 @@
         "El comprobante y el cliente predeterminados al abrir una venta nueva ahorran clics en el día a día del mostrador, y se aplican automáticamente en la pantalla de Facturar apenas se entra (salvo que se esté facturando un pedido o presupuesto ya cargado).",
         "Los cambios acá afectan a todos los usuarios del sistema, no son configuraciones personales.",
         "Cada vez que se guarda, el sistema no pisa la configuración anterior: agrega un registro nuevo con la fecha del cambio y usa siempre el más reciente. Esto deja un historial interno de cómo fue cambiando la configuración a lo largo del tiempo, aunque hoy no hay una pantalla para consultar ese historial directamente.",
-        "'Admitir Notas de Crédito' es el interruptor que decide si en la pantalla de Facturar aparecen las opciones de Nota de Crédito y Nota de Débito; si está apagado, esas opciones no se muestran (salvo para generar puntualmente la nota de crédito de un comprobante ya emitido desde su propio listado).",
+        "'Admitir Notas de Crédito' es el interruptor que decide si en la pantalla de Facturar aparecen las opciones de Nota de Crédito; si está apagado, no se muestran (salvo para generar puntualmente la nota de crédito de un comprobante ya emitido desde su propio listado). 'Admitir Notas de Débito' viene apagado por defecto: mientras esté así, las Notas de Débito A/B/C no aparecen en el combo de Facturar y el sistema rechaza emitirlas aunque se intente forzarlo.",
         "'Monto Mínimo' y 'Máximo de Ajustes', en la pestaña General, quedan guardados pero al día de esta revisión no se encontró ningún control del sistema que los use para bloquear o avisar algo: no tienen efecto comprobado en el resto de las pantallas.",
         "'Leyenda al pie (Tickets)' y 'Imprimir Remito automáticamente tras facturar' también quedan guardados pero no se encontró que actualmente se apliquen al imprimir el comprobante ni al facturar: no conviene asumir que van a aparecer o dispararse solos.",
-        "'Usar Tabla Reducida en Ventas' y 'Mostrar vendedor en comprobantes impresos' sí tienen efecto comprobado: el primero en la pantalla clásica de facturación (no en el diseño nuevo 'Facturar'), y el segundo directamente en el comprobante impreso, donde muestra u oculta el nombre del vendedor."
+        "'Usar Tabla Reducida en Ventas' y 'Mostrar vendedor en comprobantes impresos' sí tienen efecto comprobado: el primero en la pantalla clásica de facturación (no en el diseño nuevo 'Facturar'), y el segundo directamente en el comprobante impreso, donde muestra u oculta el nombre del vendedor.",
+        "'Permitir Stock Negativo' no afecta a las Notas de Crédito ni al Ticket de Crédito: como son devoluciones, nunca controlan stock disponible."
       ],
-      "funcionamiento_interno": "El sistema guarda todos estos parámetros en un registro de configuración central, y cada guardado crea una fila nueva con fecha en lugar de pisar la anterior; el resto del sistema siempre lee la más reciente. Pantallas como Facturar piden esta configuración al cargar y la usan en vivo: por ejemplo, 'Permitir Stock Negativo' habilita o bloquea vender por encima del stock disponible, 'Permitir modificar Precio en Venta' habilita los campos de precio y descuento por línea, 'Permitir cambiar Lista de Precios' decide si se puede facturar con una lista distinta a la asignada al cliente, y 'Admitir Notas de Crédito' controla si esas opciones aparecen en el tipo de comprobante. El formato de impresión predeterminado, el logo y la opción de mostrar el vendedor se leen al imprimir cualquier comprobante y definen cómo se ve en papel. La alícuota de Ingresos Brutos y los interruptores de agente de retención se usan en los módulos de cobros y de pagos a proveedores para calcular las retenciones correspondientes. No todos los parámetros de esta pantalla tienen un efecto verificado hoy: algunos (como Monto Mínimo, Máximo de Ajustes, Leyenda al pie o Imprimir Remito automáticamente) se guardan correctamente pero no se encontró en el código ningún lugar que los lea para aplicar un comportamiento real; puede tratarse de funciones pensadas para más adelante o ya discontinuadas.",
+      "funcionamiento_interno": "El sistema guarda todos estos parámetros en un registro de configuración central, y cada guardado crea una fila nueva con fecha en lugar de pisar la anterior; el resto del sistema siempre lee la más reciente. Pantallas como Facturar piden esta configuración al cargar y la usan en vivo: por ejemplo, 'Permitir Stock Negativo' habilita o bloquea vender por encima del stock disponible, 'Permitir modificar Precio en Venta' habilita los campos de precio y descuento por línea, 'Permitir cambiar Lista de Precios' decide si se puede facturar con una lista distinta a la asignada al cliente, 'Admitir Notas de Crédito' controla si esas opciones aparecen en el tipo de comprobante y 'Admitir Notas de Débito' hace lo mismo con las Notas de Débito (además de bloquearlas al grabar). El formato de impresión predeterminado, el logo y la opción de mostrar el vendedor se leen al imprimir cualquier comprobante y definen cómo se ve en papel. La alícuota de Ingresos Brutos y los interruptores de agente de retención se usan en los módulos de cobros y de pagos a proveedores para calcular las retenciones correspondientes. No todos los parámetros de esta pantalla tienen un efecto verificado hoy: algunos (como Monto Mínimo, Máximo de Ajustes, Leyenda al pie o Imprimir Remito automáticamente) se guardan correctamente pero no se encontró en el código ningún lugar que los lea para aplicar un comportamiento real; puede tratarse de funciones pensadas para más adelante o ya discontinuadas.",
       "relacionado": [
         "empresa_datos.php",
         "newfactura.php",
-        "uns_admin.php"
+        "uns_admin.php",
+        "config_apis_externas.php"
+      ]
+    },
+    "config_apis_externas.php": {
+      "titulo": "Configurar APIs",
+      "categoria": "Administrador > Configuración > Configurar APIs",
+      "resumen": "Panel para publicar el catálogo de productos (precios y stock) como una API pública, pensada para que una tienda online externa (o cualquier sistema de terceros) consulte esa información automáticamente en lugar de cargarla a mano. Por ahora tiene una sola pestaña, 'Productos', pero está armado para poder sumar otras integraciones más adelante bajo el mismo lugar. Desde acá se decide: si la API está habilitada, qué lista o listas de precios se comparten (se puede elegir más de una: la tienda recibe el precio neto, el IVA y el precio final de cada una), y qué stock se comparte (el consolidado de todos los depósitos, o el de un depósito puntual si la empresa tiene multidepósito activado). El token de acceso —la 'contraseña' que la tienda va a usar para autenticarse— se genera automáticamente la primera vez que se guarda la configuración, y puede regenerarse en cualquier momento con un botón dedicado.",
+      "cuando_usarla": "Cuando hay que darle a una tienda online, marketplace o cualquier sistema externo acceso automatizado a los precios y el stock de los productos, en lugar de exportar planillas a mano o cargar los datos manualmente del otro lado.",
+      "como_se_usa": [
+        "Activar el switch 'API habilitada' (si está apagado, la API responde 'deshabilitada' aunque el token sea correcto).",
+        "Tildar, en 'Listas de precios a compartir', una o más listas: la tienda va a recibir el precio de cada una que se marque acá.",
+        "En 'Stock a compartir', dejar 'Consolidado' para compartir la suma de todos los depósitos, o elegir un depósito puntual (esta opción solo aparece habilitada si la empresa tiene multidepósito activado en Configuración General).",
+        "Presionar GUARDAR CAMBIOS. La primera vez que se guarda, el sistema genera automáticamente el token y la URL de la API queda visible debajo.",
+        "Copiar el TOKEN DE ACCESO y la URL DE LA API (hay un botón de copiar al lado de cada uno) y pasárselos a quien vaya a programar la integración del lado de la tienda.",
+        "Si el token se filtró o hay que darlo de baja, presionar el botón de 'Generar un token nuevo': el anterior deja de funcionar en el acto, así que hay que avisarle a la tienda para que actualice el que está usando."
+      ],
+      "tips": [
+        "El token tiene 70 caracteres y hay que enviarlo como header 'Authorization: Bearer <token>', o como parámetro 'token' si el sistema que llama no puede mandar headers personalizados (por ejemplo, pegando la URL directo en el navegador para probar).",
+        "La API acepta tanto GET (parámetros por la URL) como POST (por formulario o por JSON), con los mismos nombres de parámetro en los dos casos.",
+        "Solo se comparten productos habilitados y marcados para mostrar en catálogo; un producto oculto o dado de baja no va a aparecer aunque tenga precio y stock cargados.",
+        "Regenerar el token es inmediato y no tiene vuelta atrás: cualquier integración que esté usando el token viejo deja de funcionar apenas se confirma la regeneración.",
+        "Para la documentación técnica completa (todos los parámetros, formato de la respuesta, ejemplos) hay un archivo descargable en /documentacion_api_productos.php, pensado para pasárselo directamente a quien programe la integración del lado de la tienda."
+      ],
+      "funcionamiento_interno": "A diferencia del resto de la configuración del sistema (que vive en la base de datos propia de cada empresa), el token y esta configuración se guardan en la base central del sistema, no en la base de la empresa: como la tienda externa llama a la API sin haber iniciado sesión, el sistema necesita poder determinar a qué empresa pertenece el pedido a partir del token antes de poder conectarse a la base de esa empresa. Cuando llega una llamada a la API, el sistema busca el token en esa base central; si es válido y la API está habilitada, recién ahí se conecta a la base de la empresa correspondiente para traer los productos, aplicando las listas de precios y el depósito elegidos acá. Cada llamada (exitosa o rechazada) queda registrada con fecha, IP y resultado, para poder detectar un uso indebido si el token se filtra.",
+      "relacionado": [
+        "config_general.php",
+        "depositos_admin.php",
+        "productos_add.php"
       ]
     },
     "dashboard1.php": {
@@ -910,9 +1054,10 @@
       ],
       "tips": [
         "El listado indica si cada comprobante es fiscal (con CAE de ARCA) o no",
-        "El reporte impreso y el Excel agrupan automáticamente las facturas por cliente y calculan el subtotal de deuda de cada uno"
+        "El reporte impreso y el Excel agrupan automáticamente las facturas por cliente y calculan el subtotal de deuda de cada uno",
+        "En una venta cobrada en parte con cuenta corriente y en parte con otro medio (por ejemplo efectivo + cuenta corriente), el saldo pendiente es solo la parte enviada a cuenta corriente; la columna Cobrado incluye lo pagado en el momento."
       ],
-      "funcionamiento_interno": "El sistema recorre los comprobantes de venta emitidos y calcula, para cada uno, la diferencia entre el total facturado y lo efectivamente cobrado hasta la fecha de corte elegida, mostrando solo aquellos con saldo mayor a cero.",
+      "funcionamiento_interno": "El sistema recorre los comprobantes de venta emitidos y calcula, para cada uno, la diferencia entre lo que se envió a cuenta corriente al facturar (en comprobantes viejos, el total) y lo efectivamente cobrado hasta la fecha de corte elegida, mostrando solo aquellos con saldo mayor a cero.",
       "relacionado": [
         "cobrar_facturas.php",
         "clientes_cuenta_corriente.php",
@@ -1171,13 +1316,15 @@
         "Seleccionar el usuario a configurar",
         "En la pestaña ÁRBOL DE MENÚ, tildar las pantallas a las que debe tener acceso (al desmarcar un ítem padre se desmarcan automáticamente sus hijos; al marcar un hijo se marcan sus padres)",
         "Presionar GUARDAR CAMBIOS para aplicar los permisos del árbol",
-        "En la pestaña PERMISOS ESPECIALES, activar las restricciones adicionales que correspondan (ocultar costos, limitar a un vendedor, bloquear edición de pedidos o facturas)",
+        "En la pestaña PERMISOS ESPECIALES, activar las restricciones o habilitaciones adicionales que correspondan (ocultar costos, limitar a un vendedor, bloquear edición de pedidos o facturas, editar descripciones, modificar medios de cobro de comprobantes emitidos)",
         "Presionar GUARDAR PERMISOS ESPECIALES",
         "Opcionalmente usar CLONAR DE OTRO para copiar la configuración de permisos de otro usuario ya configurado"
       ],
       "tips": [
         "Los usuarios marcados como Administrador tienen acceso total y no se les pueden editar los permisos desde acá",
-        "Clonar permisos de otro usuario solo copia la selección en pantalla; igual hay que presionar GUARDAR para que se aplique de verdad"
+        "Clonar permisos de otro usuario solo copia la selección en pantalla; igual hay que presionar GUARDAR para que se aplique de verdad",
+        "'Permitir modificar medios de cobro de comprobantes emitidos' habilita el botón de Comprobantes Emitidos que corrige con qué medios se cobró una venta. Como mueve caja, tesorería, bancos, cuenta corriente y contabilidad, conviene dárselo solo a quien corresponda. Se controla en el momento de cada operación, así que quitarlo tiene efecto inmediato.",
+        "Guardar los permisos especiales conserva el permiso 'puede cambiar depósito', que se administra desde la pantalla de Depósitos."
       ],
       "funcionamiento_interno": "El sistema guarda para cada usuario la lista de pantallas del menú que tiene permitidas y, por separado, un conjunto de restricciones especiales; en cada acceso al sistema se verifica esta configuración para decidir si el usuario puede ver una pantalla o realizar una acción, y si intenta algo no permitido queda registrado en el log de accesos restringidos.",
       "relacionado": [
@@ -1219,12 +1366,15 @@
         "Elegir la lista de precios a aplicar y, si corresponde, un descuento general",
         "Buscar cada producto por código o por descripción y agregarlo con su cantidad y descuento particular",
         "Revisar la grilla de ítems y los totales (neto, IVA, total del pedido) al pie",
+        "Para controlar el armado, usar el buscador que está arriba de la grilla (filtra los productos ya cargados en el pedido por código o descripción) y tildar la casilla de cada renglón a medida que el producto se prepara en la caja",
         "Presionar GUARDAR (o ACTUALIZAR si se está editando un pedido existente)"
       ],
       "tips": [
         "Se puede escanear el código de barras directamente en el campo de código para agregar productos más rápido",
         "El sistema puede aplicar automáticamente descuentos por promociones vigentes si el producto y la cantidad califican",
-        "Las teclas rápidas F2 (buscar producto), F10 (guardar) y ESC agilizan la carga"
+        "Las teclas rápidas F2 (buscar producto), F10 (guardar) y ESC agilizan la carga",
+        "El buscador del pedido acepta varias palabras (por ejemplo 'remera azul') y no distingue mayúsculas ni acentos; con Escape o la X se limpia. Mientras filtra, muestra cuántos renglones se ven del total, pero los totales del pie siempre son del pedido completo.",
+        "La casilla de 'preparado' es solo una ayuda en pantalla: pinta el renglón de verde, muestra el avance (Preparados: X/Y) y con 'Ocultar preparados' deja a la vista solo lo que falta armar. No se guarda en el pedido: al recargar o volver a abrir el pedido las casillas aparecen destildadas."
       ],
       "funcionamiento_interno": "El pedido se guarda con sus líneas de detalle y queda en estado 'pendiente' hasta que se factura o se anula; no descuenta stock ni genera movimientos contables por sí solo, ya que es solo un compromiso de venta a futuro que luego se convierte en factura desde la pantalla de facturación.",
       "relacionado": [
@@ -1236,7 +1386,7 @@
     "newfactura.php": {
       "titulo": "Facturar",
       "categoria": "Facturación > Facturar",
-      "resumen": "Es la pantalla principal de todo el sistema: desde acá se emite cualquier comprobante de venta a un cliente (Factura A, B o C, Nota de Crédito, Nota de Débito o Ticket) y se cobra en el mismo paso. Permite elegir el cliente, agregar productos por escaneo de código de barras o por búsqueda con foto y precio, aplicar descuentos o recargos (por línea o globales), ver el total actualizado en todo momento y cerrar la venta cobrando con uno o dos medios de pago combinados. También sirve para facturar un pedido o presupuesto que ya estaba cargado, y para emitir una nota de crédito o débito asociada a un comprobante anterior. El tipo de comprobante que se puede elegir no queda librado al criterio de quien factura: el sistema arma automáticamente la lista de opciones cruzando la condición fiscal de la empresa (cargada en Datos de la Empresa) con la condición fiscal del cliente elegido, y solo muestra los tipos de factura que corresponden a esa combinación. Si la empresa todavía no tiene cargado el certificado de ARCA/AFIP, la pantalla directamente no ofrece comprobantes fiscales: solo permite emitir Ticket o Ticket Crédito, que son comprobantes internos sin autorización electrónica. Cuando el tipo elegido es una Nota de Crédito o Débito, la pantalla exige asociarla a un comprobante anterior del mismo cliente y de la misma letra antes de habilitar el cobro. Es, además, la pantalla con más controles cruzados de todo el sistema: revisa stock disponible, precios y descuentos máximos permitidos por producto y por lista, cuenta corriente habilitada según el medio de pago, y que lo cobrado coincida con el total, repitiendo buena parte de esos controles en el servidor al momento de grabar.",
+      "resumen": "Es la pantalla principal de todo el sistema: desde acá se emite cualquier comprobante de venta a un cliente (Factura A, B o C, Nota de Crédito, Nota de Débito o Ticket) y se cobra en el mismo paso. Permite elegir el cliente, agregar productos por escaneo de código de barras o por búsqueda con foto y precio, aplicar descuentos o recargos (por línea o globales), ver el total actualizado en todo momento y cerrar la venta cobrando con uno o dos medios de pago combinados. También sirve para facturar un pedido o presupuesto que ya estaba cargado, y para emitir una nota de crédito o débito asociada a un comprobante anterior. El tipo de comprobante que se puede elegir no queda librado al criterio de quien factura: el sistema arma automáticamente la lista de opciones cruzando la condición fiscal de la empresa (cargada en Datos de la Empresa) con la condición fiscal del cliente elegido, y solo muestra los tipos de factura que corresponden a esa combinación. Si la empresa todavía no tiene cargado el certificado de ARCA/AFIP, la pantalla directamente no ofrece comprobantes fiscales: solo permite emitir Ticket o Ticket Crédito, que son comprobantes internos sin autorización electrónica. Cuando el tipo elegido es una Nota de Crédito o Débito, la pantalla exige asociarla a un comprobante anterior del mismo cliente y de la misma letra antes de habilitar el cobro. Es, además, la pantalla con más controles cruzados de todo el sistema: revisa stock disponible (salvo en las notas de crédito, que son devoluciones), precios y descuentos máximos permitidos por producto y por lista, cuenta corriente habilitada según el medio de pago, y que lo cobrado coincida con el total, repitiendo buena parte de esos controles en el servidor al momento de grabar.",
       "cuando_usarla": "Cada vez que hay que emitirle un comprobante a un cliente: una venta de mostrador, la facturación de un pedido o presupuesto ya cargado, o una nota de crédito/débito que corrige o complementa una factura anterior. También es la pantalla de referencia para entender qué tipo de comprobante corresponde emitir según la condición fiscal de la empresa y del cliente, ya que es el propio sistema el que decide y filtra las opciones disponibles en cada caso.",
       "como_se_usa": [
         "Elegir el cliente en el buscador de arriba (atajo F3) o, si todavía no está cargado, crearlo al vuelo con el botón verde 'Cliente nuevo' sin salir de la pantalla (según el permiso del usuario). El botón de la lupa abre un buscador más amplio, y el de la tarjeta muestra la ficha completa del cliente ya seleccionado (condición fiscal, cuenta corriente, lista de precios, domicilio).",
@@ -1245,21 +1395,29 @@
         "Revisar y ajustar la lista de ítems: cambiar cantidades, aplicar un descuento por línea, editar el precio final de un renglón, o quitar un producto agregado por error. Se puede alternar entre una vista de tarjetas (con foto) y una vista de planilla tipo tabla, más cómoda para cargas rápidas con muchos ítems.",
         "Si hace falta, aplicar un descuento o recargo global a todo el comprobante (ícono de lápiz junto a 'Descuento' o 'Recargo'), o agregar una línea manual sin producto asociado con el botón 'Manual' (atajo F8), indicando descripción, cantidad, alícuota de IVA e importe.",
         "Revisar los totales en el panel lateral (neto, IVA, descuentos, recargos y total; se puede desplegar el detalle de impuestos) y presionar 'Cobrar' (atajo F10).",
-        "En la ventana de cobro, indicar uno o dos medios de pago con sus respectivos importes y elegir el vendedor, y confirmar con 'Emitir' para cerrar la venta."
+        "En la ventana de cobro, cargar el importe de MEDIO 1 (por defecto trae el total del comprobante) y, si se paga con dos medios combinados, elegir MEDIO 2 y escribir también su importe: los dos campos son de carga libre, no se autocompletan entre sí. Debajo aparece en vivo 'FALTA POR COBRAR' o 'VUELTO A ENTREGAR' según lo que se va cargando, útil por ejemplo para calcular el vuelto de un pago en efectivo aunque se use un solo medio de pago. Elegir el vendedor y confirmar con 'Emitir' para cerrar la venta."
       ],
       "tips": [
         "Atajos de teclado: F3 abre el buscador de clientes, F2 pone el cursor en cantidad o código según la configuración del negocio, F8 abre la línea manual, F4 empieza un comprobante nuevo, F10 cobra o confirma el cobro, y Escape cierra cualquier ventana emergente abierta.",
-        "Si el cliente no existe todavía, se puede dar de alta uno nuevo sin salir de la pantalla (según el permiso del usuario), indicando razón social, tipo y número de documento, condición fiscal y lista de precios.",
+        "Si el cliente no existe todavía, se puede dar de alta uno nuevo sin salir de la pantalla (según el permiso del usuario), indicando razón social, tipo y número de documento, condición fiscal, lista de precios, domicilio, localidad y provincia. Si el tipo de documento es CUIT, el botón de la varita mágica junto al número autocompleta razón social, domicilio y condición fiscal consultando el padrón de AFIP.",
         "Si al emitir el comprobante ARCA/AFIP no autoriza el CAE en el momento, el sistema igual guarda el comprobante pero avisa que el CAE quedó pendiente y hay que reintentar la autorización antes de entregárselo al cliente.",
         "Al pasar el mouse sobre un ítem de la lista se ve su foto y precio ampliados en el panel lateral; haciendo clic sobre la miniatura se abre la imagen en grande.",
         "Cuando se factura desde un pedido o presupuesto ya cargado, la pantalla se abre con esos datos precargados en lugar de empezar en blanco, y en ese caso el tipo de comprobante queda limitado a Factura A/B/C o Ticket: no se pueden emitir Notas de Crédito/Débito directamente desde esa vía.",
+        "Si al cargar un pedido (o un presupuesto vencido) algún producto cambió de precio desde que se guardó, el sistema pregunta si facturar con los precios guardados o con los precios actuales de lista, y además aparece un botón en la barra lateral ('Usando: Precio GUARDADO/ACTUAL') para cambiar de opción las veces que haga falta antes de cobrar. El % de descuento de cada línea no se altera al cambiar de opción.",
         "Si la empresa es Responsable Inscripto: a un cliente Responsable Inscripto o Monotributista se le emite Factura A, y a un cliente Consumidor Final o Exento se le emite Factura B. Si la empresa no es Responsable Inscripto (Monotributo o Exento), siempre se emite Factura C, sea cual sea la condición fiscal del cliente. No hace falta memorizar esta regla: el combo 'Tipo comprobante' solo muestra las opciones que corresponden a la combinación actual de empresa y cliente.",
-        "Las Notas de Crédito y Débito solo aparecen como opción si en Configuración General está activado 'Admitir Notas de Crédito', o si se entró a la pantalla puntualmente para generar la nota de crédito de un comprobante ya emitido (por ejemplo desde el listado de Comprobantes Emitidos).",
+        "Las Notas de Crédito solo aparecen como opción si en Configuración General está activado 'Admitir Notas de Crédito', o si se entró a la pantalla puntualmente para generar la nota de crédito de un comprobante ya emitido (por ejemplo desde el listado de Comprobantes Emitidos). Las Notas de Débito además necesitan que esté activado 'Admitir Notas de Débito', que viene apagado: si está apagado no aparecen en el combo y el sistema tampoco deja emitirlas.",
         "Cada Nota de Crédito o Débito debe asociarse obligatoriamente a un comprobante original de la misma letra: no se puede asociar, por ejemplo, una Nota de Crédito B a una Factura A. El sistema lo controla al elegir el tipo y otra vez al momento de grabar.",
         "Si por algún motivo se intenta forzar un tipo de comprobante que no corresponde a la combinación de condición fiscal de empresa y cliente, la pantalla lo revierte automáticamente al tipo correcto sin mostrar un cartel de error explicativo; no es que el sistema se haya trabado, es la validación fiscal actuando en silencio.",
-        "Para un comprobante a Consumidor Final, el sistema no exige ni valida el número de documento del cliente: siempre lo envía a ARCA/AFIP como consumidor final genérico, sin ningún control de monto a partir del cual deba identificarse al comprador. Esa decisión queda a criterio de quien factura."
+        "Para un comprobante a Consumidor Final, el sistema no exige ni valida el número de documento del cliente: siempre lo envía a ARCA/AFIP como consumidor final genérico, sin ningún control de monto a partir del cual deba identificarse al comprador. Esa decisión queda a criterio de quien factura.",
+        "El vuelto o lo que falta cobrar, en la ventana de cobro, es solo una ayuda visual en pantalla: no cambia lo que se termina grabando. El sistema sigue exigiendo, al confirmar 'Emitir', que la suma de MEDIO 1 + MEDIO 2 coincida exactamente con el total del comprobante (con un margen de un centavo); si sobra o falta, avisa y no deja cerrar la venta hasta que se corrija alguno de los dos importes.",
+        "Las Notas de Crédito (y el Ticket de Crédito) no controlan stock disponible, aunque la empresa no permita stock negativo: son devoluciones y la mercadería vuelve a entrar al stock.",
+        "Una Nota de Débito se graba igual que una factura: descuenta stock, suma a la cuenta corriente del cliente si se cobra con cuenta corriente, es ingreso de caja y genera el asiento de una venta. Solo las Notas de Crédito invierten esos movimientos.",
+        "Si se cobra combinando cuenta corriente con otro medio (por ejemplo efectivo + cuenta corriente), lo que queda pendiente de cobro en la factura es solo la parte enviada a cuenta corriente; lo cobrado con el otro medio ya se considera cobrado en el acto.",
+        "Si después de emitir hay que corregir con qué medios se cobró, no hace falta anular: se puede hacer desde Comprobantes Emitidos con 'Modificar medios de cobro' (según el permiso del usuario).",
+        "Si se cobra con un medio de pago de tipo Tarjetas, debajo del medio aparecen la tarjeta, las cuotas y, opcionalmente, el lote y el número de cupón (solo si hay tarjetas cargadas en Fondos > Tarjetas y Cupones; en ese caso elegir la tarjeta es obligatorio). Con eso queda un cupón pendiente para la liquidación.",
+        "Si la empresa es agente de percepción (Contabilidad > Impuestos > Regímenes de Retención y Percepción) y el cliente está alcanzado, al abrir el cobro de un comprobante fiscal se suman las percepciones al total (se ven debajo del TOTAL). Se informan a ARCA dentro de la misma factura electrónica y figuran en el comprobante impreso. Si después de abrir el cobro se cambia algo del comprobante, hay que volver a abrirlo para recalcularlas."
       ],
-      "funcionamiento_interno": "Antes de armar el combo 'Tipo comprobante', el sistema lee la condición fiscal cargada en Datos de la Empresa (Responsable Inscripto, Monotributo, Exento o Consumidor Final) y la condición fiscal del cliente seleccionado, y con esa combinación decide qué opciones mostrar: si la empresa es Responsable Inscripto, ofrece Factura A para clientes Responsables Inscriptos o Monotributistas y Factura B para Consumidores Finales o Exentos; en cualquier otro caso (empresa Monotributo o Exenta) ofrece siempre Factura C. El Ticket y el Ticket Crédito, que son comprobantes internos sin autorización electrónica (CAE), están disponibles siempre como alternativa, y son las únicas opciones que aparecen si la empresa todavía no tiene cargado el certificado de ARCA/AFIP. Las Notas de Débito y Crédito de cada letra se agregan al combo solo si en Configuración General está activado 'Admitir Notas de Crédito' (o si la pantalla se abrió puntualmente para generar la nota de crédito de un comprobante existente), y quedan excluidas del combo cuando se está facturando un pedido o presupuesto. Al elegir un tipo que exige comprobante asociado, la pantalla obliga a cargar punto de venta, número y fecha del comprobante original antes de habilitar el cobro, y valida que sea de la letra correspondiente (por ejemplo, una Nota de Crédito B solo puede asociarse a una Factura B). Esa lógica de tipo de comprobante según condición fiscal (armado del combo y reversión automática si se fuerza un tipo inválido) se resuelve en la pantalla; al grabar, el servidor vuelve a controlar que el comprobante asociado exista, sea del tipo correcto y pertenezca al mismo cliente, pero no repite el control cruzado completo de 'condición fiscal de la empresa + condición fiscal del cliente = tipo de comprobante correcto' — ese control depende de que se use la pantalla de Facturar tal cual está diseñada, y no se vuelve a aplicar si se intentara grabar una venta salteando la pantalla. Al emitir, el sistema recalcula los totales del lado del servidor (no confía en los cálculos que llegan ya hechos), aplicando impuestos, descuentos, recargos y promociones vigentes, descuenta el stock de los productos vendidos, registra el cobro con los medios de pago indicados y genera el asiento contable correspondiente según la configuración de asientos automáticos. Si el comprobante es fiscal, antes de darlo por emitido el sistema le solicita a ARCA/AFIP la autorización electrónica (CAE); para un cliente Consumidor Final siempre se informa como consumidor genérico sin identificar y sin controlar ningún tope de monto para exigir sus datos, y para el resto de las condiciones fiscales se envía el número de documento cargado en la ficha del cliente tal cual está, sin validar que tenga el formato o la cantidad de dígitos de un CUIT válido. Si la autorización de ARCA/AFIP no llega en el momento, el comprobante queda igualmente guardado pero marcado como pendiente de CAE hasta que se reintente. Cuando se asocia una nota de crédito o débito a un comprobante anterior, el sistema vincula ambos documentos para mantener la trazabilidad, y cuando se factura un pedido o presupuesto existente, ese documento queda marcado como facturado una vez emitida la venta.",
+      "funcionamiento_interno": "Antes de armar el combo 'Tipo comprobante', el sistema lee la condición fiscal cargada en Datos de la Empresa (Responsable Inscripto, Monotributo, Exento o Consumidor Final) y la condición fiscal del cliente seleccionado, y con esa combinación decide qué opciones mostrar: si la empresa es Responsable Inscripto, ofrece Factura A para clientes Responsables Inscriptos o Monotributistas y Factura B para Consumidores Finales o Exentos; en cualquier otro caso (empresa Monotributo o Exenta) ofrece siempre Factura C. El Ticket y el Ticket Crédito, que son comprobantes internos sin autorización electrónica (CAE), están disponibles siempre como alternativa, y son las únicas opciones que aparecen si la empresa todavía no tiene cargado el certificado de ARCA/AFIP. Las Notas de Débito y Crédito de cada letra se agregan al combo solo si en Configuración General está activado 'Admitir Notas de Crédito' (o si la pantalla se abrió puntualmente para generar la nota de crédito de un comprobante existente); las Notas de Débito, además, solo si está activado 'Admitir Notas de Débito', control que el servidor repite al grabar, y quedan excluidas del combo cuando se está facturando un pedido o presupuesto. Al elegir un tipo que exige comprobante asociado, la pantalla obliga a cargar punto de venta, número y fecha del comprobante original antes de habilitar el cobro, y valida que sea de la letra correspondiente (por ejemplo, una Nota de Crédito B solo puede asociarse a una Factura B). Esa lógica de tipo de comprobante según condición fiscal (armado del combo y reversión automática si se fuerza un tipo inválido) se resuelve en la pantalla; al grabar, el servidor vuelve a controlar que el comprobante asociado exista, sea del tipo correcto y pertenezca al mismo cliente, pero no repite el control cruzado completo de 'condición fiscal de la empresa + condición fiscal del cliente = tipo de comprobante correcto' — ese control depende de que se use la pantalla de Facturar tal cual está diseñada, y no se vuelve a aplicar si se intentara grabar una venta salteando la pantalla. Al emitir, el sistema recalcula los totales del lado del servidor (no confía en los cálculos que llegan ya hechos), aplicando impuestos, descuentos, recargos y promociones vigentes, descuenta el stock de los productos vendidos (en una nota de crédito lo reingresa, y no controla stock disponible), registra el cobro con los medios de pago indicados (guardando en el comprobante cuánto se envió a cuenta corriente, que es lo único que queda pendiente de cobro) y genera el asiento contable correspondiente según la configuración de asientos automáticos. Si el comprobante es fiscal, antes de darlo por emitido el sistema le solicita a ARCA/AFIP la autorización electrónica (CAE); para un cliente Consumidor Final siempre se informa como consumidor genérico sin identificar y sin controlar ningún tope de monto para exigir sus datos, y para el resto de las condiciones fiscales se envía el número de documento cargado en la ficha del cliente tal cual está, sin validar que tenga el formato o la cantidad de dígitos de un CUIT válido. Si la autorización de ARCA/AFIP no llega en el momento, el comprobante queda igualmente guardado pero marcado como pendiente de CAE hasta que se reintente. Cuando se asocia una nota de crédito o débito a un comprobante anterior, el sistema vincula ambos documentos para mantener la trazabilidad, y cuando se factura un pedido o presupuesto existente, ese documento queda marcado como facturado una vez emitida la venta.",
       "relacionado": [
         "pedidos_admin.php",
         "presupuestos_admin.php",
@@ -1270,7 +1428,9 @@
         "promociones_admin.php",
         "imprimir_ticket.php",
         "empresa_datos.php",
-        "config_general.php"
+        "config_general.php",
+        "tarjetas_liquidaciones.php",
+        "retper_regimenes.php"
       ]
     },
     "periodos_admin.php": {
@@ -1414,9 +1574,10 @@
       ],
       "tips": [
         "Un presupuesto ya aprobado, facturado o rechazado no se puede volver a editar, solo consultar; para reactivarlo hay que usar la opción RESTAURAR A PENDIENTE.",
-        "Los presupuestos anulados o rechazados no se cuentan en los totales de cantidad y monto que se muestran arriba."
+        "Los presupuestos anulados o rechazados no se cuentan en los totales de cantidad y monto que se muestran arriba.",
+        "Si al presionar APROBAR la Fecha de Validez del presupuesto ya pasó y además algún producto cambió de precio desde que se cargó, el sistema pregunta con qué precios convertirlo en pedido: los guardados en el presupuesto o los precios actuales de cada lista. Si el presupuesto está vigente, o está vencido pero ningún precio cambió, se aprueba directo sin preguntar, igual que siempre. El % de descuento de cada línea se mantiene igual sea cual sea la opción elegida."
       ],
-      "funcionamiento_interno": "El sistema busca los presupuestos que coinciden con los filtros elegidos y calcula los totales de cantidad de productos y monto estimado sumando solo los presupuestos activos (no anulados ni rechazados). Al aprobar un presupuesto, el sistema lo transforma en un pedido de venta activo; al rechazarlo o anularlo, cambia su estado sin borrar la información.",
+      "funcionamiento_interno": "El sistema busca los presupuestos que coinciden con los filtros elegidos y calcula los totales de cantidad de productos y monto estimado sumando solo los presupuestos activos (no anulados ni rechazados). Al aprobar un presupuesto, el sistema primero chequea si venció (Fecha de Validez anterior a hoy) y si algún producto tiene un precio de lista distinto al que quedó guardado en la línea; solo en ese caso pregunta con qué precios convertirlo en pedido de venta activo, y usa esa elección para grabar el precio de cada línea del pedido nuevo (el descuento por línea se traspasa sin cambios en cualquier caso); al rechazarlo o anularlo, cambia su estado sin borrar la información.",
       "relacionado": [
         "presupuestos_nuevo.php",
         "pedidos_admin.php",
@@ -1498,22 +1659,24 @@
     "productos_add.php": {
       "titulo": "Agregar Productos",
       "categoria": "Productos > Agregar Productos",
-      "resumen": "Formulario completo para dar de alta un producto nuevo o editar uno existente: datos generales, costos y precios de venta en las distintas listas, cuentas contables asociadas, publicación en catálogo online y códigos de referencia alternativos.",
-      "cuando_usarla": "Se usa para incorporar un producto nuevo al catálogo, o para modificar los datos, precios o configuración de un producto ya cargado (se accede a editar desde el listado de productos).",
+      "resumen": "Formulario completo para dar de alta un producto nuevo, editar uno existente, o clonar uno ya cargado como punto de partida de uno nuevo: datos generales, costos y precios de venta en las distintas listas, cuentas contables asociadas, publicación en catálogo online y códigos de referencia alternativos.",
+      "cuando_usarla": "Se usa para incorporar un producto nuevo al catálogo, para modificar los datos, precios o configuración de un producto ya cargado (se accede a editar desde el listado de productos), o para clonar un producto muy parecido a uno existente y ahorrarse cargar todo de cero (se accede a clonar también desde el listado de productos).",
       "como_se_usa": [
         "En la solapa DATOS GENERALES, completar código, descripción, tipo, rubro, marca, familia y proveedor principal.",
         "En la solapa PRECIOS Y COSTOS, cargar el costo neto de compra; el sistema calcula automáticamente los precios de venta según el método elegido (por listas predeterminadas, por precio final, por precio neto o por porcentaje manual).",
         "En CONTABILIDAD, asociar las cuentas contables de venta, costo y mercadería si corresponde.",
         "En CATÁLOGO ONLINE, decidir si el producto se publica en la tienda online y si se permiten pedidos sin stock.",
         "En REFERENCIAS, agregar códigos alternativos (alias) para que el producto también se encuentre buscando por esos códigos.",
+        "Si se entró clonando un producto (botón CLONAR del listado), la pantalla ya abre con todos los datos del producto de origen precargados en las cuatro solapas, salvo el código, que queda vacío para completar uno nuevo; se puede revisar y ajustar cualquier campo antes de guardar, igual que en un alta común.",
         "Presionar REGISTRAR PRODUCTO (o GUARDAR CAMBIOS si se está editando)."
       ],
       "tips": [
         "El código de producto no se puede modificar una vez creado.",
-        "La foto del producto solo se puede subir después de haber guardado el producto por primera vez, porque necesita el código ya registrado.",
-        "Si el producto se compra en otra moneda, se puede seleccionar la moneda de referencia y el sistema usa la cotización vigente para calcular los precios en la moneda local."
+        "La foto del producto solo se puede subir después de haber guardado el producto por primera vez, porque necesita el código ya registrado; esto también aplica al clonar, ya que la foto y las referencias del producto de origen no se copian, solo los datos del formulario.",
+        "Si el producto se compra en otra moneda, se puede seleccionar la moneda de referencia y el sistema usa la cotización vigente para calcular los precios en la moneda local.",
+        "Clonar es distinto de editar: al clonar se crea un producto nuevo e independiente (queda pendiente asignarle un código propio), no se modifica el producto original."
       ],
-      "funcionamiento_interno": "Según el método de cálculo elegido, el sistema recalcula en cadena el costo, la utilidad, el precio neto y el precio final de cada una de las 8 listas de precios, aplicando la alícuota de IVA del producto y, si corresponde, un porcentaje adicional de ingresos brutos para rubros como cigarrillos o tabaco. Al guardar, registra el producto (o sus cambios) en el catálogo, dejando disponible su historial de modificaciones para consulta posterior.",
+      "funcionamiento_interno": "Según el método de cálculo elegido, el sistema recalcula en cadena el costo, la utilidad, el precio neto y el precio final de cada una de las 8 listas de precios, aplicando la alícuota de IVA del producto y, si corresponde, un porcentaje adicional de ingresos brutos para rubros como cigarrillos o tabaco. Al entrar en modo clonar, el sistema trae del producto de origen todos los campos del formulario (igual que si se estuviera editando) pero omite el código y no marca la pantalla como edición, de modo que al guardar se genera un producto nuevo en lugar de sobrescribir el original. Al guardar, registra el producto (o sus cambios) en el catálogo, dejando disponible su historial de modificaciones para consulta posterior. El proveedor principal se guarda y se vuelve a mostrar siempre según su identificador interno, no por el nombre, para que no se confunda con otro proveedor que tenga una razón social parecida o igual.",
       "relacionado": [
         "productos_admin.php",
         "productos_hist.php",
@@ -1530,13 +1693,15 @@
         "Buscar por código o descripción, o aplicar filtros de rubro, marca, familia o proveedor.",
         "Usar los botones HABIL./DESH./TODOS para filtrar por estado, y la casilla Stock Bajo Mín. para ver solo productos que necesitan reposición.",
         "Presionar el ícono de lápiz sobre un producto para editarlo.",
+        "Presionar el ícono de CLONAR (X2) sobre un producto para abrir el alta con todos sus datos precargados salvo el código, ideal para dar de alta una variante muy parecida sin cargar todo de nuevo.",
         "Presionar LISTA DE PRECIOS para generar un Excel con los precios de una lista específica según los filtros aplicados.",
         "Presionar EXPORTAR para descargar el listado completo de productos filtrado a Excel.",
         "Presionar NUEVO PRODUCTO para dar de alta un producto desde cero."
       ],
       "tips": [
         "La casilla 'Vista Reducida' simplifica la tabla mostrando menos columnas, útil en pantallas chicas o para una lectura más rápida.",
-        "El color rojo en la columna de stock indica que ese producto está en o por debajo de su stock mínimo configurado."
+        "El color rojo en la columna de stock indica que ese producto está en o por debajo de su stock mínimo configurado.",
+        "CLONAR (X2) es para productos muy similares entre sí (por ejemplo el mismo artículo en otro sabor o presentación): abre el formulario de alta con exactamente los mismos datos del producto elegido, salvo el código, que queda en blanco para asignarle uno nuevo. No modifica ni duplica el producto original hasta que se guarde el nuevo."
       ],
       "funcionamiento_interno": "El sistema trae del catálogo los productos que cumplen los filtros aplicados y arma la tabla con su costo, precio de venta y stock disponible. Al generar la lista de precios en Excel, calcula los precios de la lista elegida para el conjunto de productos filtrado y arma un archivo descargable.",
       "relacionado": [
@@ -1703,22 +1868,23 @@
     "proveedores_facturas_add.php": {
       "titulo": "Cargar Factura de Compra",
       "categoria": "Proveedores > Facturas de Compra > Cargar Factura de Compra",
-      "resumen": "Pantalla para registrar en el sistema una factura, nota de crédito, remito o ticket recibido de un proveedor, indicando los conceptos de gasto, los importes con su IVA, percepciones y retenciones, hasta llegar al total del comprobante.",
+      "resumen": "Pantalla para registrar en el sistema una factura, nota de débito, nota de crédito, remito, ticket o ticket de crédito recibido de un proveedor, indicando los conceptos de gasto, los importes con su IVA, percepciones y retenciones, hasta llegar al total del comprobante.",
       "cuando_usarla": "Cada vez que llega una factura de compra, nota de crédito de un proveedor o un remito que hay que dejar asentado en la cuenta corriente y en la contabilidad del negocio.",
       "como_se_usa": [
-        "Seleccionar el proveedor y el tipo de comprobante (factura A/B/C, nota de crédito, remito o ticket)",
+        "Seleccionar el proveedor y el tipo de comprobante (factura, nota de débito o nota de crédito A/B/C, remito, Ticket NF o Ticket de Crédito NF)",
         "Completar punto de venta, número, fecha del comprobante, fecha de imputación y fecha de vencimiento",
         "Marcar si el comprobante es fiscal (con IVA) o no",
         "Agregar los conceptos de gasto uno por uno, indicando el importe y la alícuota de IVA de cada uno",
-        "Si es una nota de crédito, seleccionar contra qué facturas pendientes del proveedor se quiere aplicar",
+        "Si es una nota de crédito o un ticket de crédito, seleccionar contra qué facturas pendientes del proveedor se quiere aplicar",
         "Completar impuestos internos, percepciones de IIBB o IVA si corresponde y revisar el total calculado",
         "Presionar GRABAR COMPROBANTE para guardar"
       ],
       "tips": [
         "El botón de grabar permanece deshabilitado hasta que se complete proveedor, número de comprobante y al menos un importe cargado",
-        "Al elegir 'Nota de Crédito' el sistema muestra automáticamente las facturas pendientes del proveedor para poder imputarla"
+        "Al elegir una Nota de Crédito o un Ticket de Crédito NF el sistema muestra automáticamente las facturas pendientes del proveedor (de la misma fiscalidad) para poder imputarla",
+        "El interruptor FISCAL (IVA) se marca solo según el tipo de comprobante elegido: Facturas y Notas de Débito/Crédito A/B/C quedan fiscales, Ticket NF y Ticket de Crédito NF no fiscales, y Remito fiscal por defecto. Es solo un valor inicial: se puede tildar o destildar a mano en cualquier momento antes de grabar, por si el caso puntual no sigue esa regla general"
       ],
-      "funcionamiento_interno": "Al grabar, el sistema suma el importe de la deuda del proveedor (o la resta, si es nota de crédito) y deja registrado el comprobante con todos sus impuestos y conceptos para que aparezca en la cuenta corriente, en los reportes de compras y en la contabilidad. Si se marcó una imputación de nota de crédito, descuenta ese importe de las facturas seleccionadas.",
+      "funcionamiento_interno": "Al grabar, el sistema suma el importe de la deuda del proveedor (o la resta, si es nota de crédito o ticket de crédito) y deja registrado el comprobante con todos sus impuestos y conceptos para que aparezca en la cuenta corriente, en los reportes de compras y en la contabilidad. Si se marcó una imputación de nota de crédito, descuenta ese importe de las facturas seleccionadas.",
       "relacionado": [
         "proveedores_facturas_administrar.php",
         "proveedores_facturas_pend.php",
@@ -1740,13 +1906,15 @@
       ],
       "tips": [
         "Eliminar un comprobante borra también su efecto en la cuenta corriente y en el libro diario contable, por lo que se pide confirmación",
-        "Si una nota de crédito ya fue aplicada a una factura, se puede 'desimputar' para liberar ese saldo y volver a aplicarla distinto"
+        "Si una nota de crédito ya fue aplicada a una factura, se puede 'desimputar' para liberar ese saldo y volver a aplicarla distinto",
+        "El botón ARCA (Libro IVA Digital) abre la pantalla Libro IVA (Contabilidad > Impuestos), donde se generan los archivos de comprobantes y de alícuotas de compras y de ventas para el Libro IVA Digital."
       ],
       "funcionamiento_interno": "Lee todos los comprobantes de compra guardados y calcula, para cada uno, si está pagado o pendiente según los pagos e imputaciones registrados. Al eliminar un comprobante, revierte su impacto en la deuda del proveedor y en los asientos contables generados automáticamente. Al cambiar fechas o notas, sólo actualiza esos datos sin afectar los importes.",
       "relacionado": [
         "proveedores_facturas_add.php",
         "proveedores_facturas_pend.php",
-        "proveedores_imputar_nc.php"
+        "proveedores_imputar_nc.php",
+        "libro_iva.php"
       ]
     },
     "proveedores_facturas_pend.php": {
@@ -1835,23 +2003,28 @@
     "proveedores_oc_admin.php": {
       "titulo": "Ver Órdenes de Compra",
       "categoria": "Proveedores > Órdenes de Compra > Ver Órdenes de Compra",
-      "resumen": "Listado de todas las órdenes de compra (pedidos a proveedores) generadas, con su estado pendiente o finalizado, permitiendo verlas, editarlas si aún están pendientes, finalizarlas o eliminarlas.",
-      "cuando_usarla": "Para hacer seguimiento de los pedidos de mercadería hechos a proveedores, revisar qué se pidió y cuándo, o dar por cerrada una orden de compra que ya fue recibida.",
+      "resumen": "Listado de todas las órdenes de compra (pedidos a proveedores) generadas, con su estado pendiente o finalizado, permitiendo verlas, editarlas si aún están pendientes, finalizarlas, eliminarlas, o imprimirlas en PDF/Excel para entregar el pedido al proveedor o al depósito.",
+      "cuando_usarla": "Para hacer seguimiento de los pedidos de mercadería hechos a proveedores, revisar qué se pidió y cuándo, dar por cerrada una orden de compra que ya fue recibida, o imprimir el pedido para enviarlo o llevarlo físicamente.",
       "como_se_usa": [
         "Filtrar por rango de fechas, proveedor y estado (pendiente o finalizado)",
         "Presionar ACTUALIZAR para traer el listado",
         "Hacer clic en editar (lápiz) para modificar una orden pendiente, o en el ojo para ver el detalle de una finalizada",
         "Presionar el ícono de check para marcar una orden como finalizada (ya no se podrá editar)",
+        "Presionar el ícono de PDF (en la fila, en la tarjeta, o dentro del detalle de una orden) para imprimir esa orden de compra línea por línea; el sistema pregunta primero si el PDF debe incluir los precios/costos o no",
         "Usar el ícono de tacho para eliminar una orden si corresponde",
-        "Exportar el listado o una orden puntual a Excel desde los botones correspondientes"
+        "Exportar el listado completo a Excel o PDF con los botones EXCEL y PDF de arriba, o exportar/imprimir una orden puntual desde su propio detalle"
       ],
       "tips": [
-        "Una vez finalizada, la orden de compra queda de solo lectura y no admite modificaciones"
+        "Una vez finalizada, la orden de compra queda de solo lectura y no admite modificaciones",
+        "El PDF de una orden puntual se puede generar CON precios (para uso interno o para el proveedor) o SIN precios (por ejemplo para que lo controle el depósito sin ver los costos negociados); la elección se pregunta cada vez, no queda guardada como preferencia",
+        "El PDF del listado general (botón PDF de arriba) trae el logo y los datos de la empresa, y respeta los mismos filtros de fecha, proveedor y estado que estén aplicados en pantalla en ese momento",
+        "Una orden de compra también se puede cargar directamente al ingresar mercadería (pantalla Ingreso de Stock), sin necesidad de pasar antes por acá: al hacerlo, el sistema la marca como finalizada automáticamente"
       ],
-      "funcionamiento_interno": "Muestra las órdenes de compra guardadas con sus totales estimados. Al finalizar una orden, el sistema la bloquea para edición. Al eliminarla, la quita definitivamente del listado. No genera movimientos de stock ni de cuenta corriente por sí sola: eso ocurre luego, cuando se carga la factura de compra correspondiente.",
+      "funcionamiento_interno": "Muestra las órdenes de compra guardadas con sus totales estimados. Al finalizar una orden, el sistema la bloquea para edición. Al eliminarla, la quita definitivamente del listado. No genera movimientos de stock ni de cuenta corriente por sí sola: eso ocurre luego, cuando se carga la factura de compra correspondiente o cuando se recibe la mercadería desde Ingreso de Stock. El PDF (tanto el del listado como el de una orden puntual) se arma como un comprobante imprimible con el logo y los datos de la empresa, pensado para imprimirse en papel o guardarse como PDF desde el diálogo de impresión del navegador; el de una orden puntual puede excluir los precios y costos a pedido del usuario, mostrando solo código, descripción y cantidad.",
       "relacionado": [
         "proveedores_oc_new.php",
         "proveedores_facturas_add.php",
+        "stock_ingreso.php",
         "depositos_recepciones.php"
       ]
     },
@@ -1894,14 +2067,16 @@
       ],
       "tips": [
         "Si el monto a pagar supera la deuda seleccionada, el sistema avisa que el excedente quedará como saldo a favor del proveedor",
-        "No se pueden combinar en un mismo pago facturas fiscales y no fiscales; el sistema bloquea esa selección"
+        "No se pueden combinar en un mismo pago facturas fiscales y no fiscales; el sistema bloquea esa selección",
+        "Si la empresa es agente de retención (Contabilidad > Impuestos > Regímenes de Retención y Percepción), al elegir facturas o cargar importes aparece el recuadro RETENCIONES A PRACTICAR con lo que corresponde retener. Sin importe cargado, el botón PAGAR $... sugiere el total de las facturas menos lo retenido. Lo cancelado al proveedor es lo pagado más lo retenido; al grabar se ofrece imprimir los certificados de retención."
       ],
       "funcionamiento_interno": "Al grabar, el sistema descuenta el importe pagado de la deuda del proveedor, marca las facturas seleccionadas como pagadas total o parcialmente, y afecta los medios de pago usados: descuenta de la caja o cuenta bancaria elegida, o mueve los cheques (de cartera o propios) fuera de disponibles. Queda un recibo numerado como comprobante del movimiento.",
       "relacionado": [
         "proveedores_facturas_pend.php",
         "proveedores_ver_pagos_realizados.php",
         "proveedores_imputar_pagos.php",
-        "cheques_cartera.php"
+        "cheques_cartera.php",
+        "retper_regimenes.php"
       ]
     },
     "proveedores_ver_pagos_realizados.php": {
@@ -1920,7 +2095,11 @@
       "funcionamiento_interno": "Muestra los pagos ya grabados con sus medios de pago e importes. Los pagos anulados se ven tachados y no suman al total. Cambiar la fecha o la condición fiscal de un pago sólo actualiza ese dato puntual, sin alterar los importes ni las facturas que canceló.",
       "relacionado": [
         "proveedores_pagar_facturas.php",
-        "proveedores_cuentas_corrientes.php"
+        "proveedores_cuentas_corrientes.php",
+        "retper_practicadas.php"
+      ],
+      "tips": [
+        "Si el pago tuvo retenciones (agente de retención), el total del pago incluye lo retenido. Al anular el pago, sus retenciones quedan anuladas y se revierte su registro contable."
       ]
     },
     "puestos_cobro.php": {
@@ -2092,14 +2271,15 @@
         "Usar Excel o Libro IVA Digital (ARCA) para exportar la información."
       ],
       "tips": [
-        "El botón 'Libro IVA Digital (ARCA)' permite exportar el archivo de comprobantes o de alícuotas requerido para la presentación fiscal.",
+        "El botón 'Libro IVA Digital (ARCA)' abre la pantalla Libro IVA (Contabilidad > Impuestos), donde se generan los archivos de comprobantes y de alícuotas de compras y de ventas para el Libro IVA Digital.",
         "Las notas de crédito se resaltan con un color distinto en la grilla para diferenciarlas fácilmente."
       ],
       "funcionamiento_interno": "El sistema recorre las facturas de compra cargadas según los filtros indicados y arma, para cada una, el total de neto, IVA, percepciones y retenciones, además de calcular cuánto se pagó y cuánto queda pendiente comparando contra los pagos imputados. También registra quién y cuándo cargó cada comprobante para fines de auditoría.",
       "relacionado": [
         "proveedores_facturas_add.php",
         "reporte_compras_pendientes.php",
-        "proveedores_pagar_facturas.php"
+        "proveedores_pagar_facturas.php",
+        "libro_iva.php"
       ]
     },
     "reporte_compras_historico.php": {
@@ -2616,17 +2796,18 @@
     "reporte_ventas_informe.php": {
       "titulo": "Informe de Ventas",
       "categoria": "Reportes > Ventas > Informe de Ventas",
-      "resumen": "Informe detallado de ventas producto por producto, con filtros amplios (cliente, vendedor, unidad de negocio, producto, rubro, marca, familia, provincia, rama de cliente) y cálculo de rentabilidad (costo, utilidad e impuestos). Incluye una pestaña de gráficos con la evolución diaria de ventas y rankings de productos, vendedores, rubros y ramas de cliente.",
+      "resumen": "Informe detallado de ventas producto por producto, con filtros amplios (cliente, vendedor, unidad de negocio, producto, rubro, marca, familia, provincia, rama de cliente) y cálculo de rentabilidad (costo, utilidad e impuestos). Incluye una pestaña de gráficos con la evolución diaria de ventas y rankings de productos, vendedores, usuarios, rubros y ramas de cliente.",
       "cuando_usarla": "Para analizar en detalle qué se vendió, a quién y con qué rentabilidad, y para visualizar tendencias de venta mediante los gráficos.",
       "como_se_usa": [
         "Definir el rango de fechas.",
         "Aplicar los filtros deseados (cliente, vendedor, producto, rubro, marca, familia, provincia, rama de cliente, unidad de negocio); la consulta se actualiza automáticamente al cambiar un filtro.",
         "Revisar la pestaña DETALLE con la grilla de ventas y el panel de totales (total general, utilidad, costo, impuestos).",
-        "Cambiar a la pestaña GRÁFICOS para ver la evolución diaria y los rankings.",
+        "Cambiar a la pestaña GRÁFICOS para ver la evolución diaria y los rankings, incluyendo un panel de ventas por usuario además del de ventas por vendedor.",
         "Usar EXPORTAR para bajar el informe completo a Excel."
       ],
       "tips": [
-        "Los gráficos solo se generan después de hacer una consulta que traiga resultados."
+        "Los gráficos solo se generan después de hacer una consulta que traiga resultados.",
+        "Al exportar a Excel, las columnas numéricas (cantidad, total, IVA, costo, etc.) se generan como números reales, no como texto: se les puede aplicar SUMA, PROMEDIO u otras fórmulas directamente sobre el archivo descargado, sin tener que convertir la columna primero."
       ],
       "funcionamiento_interno": "El sistema recorre las ventas registradas en el período aplicando todos los filtros elegidos, calcula para cada línea el costo, la utilidad y los distintos impuestos, suma los totales generales, y arma agrupaciones por día, producto, vendedor, rubro y rama de cliente para alimentar los gráficos.",
       "relacionado": [
@@ -2740,24 +2921,32 @@
     "stock_ingreso.php": {
       "titulo": "Ingreso de Stock",
       "categoria": "Productos > Inventario > Ingreso de Stock",
-      "resumen": "Pantalla para registrar el ingreso de mercadería al depósito, generalmente asociado a una compra a un proveedor (con su comprobante, costo neto, IVA e impuestos internos) o como movimiento interno sin proveedor. Permite cargar varios productos en la misma carga y actualiza el costo de cada uno.",
-      "cuando_usarla": "Al recibir mercadería de un proveedor que hay que sumar al stock, o cuando se necesita ingresar unidades sin que haya una compra externa de por medio (movimiento interno).",
+      "resumen": "Pantalla para registrar el ingreso de mercadería al depósito, generalmente asociado a una compra a un proveedor (con su comprobante, costo neto, IVA e impuestos internos) o como movimiento interno sin proveedor. Permite cargar varios productos en la misma carga, editar cantidad y costos de cada línea antes de confirmar, y traer automáticamente los productos y cantidades de una Orden de Compra pendiente en lugar de tipearlos de nuevo.",
+      "cuando_usarla": "Al recibir mercadería de un proveedor que hay que sumar al stock, cuando se necesita ingresar unidades sin que haya una compra externa de por medio (movimiento interno), o cuando la mercadería que llega corresponde a una Orden de Compra que ya se le había hecho a ese proveedor.",
       "como_se_usa": [
         "Si es una compra a proveedor, completar proveedor, tipo de comprobante, punto de venta, número y fecha; si es un movimiento interno, activar el interruptor MOVIMIENTO INTERNO para omitir esos datos.",
-        "Buscar el producto por código o por descripción.",
+        "Si la mercadería corresponde a una Orden de Compra ya cargada, elegir primero el proveedor y presionar el botón (ícono de lista) junto al combo de proveedor para abrir el listado de OCs pendientes de ese proveedor; ahí se ve fecha, usuario que la generó, cantidad de líneas, cantidad de artículos y monto estimado de cada una.",
+        "Elegir USAR sobre la Orden de Compra que corresponda: la tabla se completa sola con los productos y las cantidades pedidas (el costo se trae actualizado desde la ficha de cada producto, no el costo estimado que tenía la orden).",
+        "O bien, buscar el producto por código o por descripción y cargarlo a mano.",
         "Cargar la cantidad ingresada (o tildar INGRESAR POR BULTOS si corresponde) y los importes de costo neto, IVA e impuestos internos.",
         "Presionar el botón + para agregar la línea a la tabla.",
+        "Antes de confirmar, revisar la tabla: la cantidad, el neto, el IVA y el impuesto interno de cada línea se pueden corregir directamente escribiendo sobre la celda (por ejemplo si llegó menos cantidad de la pedida o el proveedor facturó otro precio), y el ícono de tacho quita del todo una línea si ese producto finalmente no entró.",
         "Repetir la carga de productos hasta terminar, y revisar el resumen de totales.",
         "Presionar CONFIRMAR INGRESO y aceptar la confirmación."
       ],
       "tips": [
-        "El botón de guardar permanece deshabilitado hasta que haya al menos un producto cargado y, si no es movimiento interno, los datos de proveedor y comprobante estén completos."
+        "El botón de guardar permanece deshabilitado hasta que haya al menos un producto cargado y, si no es movimiento interno, los datos de proveedor y comprobante estén completos.",
+        "El botón para cargar desde Orden de Compra solo se habilita después de elegir un proveedor, y solo muestra las órdenes de ese proveedor que todavía figuran PENDIENTES.",
+        "Si ya había productos cargados a mano en la tabla y se elige usar una Orden de Compra, el sistema avisa que se van a reemplazar antes de traer los de la orden.",
+        "Al confirmar un ingreso que se cargó desde una Orden de Compra, esa orden queda marcada automáticamente como FINALIZADA (ya no hace falta ir a cerrarla a mano desde Ver Órdenes de Compra)."
       ],
-      "funcionamiento_interno": "Al confirmar, el sistema suma las cantidades cargadas al stock de cada producto en el depósito correspondiente, actualiza el costo del producto con los valores ingresados, y registra el comprobante de compra (o el movimiento interno) junto con el detalle de cada línea para consultas futuras.",
+      "funcionamiento_interno": "Al confirmar, el sistema suma las cantidades cargadas al stock de cada producto en el depósito correspondiente, actualiza el costo del producto con los valores ingresados, y registra el comprobante de compra (o el movimiento interno) junto con el detalle de cada línea para consultas futuras. Al traer una Orden de Compra pendiente, toma de ella únicamente el código de producto y la cantidad pedida; el costo neto, IVA e impuesto interno de cada línea se recalculan con el valor vigente en ese momento en la ficha del producto, precisamente para que se puedan corregir a mano si el proveedor facturó un precio distinto al estimado. Al grabar el ingreso, si vino asociado a una Orden de Compra, esa orden se marca como finalizada dentro de la misma operación: si el ingreso falla por cualquier motivo, la orden queda tal cual estaba (pendiente).",
       "relacionado": [
         "stock_ajuste_indiv.php",
         "stock_movimientos.php",
-        "proveedores_facturas_add.php"
+        "proveedores_facturas_add.php",
+        "proveedores_oc_new.php",
+        "proveedores_oc_admin.php"
       ]
     },
     "stock_movimientos.php": {
@@ -3284,6 +3473,154 @@
         "newfactura.php",
         "comprobantes_emitidos.php",
         "reporte_ventas_comprobantes.php"
+      ]
+    },
+    "libro_iva.php": {
+      "titulo": "Libro IVA",
+      "categoria": "Contabilidad > Impuestos > Libro IVA",
+      "resumen": "Libro IVA Ventas y Compras del período, con el detalle por alícuota de cada comprobante fiscal, la posición de IVA del mes (débito fiscal, crédito fiscal y percepciones sufridas) y la generación de los archivos TXT para importar en el Libro IVA Digital de ARCA.",
+      "cuando_usarla": "Todos los meses, al cerrar el período fiscal: para controlar las ventas y compras que se van a declarar, ver cuánto IVA queda a pagar o a favor, y generar los archivos que pide el Libro IVA Digital. También sirve para encontrar comprobantes con datos inconsistentes antes de presentar.",
+      "como_se_usa": [
+        "Elegir el período (mes) o, si hace falta un rango distinto, completar DESDE y HASTA.",
+        "En COMPRAS POR, decidir si las compras se toman por fecha de imputación (lo habitual: el período en que se computa el crédito fiscal) o por fecha del comprobante.",
+        "Presionar CONSULTAR en la pestaña VENTAS, COMPRAS o POSICIÓN IVA.",
+        "Revisar los comprobantes marcados con el ícono de advertencia (con 'Solo con observaciones' se ven solo esos): pasando el mouse se ve el problema detectado.",
+        "Con la pestaña VENTAS o COMPRAS elegida, descargar TXT COMPROBANTES y TXT ALÍCUOTAS para importar en el Libro IVA Digital, o EXCEL para controlar o pasarle al contador."
+      ],
+      "tips": [
+        "Solo entran comprobantes fiscales (Facturas, Notas de Débito y Notas de Crédito A, B y C). Los tickets internos y los tickets de crédito no fiscales no forman parte del libro. En compras, solo las cargadas como fiscales y no anuladas.",
+        "Las notas de crédito restan: en pantalla y en Excel figuran en negativo. En los TXT de ARCA van en positivo, porque el tipo de comprobante ya indica que es una nota de crédito.",
+        "En ventas, los importes son los que se le declararon a ARCA al pedir el CAE: si el comprobante tuvo un descuento o recargo global, se reparte entre las alícuotas igual que se hizo al facturar. Por eso el neto y el IVA pueden diferir en centavos de lo que muestran otros informes.",
+        "Si un comprobante de venta tiene grabado un total que no coincide con neto + IVA + tributos, aparece con observación: conviene verificarlo contra 'Mis Comprobantes' de ARCA antes de presentar.",
+        "En ventas, todo lo que no es 21% ni 10,5% (productos exentos o no gravados) se informa como alícuota 0%, que es como lo recibió ARCA. En compras, el neto por alícuota sale de los conceptos cargados en la factura; si no suman el neto (facturas viejas), se deduce del IVA de cada alícuota y el resto va a 0%.",
+        "Las facturas de compra B y C no discriminan IVA: no generan crédito fiscal ni registros en el TXT de alícuotas.",
+        "La posición de IVA es orientativa: no incluye saldos a favor de períodos anteriores, retenciones de IVA sufridas ni otros conceptos de la declaración jurada.",
+        "En pantalla se muestran hasta 3000 comprobantes; el Excel y los TXT siempre incluyen todos los del período.",
+        "Las percepciones practicadas por la empresa (como agente de percepción) aparecen en ventas en la columna de percepciones nacionales (IVA y Ganancias) o de IIBB, y se informan en esos campos del TXT del Libro IVA Digital."
+      ],
+      "funcionamiento_interno": "Para ventas, el sistema toma los comprobantes fiscales del período y reconstruye lo que se le informó a ARCA: neto e IVA al 21% y al 10,5%, el resto como neto al 0%, impuestos internos y percepciones practicadas, repitiendo el mismo prorrateo del descuento o recargo global que se hace al pedir el CAE. El documento del cliente se informa como CUIT, CUIL o DNI según su ficha, y las ventas a consumidor final sin CUIT como 99 (sin identificar). Para compras, toma las facturas fiscales no anuladas, obtiene el neto por alícuota de las líneas de concepto (o lo deduce del IVA cuando no hay líneas que cierren), informa la percepción de IVA y la de Ingresos Brutos cargadas en la factura en sus campos propios, y calcula el crédito fiscal computable solo para comprobantes A. Los TXT se arman con el diseño de registro del Libro IVA Digital (RG 4597): comprobantes de ventas de 266 posiciones, alícuotas de ventas de 62, comprobantes de compras de 325 y alícuotas de compras de 84, importes en centavos sin signo, moneda PES y tipo de cambio 1. Cuando todo el comprobante es al 0% se informa con código de operación E (exento).",
+      "relacionado": [
+        "comprobantes_emitidos.php",
+        "reporte_compras_facturas.php",
+        "proveedores_facturas_add.php",
+        "empresa_datos.php"
+      ]
+    },
+    "tarjetas_liquidaciones.php": {
+      "titulo": "Tarjetas y Cupones",
+      "categoria": "Fondos > Tarjetas y Cupones",
+      "resumen": "Pantalla para seguir lo cobrado con tarjeta: cada venta o cobro con un medio de pago de tipo Tarjetas deja un cupón (tarjeta, cuotas, lote, número de cupón e importe), y cuando la procesadora liquida se registra acá la liquidación: qué cupones incluye, cuánto descontó por aranceles, IVA y retenciones, y en qué banco acreditó el neto. Tiene tres pestañas: Liquidaciones, Cupones y Tarjetas (el catálogo).",
+      "cuando_usarla": "Cada vez que llega la liquidación de una tarjeta (Getnet, Prisma, Naranja, etc.) para registrar la acreditación en el banco con sus descuentos; para saber cuánto falta liquidar de cada tarjeta; y una vez, al empezar, para cargar las tarjetas con las que trabaja el negocio.",
+      "como_se_usa": [
+        "En la pestaña TARJETAS, cargar las tarjetas con las que se cobra (por ejemplo VISA CRÉDITO, MASTERCARD DÉBITO, NARANJA), con sus días al cobro. Desde que hay al menos una, el mostrador y Cobrar Facturas piden elegir la tarjeta y las cuotas al cobrar con un medio de tipo Tarjetas.",
+        "En la pestaña CUPONES se consultan los cupones por fecha, tarjeta y estado (pendiente, liquidado o anulado), con el total por tarjeta y exportación a Excel.",
+        "Para registrar una liquidación: pestaña LIQUIDACIONES > NUEVA LIQUIDACIÓN. Elegir el medio de tarjeta, la tarjeta (o todas) y hasta qué fecha, y presionar VER CUPONES.",
+        "Tildar los cupones que figuran en la liquidación de la procesadora. Si la liquidación incluye cupones cobrados antes de empezar a usar este módulo, cargar ese importe en BRUTO DE CUPONES ANTERIORES AL SISTEMA.",
+        "Completar fecha de acreditación, número de liquidación, el banco donde se acreditó y los descuentos: aranceles, IVA sobre aranceles, retenciones de IIBB, IVA y Ganancias, y otros descuentos. Controlar que el NETO AL BANCO coincida con lo acreditado y presionar REGISTRAR LIQUIDACIÓN.",
+        "Si una liquidación se cargó mal, anularla desde el listado y volver a registrarla."
+      ],
+      "tips": [
+        "Las notas de crédito cobradas con tarjeta (devoluciones) generan un cupón en negativo, que resta en la liquidación en que se incluya.",
+        "Mientras no haya ninguna tarjeta habilitada en el catálogo, al cobrar con tarjeta no se pide cuál: el cupón queda 'sin tarjeta' y se puede liquidar igual eligiendo SIN TARJETA o TODAS.",
+        "Si se anula un recibo cobrado con tarjeta, sus cupones pendientes se anulan; si ya estaban liquidados, se genera un cupón de ajuste en negativo para descontarlo en la próxima liquidación.",
+        "Si se modifican los medios de cobro de un comprobante y entra o sale una tarjeta, se genera un cupón por la diferencia. Al agregar una tarjeta conviene elegirla; si no se elige, se usa la del cupón original del comprobante.",
+        "Anular una liquidación no borra nada: registra los movimientos inversos con fecha del día (banco, tesorería y asiento) y los cupones vuelven a quedar pendientes. No se puede anular si la acreditación ya está conciliada con el extracto bancario.",
+        "Para registrar aranceles u otros descuentos hay que tener configurada la cuenta 'Aranceles y Comisiones de Tarjetas' en Contabilidad > Configurar Asientos Automáticos.",
+        "El IVA sobre aranceles se registra en la cuenta de IVA Compras, pero la liquidación no aparece en el Libro IVA: si se quiere computar como crédito fiscal en el libro, cargar la factura de la procesadora como factura de compra."
+      ],
+      "funcionamiento_interno": "Cada cobro con un medio de pago de tipo Tarjetas (venta, nota de crédito, recibo de cobranza o modificación de medios de cobro) graba un cupón pendiente con su importe con signo. Al registrar una liquidación, el sistema verifica que los cupones sigan pendientes y sean del medio y la tarjeta elegidos, los marca como liquidados y registra: en tesorería, la salida del bruto del medio de tarjeta y la entrada del neto en el medio bancario; en el banco, el ingreso del neto; y un asiento contable con el banco por el neto, los aranceles y otros descuentos como gasto, el IVA de los aranceles como crédito fiscal y cada retención en su cuenta de retenciones sufridas, contra la cuenta del medio de tarjeta por el bruto. Al anular, registra los movimientos inversos con la fecha del día y devuelve los cupones a pendientes.",
+      "relacionado": [
+        "newfactura.php",
+        "cobrar_facturas.php",
+        "comprobantes_emitidos.php",
+        "asientos_auto_cfg.php",
+        "bancos_conciliacion.php"
+      ]
+    },
+    "bancos_conciliacion.php": {
+      "titulo": "Conciliación Bancaria",
+      "categoria": "Fondos > Bancos y Cuentas Bancarias > Conciliación Bancaria",
+      "resumen": "Pantalla para comparar el extracto del banco (o de MercadoPago) contra los movimientos que el sistema registró en esa cuenta: se importa el extracto en Excel o CSV, el sistema empareja automáticamente lo que coincide, se concilia a mano lo que queda, y lo que el banco cobró o acreditó y el sistema no tiene (comisiones, impuestos, débitos automáticos, intereses) se registra desde ahí mismo. Incluye además el Mayor Bancario de la cuenta con el saldo calculado.",
+      "cuando_usarla": "Todos los meses (o con la frecuencia con que se baje el extracto) para verificar que el saldo del banco coincide con el del sistema, encontrar movimientos que no se cargaron o se cargaron mal, y registrar los gastos bancarios.",
+      "como_se_usa": [
+        "Elegir la cuenta bancaria arriba a la derecha (las cuentas salen de los medios de pago de tipo Bancos que tienen una cuenta bancaria asociada).",
+        "En EXTRACTOS presionar IMPORTAR EXTRACTO, elegir el archivo que se bajó del home banking (Excel .xlsx/.xls o CSV) y presionar LEER.",
+        "Confirmar qué columna es cada dato: el sistema propone fecha, descripción, referencia e importe (o débito y crédito por separado) buscando los encabezados. Indicar desde qué fila empiezan los datos, el saldo inicial del extracto y, si se quiere controlar, el saldo final. Si el banco muestra los débitos en positivo, tildar 'Invertir signo'.",
+        "Presionar IMPORTAR: se abre la pestaña CONCILIAR con el extracto a la izquierda y los movimientos del sistema a la derecha.",
+        "Presionar CONCILIAR AUTOMÁTICO (con la tolerancia de días deseada).",
+        "Lo que quede: tildar líneas del extracto y movimientos del sistema que se correspondan (pueden ser varios contra varios, tienen que sumar lo mismo) y presionar CONCILIAR SELECCIÓN.",
+        "Para una línea del banco que el sistema no tiene (comisión, impuesto al débito/crédito, interés), usar el ícono de lápiz: elegir la cuenta contable (por ejemplo Gastos Bancarios) y se registra y concilia. Las líneas meramente informativas se pueden marcar como ignoradas.",
+        "Cuando no queden líneas pendientes, presionar CERRAR EXTRACTO.",
+        "En MAYOR BANCARIO se consulta la cuenta por período con su saldo, indicando qué movimientos ya están conciliados, y se exporta a Excel."
+      ],
+      "tips": [
+        "La conciliación automática empareja primero uno a uno (mismo importe y fecha dentro de la tolerancia, gana la fecha más cercana), después una línea del banco contra varios movimientos de un mismo día (por ejemplo MercadoPago que acredita el total del día mientras el sistema tiene una fila por venta) y por último varias líneas de un mismo día contra un movimiento (una transferencia que el banco muestra partida).",
+        "Cada movimiento del sistema se puede conciliar una sola vez, aunque se importen extractos superpuestos.",
+        "El resumen muestra el saldo según el extracto y según el sistema a la fecha de cierre del extracto, y de dónde sale la diferencia: movimientos del sistema todavía no debitados o acreditados por el banco (cheques no cobrados, transferencias en camino), líneas del banco pendientes de registrar, líneas ignoradas y movimientos de períodos anteriores nunca conciliados.",
+        "Las líneas del archivo sin fecha o sin importe (títulos, totales, renglones en blanco) se descartan solas al importar, y se avisa cuántas fueron.",
+        "Lo registrado desde la conciliación lleva la fecha de la línea del extracto: el período contable de esa fecha tiene que estar abierto.",
+        "Un extracto cerrado no se puede modificar; se puede reabrir. Un extracto se puede eliminar mientras no tenga movimientos registrados desde él.",
+        "El saldo del sistema y el del Mayor Bancario se calculan sumando los movimientos, no con el saldo guardado en cada fila (que en datos viejos no era confiable)."
+      ],
+      "funcionamiento_interno": "Al importar, el sistema lee el archivo, interpreta fechas (dd/mm/aaaa, aaaa-mm-dd o fecha de Excel) e importes (formato argentino 1.234,56, inglés 1,234.56, con signo, entre paréntesis o con guion al final) y guarda cada renglón como una línea del extracto con su importe con signo (positivo = crédito/ingreso, negativo = débito/egreso). Los movimientos del sistema son los de la cuenta bancaria (ventas y cobros con ese medio, pagos a proveedores, cheques, depósitos, liquidaciones de tarjeta, movimientos de tesorería) en el período del extracto con un margen de 15 días. Conciliar crea un grupo que vincula una o más líneas con uno o más movimientos cuyos importes suman lo mismo. Registrar una línea crea el movimiento en el banco, en tesorería y un asiento contable entre la cuenta del banco y la cuenta elegida, con la fecha de la línea, y lo deja conciliado.",
+      "relacionado": [
+        "bancos_admin.php",
+        "tesoreria_nuevo_movimiento.php",
+        "tarjetas_liquidaciones.php",
+        "informe_tesoreria.php"
+      ]
+    },
+    "retper_regimenes.php": {
+      "titulo": "Regímenes de Retención y Percepción",
+      "categoria": "Contabilidad > Impuestos > Regímenes de Retención y Percepción",
+      "resumen": "Configuración de la empresa como agente de retención (al pagar a proveedores) y de percepción (al facturar) de cualquier impuesto: IVA, Ganancias, Ingresos Brutos de cualquier jurisdicción u otros. Cada régimen define base de cálculo, alícuotas, mínimos, si acumula por mes, a qué condiciones fiscales alcanza, si usa un padrón por CUIT y en qué cuenta contable se registra lo retenido o percibido. Incluye la carga del padrón y las excepciones por cliente o proveedor.",
+      "cuando_usarla": "Cuando ARCA o una provincia designa a la empresa como agente de retención o de percepción, cuando cambian alícuotas o mínimos, cuando llega un padrón nuevo de la provincia, o cuando un proveedor presenta un certificado de no retención.",
+      "como_se_usa": [
+        "Presionar NUEVO RÉGIMEN y completar: nombre, si es retención (pagos) o percepción (ventas), impuesto y jurisdicción, base de cálculo (neto sin IVA, total o IVA) y alícuota general.",
+        "Si corresponde, completar la alícuota para no inscriptos, el mínimo no sujeto (base a partir de la cual corresponde), el importe mínimo a retener o percibir, y marcar 'sobre el excedente del mínimo' y 'acumulado mensual' (típico de Ganancias RG 830).",
+        "Tildar las condiciones fiscales alcanzadas (por ejemplo solo Responsables Inscriptos y Monotributistas para una percepción de IIBB). Si no se tilda ninguna, alcanza a todas.",
+        "Elegir la cuenta contable de pasivo donde queda lo retenido o percibido hasta depositarlo (por ejemplo Ingresos Brutos a Pagar), y los códigos de impuesto y régimen que pide el aplicativo de presentación.",
+        "Tildar HABILITADO y guardar. Desde ese momento se aplica en los pagos o en la facturación.",
+        "Con el ícono de lista se abre el detalle del régimen: en PADRÓN POR CUIT se importa el archivo de la provincia (CSV o Excel con CUIT; alícuota; excluido S/N; desde; hasta) y en EXCEPCIONES se cargan clientes o proveedores exentos o con alícuota propia (por ejemplo con certificado de no retención y su vencimiento)."
+      ],
+      "tips": [
+        "Sin ningún régimen habilitado el sistema no calcula nada y funciona igual que antes.",
+        "Orden en que se decide la alícuota de cada cliente o proveedor: 1) su excepción cargada, 2) el padrón (si el régimen usa padrón; si el CUIT no figura, se aplica la alícuota general o no se aplica, según lo configurado), 3) su condición fiscal (si no está alcanzado, no corresponde; si no es Responsable Inscripto, Monotributista ni Exento se usa la alícuota de no inscriptos), 4) la alícuota general.",
+        "Con 'acumulado mensual', la base y el mínimo se evalúan sobre todo lo pagado o facturado al mismo sujeto en el mes, y se descuenta lo ya retenido o percibido. Por eso también se guardan los pagos que no llegaron al mínimo (con importe cero).",
+        "Las percepciones se informan a ARCA dentro del mismo pedido de CAE, como tributo de la factura electrónica (por defecto código 7 para IIBB, 6 para IVA y 9 para otras; se puede cambiar). Requieren que el servidor de facturación electrónica tenga la versión de ArcaFunctions.php del 15/10/2026: si no la tiene, al facturar se avisa y no se emite el comprobante.",
+        "Las escalas progresivas de algunos regímenes de Ganancias (por ejemplo honorarios) no están contempladas: se aplica una alícuota fija por régimen.",
+        "Solo un administrador puede modificar la configuración."
+      ],
+      "funcionamiento_interno": "Al pagar a un proveedor, el sistema toma los regímenes de retención habilitados y vigentes, determina la alícuota del proveedor, calcula la base según la proporción de neto e IVA de las facturas que se cancelan (si no hay facturas, supone IVA 21%) y el importe con los mínimos y el acumulado mensual. Lo cancelado al proveedor es lo pagado con los medios más lo retenido: se imputa a las facturas, se registra en su cuenta corriente, y el asiento lleva la cuenta del proveedor contra los medios de pago y la cuenta de cada régimen. Cada retención queda registrada con un número de certificado correlativo por régimen. Al facturar un comprobante fiscal, se calculan las percepciones sobre el neto (o la base elegida) que se declara a ARCA, se suman al total, se envían como tributos en el pedido de CAE, se registran y se agregan al asiento en la cuenta del régimen; una nota de crédito las devuelve.",
+      "relacionado": [
+        "retper_practicadas.php",
+        "proveedores_pagar_facturas.php",
+        "newfactura.php",
+        "libro_iva.php"
+      ]
+    },
+    "retper_practicadas.php": {
+      "titulo": "Retenciones y Percepciones Practicadas",
+      "categoria": "Contabilidad > Impuestos > Retenciones y Percepciones Practicadas",
+      "resumen": "Listado de lo retenido a proveedores y de lo percibido a clientes en un período, por régimen, con el total a depositar de cada uno, acceso al certificado de cada retención y exportación a Excel con los datos que piden los aplicativos de presentación.",
+      "cuando_usarla": "Al cierre de cada período, para depositar lo retenido o percibido y presentarlo ante ARCA (SIRE / SICORE) o la provincia; también para reimprimir un certificado de retención que pida un proveedor.",
+      "como_se_usa": [
+        "Elegir RETENCIONES o PERCEPCIONES, el período y, si se quiere, un régimen.",
+        "Presionar CONSULTAR: arriba se ve el total por régimen.",
+        "En retenciones, el número de certificado abre el certificado para imprimirlo.",
+        "Presionar EXCEL para llevar el detalle al aplicativo de presentación."
+      ],
+      "tips": [
+        "Las anuladas (por haberse anulado el pago) no se listan.",
+        "'Incluir pagos sin retención' muestra también los pagos que no superaron el mínimo y quedaron registrados con importe cero para el acumulado mensual.",
+        "En percepciones, las notas de crédito figuran en negativo (devolución de la percepción).",
+        "El sistema no genera el archivo de presentación (SIRE, SICORE, ATM, ARBA): el Excel trae CUIT, base, alícuota, importe, códigos de impuesto y régimen y número de certificado para cargarlos o importarlos en el aplicativo."
+      ],
+      "funcionamiento_interno": "Lee las retenciones registradas en cada pago a proveedor y las percepciones registradas en cada comprobante de venta, con el régimen, el sujeto, la base, la alícuota y el importe, y arma los totales por régimen del período.",
+      "relacionado": [
+        "retper_regimenes.php",
+        "proveedores_ver_pagos_realizados.php",
+        "libro_iva.php"
       ]
     }
   }

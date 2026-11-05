@@ -4,11 +4,28 @@
  */
 require_once 'check_api_access.php';
 require_once 'fiscal_imputacion_helpers.php';
+require_once 'imputaciones_gestion_helpers.php';
 
 $action = $_GET['action'] ?? '';
 
 try {
     switch ($action) {
+        case 'get_gestion':
+            echo json_encode(['success' => true] + listarGestionImputaciones($pdo, 'cliente', (int)($_GET['cliente'] ?? 0), (int)($_GET['pagina'] ?? 1), trim((string)($_GET['buscar'] ?? '')), ($_GET['solo_pendientes'] ?? '') === '1'));
+            break;
+
+        case 'buscar_fondos':
+            echo json_encode(['success' => true, 'data' => buscarFondosGestion($pdo, 'cliente', (int)($_GET['cliente'] ?? 0), trim((string)($_GET['q'] ?? '')))]);
+            break;
+
+        case 'modificar_gestion':
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') throw new Exception('Método no permitido.');
+            $d = json_decode(file_get_contents('php://input'), true) ?: [];
+            modificarGestionImputacion($pdo, 'cliente', (int)($d['entidad_id'] ?? 0), (string)($d['accion'] ?? ''),
+                (int)($d['factura_id'] ?? 0), (int)($d['pago_id'] ?? 0), (int)($d['imputacion_id'] ?? 0), (float)($d['importe'] ?? 0));
+            echo json_encode(['success' => true]);
+            break;
+
         case 'get_pendientes':
             $idcli = $_GET['cliente'];
             // 1. Pagos con saldo a imputar
@@ -22,7 +39,7 @@ try {
                         id, 
                         DATE_FORMAT(fecha, '%d-%m-%Y') AS fecha_f,
                         CONCAT(LPAD(PtoVta, 4, '0'), '-', LPAD(numcomp, 8, '0')) AS num_factura,
-                        total - COALESCE(
+                        COALESCE(importectacte, total) - COALESCE(
                             (SELECT SUM(importepagado)
                             FROM cobrosfacturasclientes
                             WHERE idfactura = tickets.id), 0
@@ -31,7 +48,7 @@ try {
                     WHERE cliente = ?
                     AND pagada = 0
                     AND tipocomp NOT IN (3, 8, 13, 101)
-                    AND (total - COALESCE(
+                    AND (COALESCE(importectacte, total) - COALESCE(
                             (SELECT SUM(importepagado)
                             FROM cobrosfacturasclientes
                             WHERE idfactura = tickets.id), 0
@@ -55,7 +72,7 @@ try {
                 throw new Exception('Debe seleccionar al menos un cobro y un comprobante para imputar.');
             }
 
-            $sqlPagos = "SELECT p.id, cc.fiscal FROM pagos p INNER JOIN ccclientes cc ON cc.compasoc = p.id AND cc.tabla = 'pagos' WHERE p.cliente = ? AND p.id IN (" . placeholdersSql($pagoIds) . ")";
+            $sqlPagos = "SELECT p.id, cc.fiscal FROM pagos p INNER JOIN ccclientes cc ON cc.compasoc = p.id AND cc.tabla = 'pagos' WHERE p.cliente = ? AND p.estado <> 1000 AND p.id IN (" . placeholdersSql($pagoIds) . ") FOR UPDATE";
             $stmtPagos = $pdo->prepare($sqlPagos);
             $stmtPagos->execute(array_merge([$clienteId], $pagoIds));
             $fiscalPagos = fiscalUnicoDeFilas($stmtPagos->fetchAll(PDO::FETCH_ASSOC), $pagoIds, 'el cobro');
@@ -66,38 +83,9 @@ try {
             $fiscalFacturas = fiscalUnicoDeFilas($stmtFacturas->fetchAll(PDO::FETCH_ASSOC), $facturaIds, 'el comprobante');
             validarMismaCondicionFiscal($fiscalPagos, $fiscalFacturas);
 
-            // Algoritmo de Imputación Cascada (Similar a VB.NET)
-            // Recorremos cada pago seleccionado
-            foreach ($data['pagos'] as $p) {
-                $pago_id = $p['id'];
-                $pago_saldo = (float) $p['saldoaimputar'];
-
-                // Para cada pago, recorremos las facturas seleccionadas (que aún tengan saldo)
-                foreach ($data['facturas'] as &$f) {
-                    if ($pago_saldo <= 0)
-                        break; // Si el pago se agotó, vamos al siguiente pago
-                    if ($f['pendiente'] <= 0)
-                        continue; // Si la factura ya se cubrió, vamos a la siguiente factura
-
-                    $imputacion = min($pago_saldo, $f['pendiente']);
-
-                    // 1. Registrar cobro
-                    $pdo->prepare("INSERT INTO cobrosfacturasclientes (idpago, idfactura, importepagado) VALUES (?, ?, ?)")
-                        ->execute([$pago_id, $f['id'], $imputacion]);
-
-                    // 2. Descontar de los saldos de trabajo
-                    $pago_saldo -= $imputacion;
-                    $f['pendiente'] -= $imputacion;
-
-                    // 3. Si la factura se completó, marcar como pagada
-                    if ($f['pendiente'] <= 0.01) { // Margen por redondeo
-                        $pdo->prepare("UPDATE tickets SET pagada = 1 WHERE id = ?")->execute([$f['id']]);
-                    }
-                }
-
-                // 4. Actualizar el pago con su nuevo saldo remanente
-                $pdo->prepare("UPDATE pagos SET saldoaimputar = ? WHERE id = ?")->execute([$pago_saldo, $pago_id]);
-            }
+            // La imputación rápida usa los saldos actuales de la base; el navegador
+            // sólo indica el orden de los comprobantes seleccionados.
+            autoImputarSeleccionGestion($pdo, 'cliente', $clienteId, $pagoIds, $facturaIds);
 
             $pdo->commit();
             echo json_encode(['success' => true]);

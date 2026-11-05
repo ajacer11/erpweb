@@ -17,6 +17,24 @@ function requireAdminDeposito(bool $esAdmin): void
     }
 }
 
+/** Convierte un data URL validado a BLOB. null significa conservar el logo actual. */
+function decodificarLogoDeposito($dataUrl): ?string
+{
+    if ($dataUrl === null || $dataUrl === '') return null;
+    if (!is_string($dataUrl) || !preg_match('#^data:(image/(?:png|jpeg|webp));base64,(.+)$#s', $dataUrl, $m)) {
+        throw new Exception('El logo debe ser una imagen PNG, JPG o WebP válida.');
+    }
+    $bin = base64_decode($m[2], true);
+    if ($bin === false || strlen($bin) > 2 * 1024 * 1024) {
+        throw new Exception('El logo no es válido o supera los 2 MB.');
+    }
+    $mime = (new finfo(FILEINFO_MIME_TYPE))->buffer($bin);
+    if (!in_array($mime, ['image/png', 'image/jpeg', 'image/webp'], true)) {
+        throw new Exception('El logo debe ser una imagen PNG, JPG o WebP válida.');
+    }
+    return $bin;
+}
+
 /**
  * Trae una transferencia + sus líneas, validando que esté en uno de los
  * estados permitidos para la acción que la llama y que tenga un depósito de
@@ -48,6 +66,21 @@ function cargarTransferenciaConLineas(PDO $pdo, int $id, array $estadosPermitido
 try {
     switch ($action) {
 
+        case 'logo':
+            $stmt = $pdo->prepare('SELECT logo FROM depositos WHERE id = ?');
+            $stmt->execute([(int) ($_GET['id'] ?? 0)]);
+            $blob = $stmt->fetchColumn();
+            if (empty($blob)) {
+                http_response_code(404);
+                exit;
+            }
+            header('Content-Type: ' . ((new finfo(FILEINFO_MIME_TYPE))->buffer($blob) ?: 'image/png'));
+            header('Cache-Control: private, max-age=31536000, immutable'); // la URL lleva el hash del logo
+            header_remove('Pragma');
+            header_remove('Expires');
+            echo $blob;
+            exit;
+
         case 'estado_global':
             echo json_encode(['success' => true, 'habilitado' => multidepositoHabilitado($pdo)]);
             break;
@@ -65,9 +98,15 @@ try {
 
             $idPrincipal = $pdo->query("SELECT id FROM depositos WHERE esprincipal = 1 LIMIT 1")->fetchColumn();
             if (!$idPrincipal) {
-                $pdo->prepare("INSERT INTO depositos (nombre, descripcion, esprincipal, habilitado, usuariocreacion)
-                               VALUES ('Depósito Principal', 'Creado automáticamente al activar multidepósito', 1, 1, ?)")
-                    ->execute([$usuario]);
+                // El principal hereda la identidad operativa vigente. De ese modo activar
+                // multidepósito no cambia ni el encabezado ni el PV de la empresa actual.
+                $empresa = $pdo->query("SELECT domicilio, localidad, provincia, telefono, email, puntodeventa FROM datosempresa ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC) ?: [];
+                $logo = $pdo->query("SELECT logo FROM configuracion ORDER BY id DESC LIMIT 1")->fetchColumn();
+                $pdo->prepare("INSERT INTO depositos
+                        (nombre, descripcion, esprincipal, habilitado, usuariocreacion, domicilio, localidad, provincia, telefono, email, codigopostal, puntodeventa, logo)
+                        VALUES ('Depósito Principal', 'Creado automáticamente al activar multidepósito', 1, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                    ->execute([$usuario, $empresa['domicilio'] ?? '', $empresa['localidad'] ?? '', $empresa['provincia'] ?? '',
+                        $empresa['telefono'] ?? '', $empresa['email'] ?? '', '', (int) ($empresa['puntodeventa'] ?? 0), $logo ?: null]);
                 $idPrincipal = (int) $pdo->lastInsertId();
 
                 // Volcado aditivo: NO se toca alb_productos.Stock (ya tiene el valor correcto).
@@ -95,7 +134,10 @@ try {
         // ABM de depósitos
         // -------------------------------------------------------------
         case 'list':
-            $stmt = $pdo->query("SELECT d.*, COALESCE((SELECT SUM(s.cantidad) FROM stock_por_deposito s WHERE s.id_deposito = d.id), 0) AS stock_total
+            $stmt = $pdo->query("SELECT d.id, d.nombre, d.descripcion, d.esprincipal, d.habilitado, d.permitenegativo,
+                                         d.estransito, d.domicilio, d.localidad, d.provincia, d.telefono, d.email,
+                                         d.codigopostal, d.puntodeventa, (d.logo IS NOT NULL AND OCTET_LENGTH(d.logo) > 0) AS tiene_logo,
+                                         COALESCE((SELECT SUM(s.cantidad) FROM stock_por_deposito s WHERE s.id_deposito = d.id), 0) AS stock_total
                                   FROM depositos d ORDER BY d.esprincipal DESC, d.nombre ASC");
             echo json_encode(['success' => true, 'data' => $stmt->fetchAll(PDO::FETCH_ASSOC)]);
             break;
@@ -130,8 +172,15 @@ try {
             }
             $estransito = !empty($input['estransito']) ? 1 : 0;
 
-            $pdo->prepare("INSERT INTO depositos (nombre, descripcion, permitenegativo, estransito, usuariocreacion) VALUES (?, ?, ?, ?, ?)")
-                ->execute([$nombre, trim($input['descripcion'] ?? ''), (int) ($input['permitenegativo'] ?? 0), $estransito, $usuario]);
+            $pv = (int) ($input['puntodeventa'] ?? 0);
+            if (!$estransito && $pv < 1) throw new Exception('El punto de venta es obligatorio y debe ser mayor a cero.');
+            $logo = decodificarLogoDeposito($input['logo'] ?? null);
+            $pdo->prepare("INSERT INTO depositos (nombre, descripcion, permitenegativo, estransito, usuariocreacion,
+                    domicilio, localidad, provincia, telefono, email, codigopostal, puntodeventa, logo)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                ->execute([$nombre, trim($input['descripcion'] ?? ''), (int) ($input['permitenegativo'] ?? 0), $estransito, $usuario,
+                    trim($input['domicilio'] ?? ''), trim($input['localidad'] ?? ''), trim($input['provincia'] ?? ''),
+                    trim($input['telefono'] ?? ''), trim($input['email'] ?? ''), trim($input['codigopostal'] ?? ''), $pv, $logo]);
             echo json_encode(['success' => true, 'id' => $pdo->lastInsertId()]);
             break;
 
@@ -174,8 +223,18 @@ try {
                 }
             }
 
-            $pdo->prepare("UPDATE depositos SET nombre = ?, descripcion = ?, permitenegativo = ?, estransito = ? WHERE id = ?")
-                ->execute([$nombre, trim($input['descripcion'] ?? ''), (int) ($input['permitenegativo'] ?? 0), $estransito, $id]);
+            $pv = (int) ($input['puntodeventa'] ?? 0);
+            if (!$estransito && $pv < 1) throw new Exception('El punto de venta es obligatorio y debe ser mayor a cero.');
+            $logo = decodificarLogoDeposito($input['logo'] ?? null);
+            $sqlLogo = $logo !== null ? ', logo = ?' : '';
+            $params = [$nombre, trim($input['descripcion'] ?? ''), (int) ($input['permitenegativo'] ?? 0), $estransito,
+                trim($input['domicilio'] ?? ''), trim($input['localidad'] ?? ''), trim($input['provincia'] ?? ''),
+                trim($input['telefono'] ?? ''), trim($input['email'] ?? ''), trim($input['codigopostal'] ?? ''), $pv];
+            if ($logo !== null) $params[] = $logo;
+            $params[] = $id;
+            $pdo->prepare("UPDATE depositos SET nombre = ?, descripcion = ?, permitenegativo = ?, estransito = ?,
+                    domicilio = ?, localidad = ?, provincia = ?, telefono = ?, email = ?, codigopostal = ?, puntodeventa = ?{$sqlLogo} WHERE id = ?")
+                ->execute($params);
             echo json_encode(['success' => true]);
             break;
 
@@ -235,6 +294,7 @@ try {
                     'requiere_seleccion' => false,
                     'id_deposito' => $idActivo,
                     'nombre_deposito' => $nombreActivo,
+                    'logo' => logoDepositoUrl($pdo, $idActivo),
                     'puede_cambiar' => $puedeCambiar && count($permitidos) > 1,
                     'depositos_permitidos' => $permitidos,
                 ]);

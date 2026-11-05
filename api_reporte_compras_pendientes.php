@@ -7,7 +7,7 @@ $action = $_GET['action'] ?? '';
 try {
     // 1. Obtener Filtros (Proveedores)
     if ($action === 'get_filters') {
-        $stmt = $pdo->query("SELECT id, razon FROM proveedores WHERE habilitado = 1 ORDER BY razon ASC");
+        $stmt = $pdo->query("SELECT id, razon FROM Proveedores WHERE habilitado = 1 ORDER BY razon ASC");
         $proveedores = $stmt->fetchAll(PDO::FETCH_ASSOC);
         echo json_encode(['status' => 'ok', 'proveedores' => $proveedores]);
 
@@ -38,18 +38,18 @@ try {
                     facturasdecompra.fechavencimiento as 'Fecha de Vencimiento',
                     (
                         SELECT razon
-                        FROM proveedores
+                        FROM Proveedores
                         WHERE proveedores.id = facturasdecompra.proveedorid
                     ) AS 'Proveedor',
                     CASE facturasdecompra.tipocomp 
-                        WHEN 1 THEN 'FCA' 
+                        WHEN 1 THEN 'FCA' WHEN 2 THEN 'NDA'
                         WHEN 3 THEN 'NCA' 
                         WHEN 1000 THEN 'REM' 
-                        WHEN 6 THEN 'FCB' 
+                        WHEN 6 THEN 'FCB' WHEN 7 THEN 'NDB'
                         WHEN 8 THEN 'NCB' 
                         WHEN 100 THEN 'TKT' 
                         WHEN 101 THEN 'TDC' 
-                        WHEN 11 THEN 'FCC' 
+                        WHEN 11 THEN 'FCC' WHEN 12 THEN 'NDC'
                         WHEN 13 THEN 'NCC' 
                         ELSE 'Otro'
                     END AS 'Tipo',

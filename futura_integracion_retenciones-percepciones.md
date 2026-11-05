@@ -1,6 +1,16 @@
 # Ser agente de retención / percepción de IVA y Ganancias (diseño, sin implementar)
 
-Estado: **diseño en curso, sin código escrito**. Este documento es la referencia para cuando se decida arrancar el desarrollo.
+Estado (2026-10-15): **implementado en versión genérica configurable**, ver "Lo implementado" abajo. El resto del documento queda como referencia del diseño original.
+
+## Lo implementado (2026-10-15)
+
+- Regímenes configurables para cualquier impuesto y jurisdicción (IVA, Ganancias, IIBB, otros), no solo IVA/Ganancias: `regimenes_retper` (sql/2026-10-15_retenciones_percepciones.sql). Un régimen habilitado es la "bandera" de agente; sin ninguno, nada cambia.
+- Alícuota por sujeto: excepción manual (`sujetos_retper`), padrón importable por CUIT (`padron_retper`, CSV/Excel), condición fiscal y alícuota para no inscriptos. Mínimo no sujeto, "sobre el excedente" y acumulado mensual.
+- Retención en pagos a proveedores (`api_pagos_proveedores.php` + `proveedores_pagar_facturas.php`): cálculo en el servidor, certificado imprimible (`imprimir_certificado_retencion.php`), anulación con el pago.
+- Percepción en facturación (`api_facturar.php`): se suma al total, viaja a ARCA como Tributos (`ARCA/ArcaFunctions.php`), asiento, comprobante impreso y Libro IVA. Antes de pedir CAE con percepciones se consulta al servidor de facturación si admite percepciones (`new_fe_cae_api.php?capacidades=1`).
+- Pantallas: `retper_regimenes.php` (configuración) y `retper_practicadas.php` (informe + Excel). Lógica en `retper_helpers.php`.
+
+**No implementado** (sigue pendiente de este diseño): consulta en vivo al Padrón de ARCA (`ws_sr_padron_a13`) y alerta de condición fiscal desactualizada; archivos de presentación SIRE/SICORE/ATM (hoy: Excel con todos los datos); escalas progresivas de Ganancias; retención sobre cobros.
 
 Se planea ofrecer como módulo adicional (no incluido por defecto en ninguna licencia) — ver el mecanismo de habilitación en `futura_arquitectura_modulos_adicionales.md`.
 

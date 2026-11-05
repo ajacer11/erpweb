@@ -101,22 +101,22 @@ require_once 'check_access.php';
             <!-- CABECERA PARA VISTA DETALLADA -->
             <thead class="sticky-top bg-black" id="theadDetalle">
                 <tr>
-                    <th class="ps-3 py-2">FECHA</th>
-                    <th>N° ORDEN PAGO</th>
-                    <th>PROVEEDOR</th>
-                    <th>MEDIO 1</th>
-                    <th class="text-end">IMPORTE 1</th>
-                    <th>MEDIO 2</th>
-                    <th class="text-end">IMPORTE 2</th>
-                    <th class="text-center">USUARIO</th>
-                    <th class="text-end text-accent">TOTAL</th>
+                    <th class="ps-3 py-2" data-sort="fecha">FECHA</th>
+                    <th data-sort="id">N° ORDEN PAGO</th>
+                    <th data-sort="entidad_nombre">PROVEEDOR</th>
+                    <th data-sort="nombre_medio1">MEDIO 1</th>
+                    <th class="text-end" data-sort="importe1">IMPORTE 1</th>
+                    <th data-sort="nombre_medio2">MEDIO 2</th>
+                    <th class="text-end" data-sort="importe2">IMPORTE 2</th>
+                    <th class="text-center" data-sort="usuario">USUARIO</th>
+                    <th class="text-end text-accent" data-sort="total">TOTAL</th>
                 </tr>
             </thead>
             <!-- CABECERA PARA VISTA AGRUPADA -->
             <thead class="sticky-top bg-black d-none" id="theadAgrupado">
                 <tr>
-                    <th class="ps-3 py-2">MEDIO DE PAGO</th>
-                    <th class="text-end text-accent">TOTAL PAGADO</th>
+                    <th class="ps-3 py-2" data-sort="medio">MEDIO DE PAGO</th>
+                    <th class="text-end text-accent" data-sort="total">TOTAL PAGADO</th>
                 </tr>
             </thead>
             <tbody id="tbodyVentas">
@@ -173,6 +173,7 @@ require_once 'check_access.php';
     let currentData = [];
     let isAgrupado = false;
     let totalGeneral = 0;
+    let sortKey = '', sortAsc = true;
     
     let pagActual = 1, pagTotal = 1, pagTam = 20;
     window.pagActual = 1; window.pagTotal = 1;
@@ -206,6 +207,15 @@ require_once 'check_access.php';
         // Listeners
         document.getElementById('btnConsultar').addEventListener('click', cargarReporteForce);
         document.getElementById('btnExportar').addEventListener('click', () => generarExcel());
+        $('#tablaVentas th[data-sort]').css('cursor', 'pointer').attr('title', 'Ordenar por esta columna');
+        $('#tablaVentas').on('click', 'th[data-sort]', function () {
+            const key = this.dataset.sort;
+            sortAsc = sortKey === key ? !sortAsc : true;
+            sortKey = key;
+            ordenarDatos();
+            pagActual = 1; window.pagActual = 1;
+            renderPagina();
+        });
         
         // Checkbox ejecuta búsqueda inmediata
         document.getElementById('agrupar').addEventListener('change', cargarReporteForce);
@@ -261,6 +271,15 @@ require_once 'check_access.php';
             currentData = result.data.movimientos || [];
             isAgrupado = result.data.agrupado;
             totalGeneral = parseFloat(result.data.total_general || 0);
+            if (sortKey && currentData.length) {
+                if (Object.hasOwn(currentData[0], sortKey)) ordenarDatos();
+                else {
+                    sortKey = '';
+                    $('#tablaVentas th[data-sort]').each(function () {
+                        $(this).text($(this).data('label') || $(this).text().replace(/ [▲▼]$/, ''));
+                    });
+                }
+            }
             
             pagActual = 1; window.pagActual = 1;
             renderPagina();
@@ -279,6 +298,20 @@ require_once 'check_access.php';
     /* ============================================================
        RENDERIZADO SPA & PAGINACIÓN
     ============================================================ */
+    function ordenarDatos() {
+        const numericas = new Set(['id', 'importe1', 'importe2', 'total']);
+        currentData.sort((a, b) => {
+            const av = a[sortKey] ?? '', bv = b[sortKey] ?? '';
+            const cmp = numericas.has(sortKey) ? Number(av) - Number(bv)
+                : String(av).localeCompare(String(bv), 'es', {sensitivity:'base', numeric:true});
+            return sortAsc ? cmp : -cmp;
+        });
+        $('#tablaVentas th[data-sort]').css('cursor', 'pointer').each(function () {
+            const original = $(this).data('label') || $(this).text().replace(/ [▲▼]$/, '');
+            $(this).data('label', original).text(original + (this.dataset.sort === sortKey ? (sortAsc ? ' ▲' : ' ▼') : ''));
+        });
+    }
+
     function renderPagina() {
         const total = currentData.length;
         pagTotal = Math.max(1, Math.ceil(total / pagTam));

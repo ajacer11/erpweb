@@ -33,6 +33,10 @@ function getOrCreate($pdo, $table, $colName, $value) {
         $sqlInsert .= ", habilitada)"; $sqlValues .= ", 1)";
     } elseif ($table === 'rubros') {
         $sqlInsert .= ", iva, idiva)"; $sqlValues .= ", 21, 5)"; 
+    } elseif (strcasecmp($table, 'Proveedores') === 0) {
+        // cuentacontable es NOT NULL sin default en varias bases.
+        // '0' es el centinela que el sistema ya interpreta como "sin cuenta asignada".
+        $sqlInsert .= ", cuentacontable)"; $sqlValues .= ", '0')";
     } else {
         $sqlInsert .= ")"; $sqlValues .= ")";
     }
@@ -40,6 +44,93 @@ function getOrCreate($pdo, $table, $colName, $value) {
     $stmtInsert = $pdo->prepare($sqlInsert . $sqlValues);
     $stmtInsert->execute([$value]);
     return $pdo->lastInsertId();
+}
+
+/**
+ * Devuelve el valor de una columna del CSV, o el default si la celda
+ * no existe O viene vacia. El operador ?? solo cubre el primer caso.
+ */
+function campoCsv($item, $key, $default = '') {
+    $v = trim((string)($item[$key] ?? ''));
+    return ($v === '') ? $default : $v;
+}
+
+/** Columnas del CSV que se interpretan como numeros. */
+function camposNumericosCsv() {
+    $campos = ['NETO COSTO', 'ALICUOTA IVA', 'IMPUESTOS INTERNOS', 'STOCK MINIMO', 'STOCK IDEAL'];
+    for ($i = 1; $i <= 7; $i++) $campos[] = "NETO VENTA L$i";
+    return $campos;
+}
+
+/**
+ * Determina si el archivo usa punto o coma como separador decimal.
+ * Recorre todas las celdas numericas juntando evidencia; una celda
+ * ambigua como "1.500" no vota. Sin evidencia devuelve punto, que es
+ * el formato de la plantilla modelo que entrega el propio sistema.
+ */
+function detectarSeparadorDecimal($path, $delimiter, $headers) {
+    $campos = camposNumericosCsv();
+    $votosPunto = 0;
+    $votosComa  = 0;
+
+    $fh = @fopen($path, 'r');
+    if (!$fh) return '.';
+    fgetcsv($fh, 0, $delimiter); // descartar encabezado
+
+    while (($row = fgetcsv($fh, 0, $delimiter)) !== FALSE) {
+        if (count($row) != count($headers)) continue;
+        $item = array_combine($headers, $row);
+
+        foreach ($campos as $c) {
+            $v = trim((string)($item[$c] ?? ''));
+            if ($v === '' || !preg_match('/^[-+]?[0-9.,]+$/', $v)) continue;
+
+            $posPunto = strrpos($v, '.');
+            $posComa  = strrpos($v, ',');
+
+            // Conviven los dos: el que esta mas a la derecha es el decimal.
+            if ($posPunto !== false && $posComa !== false) {
+                if ($posPunto > $posComa) $votosPunto += 10; else $votosComa += 10;
+                continue;
+            }
+            // Un solo tipo de separador presente.
+            if ($posPunto !== false) {
+                if (substr_count($v, '.') > 1) { $votosComa++; continue; }   // 1.234.567 => miles
+                if (strlen(substr($v, $posPunto + 1)) !== 3) $votosPunto++;  // .5 / .50 / .5000 => decimal
+            } elseif ($posComa !== false) {
+                if (substr_count($v, ',') > 1) { $votosPunto++; continue; }
+                if (strlen(substr($v, $posComa + 1)) !== 3) $votosComa++;
+            }
+        }
+    }
+    fclose($fh);
+
+    return ($votosComa > $votosPunto) ? ',' : '.';
+}
+
+/**
+ * Convierte texto a numero respetando el separador decimal detectado.
+ * Reemplaza a la version anterior, que borraba todo punto y por lo tanto
+ * multiplicaba por 10, 100 o 1000 cualquier valor con decimales en
+ * formato ingles.
+ */
+function limpiarNumero($val, $decimal = '.') {
+    $val = trim((string)$val);
+    if ($val === '') return 0.0;
+
+    $val = preg_replace('/[^0-9.,+\-]/', '', $val);
+    if ($val === '') return 0.0;
+
+    $miles = ($decimal === '.') ? ',' : '.';
+    $val = str_replace($miles, '', $val);
+    if ($decimal !== '.') $val = str_replace($decimal, '.', $val);
+
+    // Si sobrevivio mas de un punto, los previos al ultimo eran miles.
+    if (substr_count($val, '.') > 1) {
+        $ult = strrpos($val, '.');
+        $val = str_replace('.', '', substr($val, 0, $ult)) . substr($val, $ult);
+    }
+    return floatval($val);
 }
 
 try {
@@ -106,11 +197,25 @@ try {
 
         $tempPath = sys_get_temp_dir() . '/import_new_prod_' . uniqid() . '.csv';
         move_uploaded_file($tmpName, $tempPath);
+
+        // Formato numerico del archivo, decidido una sola vez para todo el lote.
+        $sepDecimal = detectarSeparadorDecimal($tempPath, $delimiter, $headers);
+
         $_SESSION['csv_new_prod_path'] = $tempPath;
         $_SESSION['csv_new_prod_delim'] = $delimiter;
         $_SESSION['csv_new_prod_headers'] = $headers;
+        $_SESSION['csv_new_prod_decimal'] = $sepDecimal;
 
-        echo json_encode(['success' => true, 'preview' => $preview, 'headers' => $headers, 'total' => $count]);
+        echo json_encode([
+            'success' => true,
+            'preview' => $preview,
+            'headers' => $headers,
+            'total'   => $count,
+            'decimal' => $sepDecimal,
+            'formato' => ($sepDecimal === ',')
+                ? 'Coma decimal (1.234,56)'
+                : 'Punto decimal (1234.56)'
+        ]);
         exit;
     }
 
@@ -122,6 +227,9 @@ try {
         $delimiter = $_SESSION['csv_new_prod_delim'];
         $headers = $_SESSION['csv_new_prod_headers'];
         
+        $sepDecimal = $_SESSION['csv_new_prod_decimal']
+            ?? detectarSeparadorDecimal($path, $delimiter, $headers);
+
         $handle = fopen($path, "r");
         fgetcsv($handle, 0, $delimiter);
 
@@ -150,10 +258,8 @@ try {
         $stmtInsert = $pdo->prepare($sqlInsert);
         $stmtRef = $pdo->prepare("INSERT INTO referenciasproductos (codigo, refierea) VALUES (?, ?)");
 
-        $clean = function($val) {
-            $val = str_replace('.', '', $val);
-            $val = str_replace(',', '.', $val);
-            return floatval($val);
+        $clean = function($val) use ($sepDecimal) {
+            return limpiarNumero($val, $sepDecimal);
         };
 
         while (($row = fgetcsv($handle, 0, $delimiter)) !== FALSE) {
@@ -170,15 +276,25 @@ try {
                 if ($chk->fetch()) throw new Exception("El código ya existe.");
 
                 // IDs Relacionales
-                $rubroName = trim($item['RUBRO'] ?? 'VARIOS');
+                // campoCsv aplica el default tambien cuando la celda viene vacia,
+                // no solo cuando falta la columna.
+                $rubroName = campoCsv($item, 'RUBRO', 'VARIOS');
+                $marcaName = campoCsv($item, 'MARCA', 'GENERICA');
+                $famName   = campoCsv($item, 'FAMILIA', 'GENERAL');
+                $provName  = campoCsv($item, 'PROVEEDOR', 'VARIOS');
+
                 getOrCreate($pdo, 'rubros', 'rubro', $rubroName); // Asegurar existencia
-                $marcaId = getOrCreate($pdo, 'Marcas', 'marca', trim($item['MARCA'] ?? 'GENERICA'));
-                $famId = getOrCreate($pdo, 'familias', 'nombre', trim($item['FAMILIA'] ?? 'GENERAL'));
-                $provId = getOrCreate($pdo, 'Proveedores', 'Razon', trim($item['PROVEEDOR'] ?? 'VARIOS'));
+                $marcaId = getOrCreate($pdo, 'Marcas', 'marca', $marcaName);
+                $famId = getOrCreate($pdo, 'familias', 'nombre', $famName);
+                $provId = getOrCreate($pdo, 'Proveedores', 'Razon', $provName);
 
                 // Costos e Impuestos
                 $netoCosto = $clean($item['NETO COSTO'] ?? 0);
                 $porIva = $clean($item['ALICUOTA IVA'] ?? 21);
+                // Una columna corrida del Excel puede traer un precio en la alícuota (ej. 31500): se rechaza la fila
+                if (!in_array((float) $porIva, [0.0, 2.5, 5.0, 10.5, 21.0, 27.0], true)) {
+                    throw new Exception("Alícuota de IVA inválida ({$porIva}). Valores permitidos: 0, 2.5, 5, 10.5, 21, 27.");
+                }
                 $impInt = $clean($item['IMPUESTOS INTERNOS'] ?? 0);
                 $ivaCosto = $netoCosto * ($porIva / 100);
                 $totalCosto = $netoCosto + $ivaCosto + $impInt;
@@ -188,6 +304,8 @@ try {
                 if ($porIva == 10.5) $idIva = 4;
                 elseif ($porIva == 27) $idIva = 6;
                 elseif ($porIva == 0) $idIva = 3;
+                elseif ($porIva == 5) $idIva = 8;
+                elseif ($porIva == 2.5) $idIva = 9;
 
                 // --- PROCESAMIENTO DE 7 LISTAS DE PRECIOS ---
                 $precios = [];
@@ -210,7 +328,7 @@ try {
                     ':mar' => $marcaId,
                     ':fam' => $famId,
                     ':provId' => $provId,
-                    ':provName' => trim($item['PROVEEDOR'] ?? 'VARIOS'),
+                    ':provName' => $provName,
                     ':codProv' => trim($item['CODIGO PROVEEDOR'] ?? ''),
                     ':nc' => $netoCosto,
                     ':ic' => $ivaCosto,

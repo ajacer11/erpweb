@@ -11,6 +11,7 @@ coegotest.sql
 config_db_master.php
 *.sql
 !sql/*.sql
+!2026-09-16_Cambios_en_base.sql
 
 # Claves de proveedores de IA / servicios externos
 config_ia.php
@@ -20,3 +21,9 @@ vendor/
 
 # Archivos subidos por usuarios / generados con datos reales de clientes (fotos, informes, PDFs)
 img/
+
+# Credenciales de acceso al servidor (SSH)
+.env
+
+# Volcados de bases con datos reales de clientes
+*.sql.gz

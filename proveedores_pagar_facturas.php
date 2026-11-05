@@ -111,6 +111,14 @@ require_once 'check_access.php';
                         <div class="text-accent small mb-1 fw-bold">IMPORTE TOTAL A PAGAR</div>
                         <div class="fs-2 fw-bold text-white" id="lbl-total-pago">$ 0.00</div>
                     </div>
+                    <!-- Retenciones como agente (retper_helpers.php): solo aparece si corresponden -->
+                    <div class="mt-2 p-2 rounded border border-warning d-none" id="box-retenciones">
+                        <div class="small fw-bold text-warning mb-1"><i class="fas fa-percent me-1"></i>RETENCIONES A PRACTICAR</div>
+                        <div id="lst-retenciones" class="small"></div>
+                        <div class="d-flex justify-content-between small border-top border-secondary pt-1 mt-1"><span>Total retenido</span><strong id="lbl-total-ret">$ 0,00</strong></div>
+                        <div class="d-flex justify-content-between small"><span>Total cancelado (pago + retenciones)</span><strong id="lbl-total-cancelado">$ 0,00</strong></div>
+                        <button type="button" class="btn btn-sm btn-outline-warning w-100 mt-2 d-none" id="btn-sugerir-pago"></button>
+                    </div>
                     <button class="btn btn-info w-100 fw-bold py-3 mt-3 rounded-pill shadow" id="btn-grabar" disabled>
                         <i class="fas fa-save me-2"></i>CONFIRMAR Y GRABAR
                     </button>
@@ -314,6 +322,12 @@ require_once 'check_access.php';
      * Búsqueda de Proveedores
      */
     function configurarSelect2() {
+        $('#mp-1, #mp-2').select2({
+            dropdownParent: $('#main-content'),
+            width: '100%',
+            placeholder: 'BUSCAR MEDIO DE PAGO...',
+            minimumResultsForSearch: 0
+        });
         $('#cmb-proveedor').select2({
             placeholder: 'BUSCAR PROVEEDOR...',
             dropdownParent: $('#main-content'),
@@ -368,7 +382,43 @@ require_once 'check_access.php';
         calcularTotales();
     }
 
+    // ---- Retenciones como agente: el servidor calcula; acá solo se muestran ----
+    let retencionesTotal = 0, retencionesTimer = null, retencionesSugerido = 0;
+    const fmtRet = n => (parseFloat(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    async function actualizarRetenciones() {
+        const prov = $('#cmb-proveedor').val();
+        if (!prov) { retencionesTotal = 0; $('#box-retenciones').addClass('d-none'); return; }
+        const efectivo = (parseFloat($('#imp-1').val()) || 0) + (parseFloat($('#imp-2').val()) || 0);
+        const facturas = $('.chk-pend:checked').map(function () { return facturasPendientes[$(this).data('idx')].id; }).get();
+        try {
+            const res = await fetch('api_pagos_proveedores.php?action=calcular_retenciones', {
+                method: 'POST', headers: { ...commonHeaders, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ proveedor_id: prov, facturas, efectivo: efectivo > 0 ? efectivo : null, fecha: $('#txt-fecha').val() })
+            }).then(r => r.json());
+            if (!res.success) throw new Error(res.error);
+            const lineas = res.lineas.filter(l => l.importe > 0);
+            retencionesTotal = res.total;
+            retencionesSugerido = res.a_pagar;
+            $('#box-retenciones').toggleClass('d-none', !lineas.length);
+            $('#lst-retenciones').html(lineas.map(l => `<div class="d-flex justify-content-between"><span>${$('<div>').text(l.nombre).html()} <span class="text-white-50">(${l.alicuota}% s/ $ ${fmtRet(l.base)})</span></span><span>$ ${fmtRet(l.importe)}</span></div>`).join(''));
+            $('#lbl-total-ret').text('$ ' + fmtRet(res.total));
+            $('#lbl-total-cancelado').text('$ ' + fmtRet(res.cancelado));
+            // Sin importe cargado: se sugiere pagar el total de las facturas menos lo retenido.
+            const sugerir = lineas.length && efectivo <= 0 && res.a_pagar > 0;
+            $('#btn-sugerir-pago').toggleClass('d-none', !sugerir).text(`PAGAR $ ${fmtRet(res.a_pagar)} (TOTAL - RETENCIONES)`);
+        } catch (e) {
+            retencionesTotal = 0;
+            console.error('No se pudieron calcular las retenciones', e);
+        }
+    }
+    function programarRetenciones() { clearTimeout(retencionesTimer); retencionesTimer = setTimeout(actualizarRetenciones, 400); }
+    $(document).off('click.ret').on('click.ret', '#btn-sugerir-pago', function () {
+        $('#imp-1').val(retencionesSugerido.toFixed(2)); calcularTotales();
+    });
+
     function calcularTotales() {
+        programarRetenciones();
         let selec = 0;
         $('.chk-pend:checked').each(function() { selec += parseFloat(facturasPendientes[$(this).data('idx')].pendiente); });
         $('#lbl-total-seleccionado').text('$ ' + selec.toLocaleString('es-AR', {minimumFractionDigits: 2}));
@@ -401,8 +451,13 @@ require_once 'check_access.php';
             endosos: endososIds,
             propios: chequesPropios
         };
+        // Se recalculan las retenciones con los importes finales antes de confirmar.
+        clearTimeout(retencionesTimer);
+        await actualizarRetenciones();
+        data.retenciones_total = retencionesTotal;
+        const textoRet = retencionesTotal > 0 ? ` y se practicarán retenciones por $ ${fmtRet(retencionesTotal)} (cancela $ ${fmtRet(totalP + retencionesTotal)})` : '';
 
-        if (await Swal.fire({ title: '¿Confirmar Pago?', text: `Se grabará un recibo por $ ${totalP.toFixed(2)}`, icon: 'question', showCancelButton: true }).then(r => r.isConfirmed)) {
+        if (await Swal.fire({ title: '¿Confirmar Pago?', text: `Se grabará un recibo por $ ${totalP.toFixed(2)}${textoRet}`, icon: 'question', showCancelButton: true }).then(r => r.isConfirmed)) {
             try {
                 const resp = await fetch('api_pagos_proveedores.php?action=save_pago', {
                     method: 'POST', headers: { ...commonHeaders, 'Content-Type': 'application/json' },
@@ -410,7 +465,12 @@ require_once 'check_access.php';
                 }).then(r => r.json());
 
                 if (resp.success) {
-                    await Swal.fire('Éxito', 'Pago registrado y valores afectados correctamente.', 'success');
+                    if (resp.retenciones && resp.retenciones.length) {
+                        const r = await Swal.fire({ title: 'Pago registrado', text: `Se practicaron ${resp.retenciones.length} retención(es). ¿Imprimir los certificados?`, icon: 'success', showCancelButton: true, confirmButtonText: 'IMPRIMIR', cancelButtonText: 'AHORA NO' });
+                        if (r.isConfirmed) window.open('imprimir_certificado_retencion.php?pago=' + resp.id, '_blank');
+                    } else {
+                        await Swal.fire('Éxito', 'Pago registrado y valores afectados correctamente.', 'success');
+                    }
                     limpiarTodoElFormulario();
                 } else Swal.fire('Error', resp.error, 'error');
             } catch (e) {
@@ -432,6 +492,8 @@ require_once 'check_access.php';
         $('#tbody-pendientes').empty().append('<tr><td colspan="7" class="text-center p-5 text-muted opacity-50">Seleccione un proveedor para ver deudas</td></tr>');
         $('#lbl-total-seleccionado, #lbl-total-pago').text('$ 0.00');
         $('#txt-saldo-cc').val('$ 0.00');
+        retencionesTotal = 0;
+        $('#box-retenciones').addClass('d-none');
         
         // 3. Limpiar inputs de texto
         $('#txt-nota').val('');

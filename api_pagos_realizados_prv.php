@@ -11,9 +11,19 @@ $usuario_sesion = $_SESSION['usuario_nombre'] ?? 'SISTEMA';
 try {
     switch ($action) {
         
+        case 'annul':
+            $data = json_decode(file_get_contents('php://input'), true);
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($data['confirmar_imputaciones'])) throw new Exception('Debe confirmar la anulación y sus imputaciones.');
+            require_once 'anulacion_pagos_helpers.php';
+            $pdo->beginTransaction();
+            anularPago($pdo, 'proveedor', (int)($data['id'] ?? 0), $data['annul_date'] ?? date('Y-m-d'), $usuario_sesion);
+            $pdo->commit();
+            echo json_encode(['success' => true]);
+            break;
+
         case 'get_filters':
             // Cargar listas para combos
-            $stmtProv = $pdo->query("SELECT id, razon FROM proveedores ORDER BY razon ASC");
+            $stmtProv = $pdo->query("SELECT id, razon FROM Proveedores ORDER BY razon ASC");
             $stmtUsu = $pdo->query("SELECT DISTINCT usuario FROM pagoaproveedores WHERE usuario IS NOT NULL AND usuario != '' ORDER BY usuario ASC");
             
             echo json_encode([
@@ -41,11 +51,12 @@ try {
                     m2.medio as Medio2, 
                     p.mp2imp, 
                     p.usuario as Usuario, 
-                    p.total as Total, 
-                    p.estado as Estado, 
-                    p.fiscal as Fiscal
+                    p.total as Total,
+                    p.estado as Estado,
+                    p.fiscal as Fiscal,
+                    (SELECT COUNT(*) FROM pagosfacturasproveedores WHERE idpago = p.id AND tipo = 'P') as Imputado
                 FROM pagoaproveedores p
-                LEFT JOIN proveedores pr ON p.proveedor = pr.id
+                LEFT JOIN Proveedores pr ON p.proveedor = pr.id
                 LEFT JOIN mediosdepago m1 ON p.mp1 = m1.id
                 LEFT JOIN mediosdepago m2 ON p.mp2 = m2.id
                 WHERE DATE(p.fecharecibo) BETWEEN ? AND ?
@@ -84,12 +95,43 @@ try {
             $actual = $data['actual'];
             $newVal = $actual == 1 ? 0 : 1;
 
+            $stmtImp = $pdo->prepare("SELECT 1 FROM pagosfacturasproveedores WHERE idpago = ? AND tipo = 'P' LIMIT 1");
+            $stmtImp->execute([$id]);
+            if ($stmtImp->fetch()) throw new Exception("No se puede modificar la fiscalidad de un pago ya imputado.");
+
             $pdo->beginTransaction();
             $pdo->prepare("UPDATE pagoaproveedores SET fiscal = ? WHERE id = ?")->execute([$newVal, $id]);
             $pdo->prepare("UPDATE cccuentastesoreria SET fiscal = ? WHERE compasoc = ? AND tabla = 'pagoaproveedores'")->execute([$newVal, $id]);
             $pdo->prepare("UPDATE librodiario SET fiscal = ? WHERE compasoc = ? AND tabla = 'pagoaproveedores'")->execute([$newVal, $id]);
             $pdo->commit();
             
+            echo json_encode(['success' => true]);
+            break;
+
+        case 'unimpute_pago':
+            $data = json_decode(file_get_contents('php://input'), true);
+            $idPago = $data['id'];
+
+            $pdo->beginTransaction();
+            $stActivo = $pdo->prepare('SELECT estado FROM pagoaproveedores WHERE id = ? FOR UPDATE');
+            $stActivo->execute([$idPago]); $estadoActivo = $stActivo->fetchColumn();
+            if ($estadoActivo === false || (int)$estadoActivo === 1000) throw new Exception('El pago no existe o está anulado.');
+            $stmtImp = $pdo->prepare("SELECT idfactura, importepagado FROM pagosfacturasproveedores WHERE idpago = ? AND tipo = 'P'");
+            $stmtImp->execute([$idPago]);
+            $imputaciones = $stmtImp->fetchAll();
+            if (empty($imputaciones)) throw new Exception("El pago no tiene imputaciones para desligar.");
+
+            $totalDesimputado = 0;
+            foreach ($imputaciones as $row) {
+                $totalDesimputado += $row['importepagado'];
+                $pdo->prepare("UPDATE facturasdecompra SET estado = 1, saldoaimputar = total - (SELECT IFNULL(SUM(importepagado),0) FROM pagosfacturasproveedores WHERE idfactura = ? AND NOT (idpago = ? AND tipo = 'P')) WHERE id = ?")
+                    ->execute([$row['idfactura'], $idPago, $row['idfactura']]);
+            }
+
+            $pdo->prepare("DELETE FROM pagosfacturasproveedores WHERE idpago = ? AND tipo = 'P'")->execute([$idPago]);
+            $pdo->prepare("UPDATE pagoaproveedores SET saldoacuenta = saldoacuenta + ? WHERE id = ?")->execute([$totalDesimputado, $idPago]);
+            $pdo->commit();
+
             echo json_encode(['success' => true]);
             break;
 

@@ -11,14 +11,19 @@ window.bill = (function () {
     let cart = [];
     let curProd = null;
     let maestros = { vendedores: [], medios_pago: [], empresa: null };
+    let percepcionesVenta = { total: 0, lineas: [] }; // ver actualizarPercepciones()
     let config = null;
     let clienteSeleccionado = null;
     let associatedDoc = null;
     let globalAdj = { desc: 0, reca: 0 };
     let searchTimer = null;
+    let grabando = false;
     let pedidoOrigenId = null;
     let presupuestoOrigenId = null;
     let ticketOrigenId = null;
+    let usarPreciosActuales = false;   // decisión vigente: false=guardado (default), true=actual de lista
+    let hayDiferenciaPrecios = false;  // true si al menos una línea difiere (calculado 1 vez al cargar)
+    let mostrarTogglePrecios = false;  // visibilidad del botón del toolbar
 
     let vistaTabla = false;        // false = tarjetas (por defecto), true = planilla contable
     let vistaDetalleImpuestos = false;
@@ -53,9 +58,55 @@ window.bill = (function () {
 
     /**
      * FUNCIÓN DE REDONDEO CONTABLE (idéntica a facturar.js)
+     *
+     * Number.EPSILON (2.22e-16) solo alcanza para compensar el error de
+     * representación de punto flotante en números cercanos a 1 — para importes
+     * más grandes (cientos, miles) el error real ronda 1e-14 o más, así que
+     * EPSILON no corrige nada y un valor exactamente en el borde de medio
+     * centavo (ej. 152.145, guardado como 152.144999999999982) redondea mal,
+     * para abajo, mientras PHP round() sí lo detecta y redondea a 152.15. Esto
+     * generaba "Error de integridad en totales" al facturar carritos grandes:
+     * el navegador y el servidor terminaban en un centavo distinto por línea,
+     * multiplicado por la cantidad. Se limpia el ruido de flotante redondeando
+     * primero a 6 decimales (de sobra para una cadena de cuentas de 2
+     * decimales) antes de redondear al centavo.
      */
     function r(val) {
-        return Math.round((val + Number.EPSILON) * 100) / 100;
+        const limpio = Math.round(val * 1e6) / 1e6;
+        return Math.round((limpio + Number.EPSILON) * 100) / 100;
+    }
+
+    /**
+     * Redondeo a 3 decimales para el NETO unitario de lista. El neto se guarda y se
+     * recalcula con 3 decimales (api_facturar_gets.php, normalizarListasParaVenta):
+     * redondearlo a 2 antes de sumarle el IVA hacía que un precio de lista de $4.000
+     * se cobrara $4.000,01 (4000/1,21 = 3305,785 -> 3305,79 -> x1,21 = 4000,01).
+     */
+    function r3(val) {
+        const limpio = Math.round(val * 1e7) / 1e7;
+        return Math.round((limpio + Number.EPSILON) * 1000) / 1000;
+    }
+
+    /**
+     * Normaliza un importe tipeado en formato AR ("1.500,50" o "1500,50")
+     * o en formato con punto ("1500.50") a un Number. Devuelve NaN si no
+     * es un importe válido (evita que un "" o texto suelto llegue al backend).
+     */
+    function normImporte(raw) {
+        if (raw === null || raw === undefined) return NaN;
+        let s = String(raw).trim();
+        if (s === '') return NaN;
+        if (s.includes(',')) {
+            s = s.replace(/\./g, '').replace(',', '.');
+        }
+        if (!/^-?\d+(\.\d+)?$/.test(s)) return NaN;
+        return parseFloat(s);
+    }
+
+    // Notas de crédito (A/B/C y ticket de crédito): son devoluciones, la
+    // mercadería vuelve al stock, así que no se valida disponibilidad.
+    function esNotaCredito() {
+        return [3, 8, 13, 101].includes(parseInt($('#sel_tipo').val()));
     }
 
     function esTicketSinIva() {
@@ -70,7 +121,7 @@ window.bill = (function () {
         const tktsiniva = esTicketSinIva();
         const effectivePoriva = tktsiniva ? 0 : it.poriva;
 
-        const netounitario = r(it.precio_base);
+        const netounitario = r3(it.precio_base);
         const impint = r(it.imp_int_unit);
 
         const final_original_unit = r(netounitario * (1 + effectivePoriva / 100) + impint);
@@ -86,13 +137,10 @@ window.bill = (function () {
                 netoUnitEfectivo = r(base_neto_iva_unit - total_discount_money_unit);
                 ivaUnitEfectivo = 0;
             } else {
-                netoUnitEfectivo = r(
-                    (base_neto_iva_unit - total_discount_money_unit) /
-                    (1 + effectivePoriva / 100)
-                );
-                ivaUnitEfectivo = r(
-                    netoUnitEfectivo * (effectivePoriva / 100)
-                );
+                const brutoUnit = r(base_neto_iva_unit - total_discount_money_unit);
+                netoUnitEfectivo = r(brutoUnit / (1 + effectivePoriva / 100));
+                // El IVA es la diferencia: así neto + IVA = precio final exacto (sin centavos de más o de menos).
+                ivaUnitEfectivo = r(brutoUnit - netoUnitEfectivo);
             }
         } else {
             netoUnitEfectivo = 0;
@@ -129,6 +177,15 @@ window.bill = (function () {
         // producto real del tenant conectado antes de leer el archivo del
         // disco (carpeta separada por CUIT, no expuesta por HTTP directo).
         return 'img_producto.php?codigo=' + encodeURIComponent(codigo);
+    }
+
+    // Stock a mostrar en el buscador ('stk' lo arma api_facturar_gets.php: depósito de trabajo si hay
+    // multidepósito, si no el total). Entero si no tiene decimales; en rojo si no hay.
+    function stkHtml(p) {
+        if (p.stk === undefined || p.stk === null) return '';
+        const n = parseFloat(p.stk) || 0;
+        const txt = Number.isInteger(n) ? n : n.toFixed(2);
+        return `<span class="nf2-opt-stk${n <= 0 ? ' sin-stock' : ''}">Stk: ${txt}</span>`;
     }
 
     function thumbHtml(codigo, extraClass) {
@@ -172,6 +229,25 @@ window.bill = (function () {
     /**
      * Inicialización del Módulo
      */
+    async function advertirDatosEmisor(validacion) {
+        if (!validacion?.requerida || validacion.completo) return false;
+        const faltan = (validacion.faltantes || []).join(', ');
+        const deposito = validacion.deposito ? ` para ${validacion.deposito}` : '';
+        const aviso = await Swal.fire({
+            icon: 'warning',
+            title: 'Faltan datos para facturar',
+            text: `Complete${deposito}: ${faltan}. Puede cargarlos en Datos de la Empresa o en el depósito; la fecha de inicio de actividades se carga en Datos de la Empresa.`,
+            showCancelButton: true,
+            showDenyButton: true,
+            confirmButtonText: 'DATOS DE LA EMPRESA',
+            denyButtonText: 'DEPÓSITOS',
+            cancelButtonText: 'CERRAR'
+        });
+        if (aviso.isConfirmed) { loadModule('empresa_datos.php'); return true; }
+        if (aviso.isDenied) { loadModule('depositos_admin.php'); return true; }
+        return false;
+    }
+
     async function init() {
         const h = { 'X-Requested-With': 'XMLHttpRequest' };
         try {
@@ -191,6 +267,8 @@ window.bill = (function () {
             if (res.success) {
                 maestros = res;
                 config = res.config || res.configuracion;
+
+                if (await advertirDatosEmisor(res.emisor_validacion)) return;
 
                 renderCombos();
                 renderCart();
@@ -228,6 +306,13 @@ window.bill = (function () {
                 }
             }).on('select2:select', e => setCliente(e.params.data.full));
 
+            $('#pay_m1, #pay_m2').select2({
+                dropdownParent: $('#mod_pay'),
+                width: '65%',
+                placeholder: 'BUSCAR MEDIO...',
+                minimumResultsForSearch: 0
+            });
+
             // Buscador por DESCRIPCIÓN (browsing/fuzzy). El escaneo/código exacto
             // vive en su propio campo #in_cod_exacto — ver setupEvents(). Mezclar
             // ambos en un solo input hacía que, al escanear rápido, Select2 a
@@ -240,6 +325,7 @@ window.bill = (function () {
                 ajax: {
                     url: 'api_facturar_gets.php?action=buscar_productos',
                     dataType: 'json',
+                    cache: false,
                     delay: 250,
                     headers: h,
                     data: params => ({ q: params.term }),
@@ -260,6 +346,7 @@ window.bill = (function () {
                                 <span class="nf2-opt-cod">${p.codigo}</span>
                                 <span class="nf2-opt-desc">${p.descripcion}</span>
                             </div>
+                            ${stkHtml(p)}
                             <span class="nf2-opt-price">$ ${final.toFixed(2)}</span>
                         </div>
                     `);
@@ -296,7 +383,7 @@ window.bill = (function () {
             const resRef = await fetch(`api_referencias.php?action=resolve&code=${encodeURIComponent(code)}`, { headers: h }).then(r => r.json());
             const realCode = resRef.data?.codigo_real || code;
 
-            const res = await fetch(`api_facturar_gets.php?action=buscar_codigo_exacto&q=${encodeURIComponent(realCode)}`, { headers: h }).then(r => r.json());
+            const res = await fetch(`api_facturar_gets.php?action=buscar_codigo_exacto&q=${encodeURIComponent(realCode)}`, { headers: h, cache: 'no-store' }).then(r => r.json());
             if (res.success && res.data.length > 0) {
                 setProducto(res.data[0]);
                 addItemInternal();
@@ -354,11 +441,14 @@ window.bill = (function () {
 
             cart = res.items.map(it => {
                 const nLista = parseInt(it.lista) || 1;
+                const colLista = nLista === 1 ? 'siniva' : 'siniva' + nLista;
                 return {
                     codigo: it.producto,
                     descripcion: it.descripcion,
                     cantidad: parseFloat(it.cantidad),
                     precio_base: parseFloat(it.preciounit),
+                    precio_guardado: parseFloat(it.preciounit),
+                    precio_lista_actual: parseFloat(it[colLista] || 0),
                     poriva: parseFloat(it.poriva),
                     imp_int_unit: parseFloat(it.impint),
                     lista: nLista,
@@ -388,7 +478,20 @@ window.bill = (function () {
             });
 
             if (res.items.length > 0) {
-                $('#in_lista').val(res.items[0].lista).trigger('change');
+                $('#in_lista').val(res.items[0].lista);
+            }
+
+            evaluarDiferenciaPrecioOrigen('pedido', false);
+
+            if (mostrarTogglePrecios) {
+                const rPrecio = await Swal.fire({
+                    title: 'Precios actualizados',
+                    html: 'Al menos un producto de este pedido cambió de precio desde que se generó.<br>¿Con qué precio querés facturar?',
+                    icon: 'question', showCancelButton: true, reverseButtons: true,
+                    confirmButtonText: 'Precios ACTUALES de lista',
+                    cancelButtonText: 'Precios GUARDADOS en el pedido'
+                });
+                if (rPrecio.isConfirmed) toggleUsarPreciosActualesInternal();
             }
 
             renderCart();
@@ -439,11 +542,14 @@ window.bill = (function () {
 
             cart = res.items.map(it => {
                 const nLista = parseInt(it.lista) || 1;
+                const colLista = nLista === 1 ? 'siniva' : 'siniva' + nLista;
                 return {
                     codigo: it.producto,
                     descripcion: it.descripcion,
                     cantidad: parseFloat(it.cantidad),
                     precio_base: parseFloat(it.preciounit),
+                    precio_guardado: parseFloat(it.preciounit),
+                    precio_lista_actual: parseFloat(it[colLista] || 0),
                     poriva: parseFloat(it.poriva),
                     imp_int_unit: parseFloat(it.impint),
                     lista: nLista,
@@ -457,7 +563,24 @@ window.bill = (function () {
                 };
             });
 
-            if (res.items.length > 0) $('#in_lista').val(res.items[0].lista).trigger('change');
+            if (res.items.length > 0) $('#in_lista').val(res.items[0].lista);
+
+            const fechaValidezVencida = res.presupuesto.fechaentrega
+                ? (new Date(res.presupuesto.fechaentrega) < new Date(new Date().toDateString()))
+                : false;
+
+            evaluarDiferenciaPrecioOrigen('presupuesto', fechaValidezVencida);
+
+            if (mostrarTogglePrecios) {
+                const rPrecio = await Swal.fire({
+                    title: 'Presupuesto vencido con precios desactualizados',
+                    html: 'La Fecha de Validez de este presupuesto ya pasó y al menos un producto cambió de precio.<br>¿Con qué precio querés facturar?',
+                    icon: 'question', showCancelButton: true, reverseButtons: true,
+                    confirmButtonText: 'Precios ACTUALES de lista',
+                    cancelButtonText: 'Precios GUARDADOS en el presupuesto'
+                });
+                if (rPrecio.isConfirmed) toggleUsarPreciosActualesInternal();
+            }
 
             renderCart();
             Swal.close();
@@ -565,14 +688,11 @@ window.bill = (function () {
 
         if (parseInt(config.predeterminarcliente) === 1 && config.clientepredeterminado && !pedidoOrigenId && !presupuestoOrigenId) {
             try {
-                const res = await fetch(`api_facturar_gets.php?action=buscar_clientes&q=${config.clientepredeterminado}`, {
+                const res = await fetch(`api_facturar_gets.php?action=get_cliente_por_id&id=${config.clientepredeterminado}`, {
                     headers: { 'X-Requested-With': 'XMLHttpRequest' }
                 }).then(r => r.json());
 
-                if (res.success && res.data.length > 0) {
-                    const cli = res.data.find(c => c.id == config.clientepredeterminado);
-                    if (cli) setCliente(cli);
-                }
+                if (res.success && res.data) setCliente(res.data);
             } catch (e) { console.error("Error cargando cliente predeterminado", e); }
         }
 
@@ -699,7 +819,11 @@ window.bill = (function () {
                     }
                 }
             }
+            actualizarTarjetasPago();
+            actualizarBalancePago();
         });
+
+        $('#pay_i1, #pay_i2').on('input change', actualizarBalancePago);
 
         // Clic en cualquier miniatura (tarjetas, buscadores, panel de vista previa) -> foto grande en modal
         $(document).on('click', '.nf2-thumb, #nf2_preview_img', function () {
@@ -719,6 +843,183 @@ window.bill = (function () {
         $('#nf2_cards').on('mouseleave', () => actualizarPreview(null));
         $('#grid_body').on('mouseenter', 'tr', mostrarPreviewDeIdx);
         $('#grid_body').on('mouseleave', () => actualizarPreview(null));
+
+        $(document).on('click', '#btnAutocompletarCuitNC', autocompletarClienteNuevoPorCuit);
+    }
+
+    /**
+     * Datos del cupón (tarjeta, cuotas, lote, cupón) debajo de cada medio de pago de tipo
+     * 'Tarjetas'. Si el negocio no cargó tarjetas en Fondos > Tarjetas no se piden: el
+     * servidor tampoco las exige en ese caso (tarjetas_helpers.php).
+     */
+    function actualizarTarjetasPago() {
+        const hayCatalogo = (maestros.tarjetas || []).length > 0;
+        [1, 2].forEach(n => {
+            const medio = maestros.medios_pago.find(x => x.id == $(`#pay_m${n}`).val());
+            const esTarjeta = hayCatalogo && medio && medio.tipodecuenta === 'Tarjetas';
+            $(`#pay_t${n}`).toggleClass('d-none', !esTarjeta);
+            if (!esTarjeta) {
+                $(`#pay_t${n}_id`).val(''); $(`#pay_t${n}_cuotas`).val(1);
+                $(`#pay_t${n}_lote, #pay_t${n}_cupon`).val('');
+            }
+        });
+    }
+
+    function datosTarjetaPago(n) {
+        if ($(`#pay_t${n}`).hasClass('d-none')) return null;
+        return {
+            id: parseInt($(`#pay_t${n}_id`).val()) || 0,
+            cuotas: parseInt($(`#pay_t${n}_cuotas`).val()) || 1,
+            lote: $(`#pay_t${n}_lote`).val().trim(),
+            cupon: $(`#pay_t${n}_cupon`).val().trim()
+        };
+    }
+
+    /**
+     * Calculadora de vuelto/falta entre MEDIO 1 y MEDIO 2. Ambos importes son
+     * de carga libre (nada se autocompleta ni queda readonly) — esto solo
+     * muestra, en vivo, cuánto falta cobrar o cuánto vuelto hay que entregar
+     * según lo que el cajero ya tipeó. Se muestra con un solo medio elegido
+     * (útil para calcular el vuelto de un pago en efectivo) y también con
+     * los dos. La validación real de que la suma cierre exacto contra el
+     * total sigue haciéndose aparte, al grabar (validateBeforePay en
+     * facturar_validaciones.js), así que esto no afecta ese comportamiento.
+     */
+    function actualizarBalancePago() {
+        const m1Sel = $('#pay_m1').val();
+        const m2Sel = $('#pay_m2').val();
+        $('#pay_balance_helper').toggleClass('d-none', !m1Sel);
+
+        if (!m2Sel) {
+            // Sin medio 2 elegido, se limpia el importe para que no quede un
+            // valor viejo sumando de más en la validación de total cobrado.
+            $('#pay_i2').val('0.00');
+        }
+
+        if (!m1Sel) {
+            $('#pay_falta').text('$ 0,00');
+            $('#pay_sobra').text('$ 0,00');
+            return;
+        }
+
+        const total = totalDocumento();
+        const imp1 = normImporte($('#pay_i1').val());
+        const imp2 = m2Sel ? normImporte($('#pay_i2').val()) : 0;
+        const aplicado = (Number.isFinite(imp1) ? imp1 : 0) + (Number.isFinite(imp2) ? imp2 : 0);
+
+        const diff = r(total - aplicado);
+        if (diff > 0.01) {
+            $('#pay_falta').text('$ ' + m(diff));
+            $('#pay_sobra').text('$ 0,00');
+        } else if (diff < -0.01) {
+            $('#pay_falta').text('$ 0,00');
+            $('#pay_sobra').text('$ ' + m(Math.abs(diff)));
+        } else {
+            $('#pay_falta').text('$ 0,00');
+            $('#pay_sobra').text('$ 0,00');
+        }
+    }
+
+    function totalDocumento() {
+        return r(totalSinPercepciones() + percepcionesVenta.total);
+    }
+
+    function totalSinPercepciones() {
+        return r(cart.reduce((acc, it) => acc + calculateLineData(it).totalFinal, 0) - globalAdj.desc + globalAdj.reca);
+    }
+
+    // ---- Percepciones (agente de percepción): las calcula el servidor (api_retper.php) con
+    // las mismas sumas por alícuota y el mismo prorrateo que se declara a ARCA. Se piden al
+    // abrir el cobro; cualquier cambio en el carrito las vuelve a cero hasta el próximo cobro.
+    function resetPercepciones() {
+        percepcionesVenta = { total: 0, lineas: [] };
+        $('#mod_pay_percep').addClass('d-none').empty();
+    }
+
+    async function actualizarPercepciones() {
+        resetPercepciones();
+        const tipo = parseInt($('#sel_tipo').val());
+        if (!clienteSeleccionado || !tipo || [100, 101].includes(tipo) || !cart.length) return;
+        const s = { sub21: 0, iva21: 0, sub10: 0, iva10: 0, sub0: 0 };
+        cart.forEach(it => {
+            const d = calculateLineData(it);
+            if (d.effectiveAlicuota === 21) { s.sub21 += d.netoTotal; s.iva21 += d.ivaTotal; }
+            else if (d.effectiveAlicuota === 10.5) { s.sub10 += d.netoTotal; s.iva10 += d.ivaTotal; }
+            else s.sub0 += d.netoTotal;
+        });
+        try {
+            const res = await fetch('api_retper.php?action=percepciones_venta', {
+                method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                body: JSON.stringify({ ...s, desc: globalAdj.desc, reca: globalAdj.reca, total: totalSinPercepciones(), cliente_id: clienteSeleccionado.id, tipo_comp: tipo })
+            }).then(r => r.json());
+            if (!res.success || !res.total) return;
+            percepcionesVenta = { total: r(res.total), lineas: res.lineas };
+            $('#mod_pay_percep').removeClass('d-none').html('Incluye percepciones: ' + res.lineas.map(l => `${l.nombre} ${l.alicuota}% $ ${m(l.importe)}`).join(' · '));
+            $('#mod_pay_total').text('$ ' + m(totalDocumento()));
+            $('#pay_i1').val(totalDocumento().toFixed(2));
+        } catch (e) {
+            console.warn('No se pudieron calcular las percepciones', e);
+        }
+    }
+
+    function validarCUIT(cuit) {
+        cuit = (cuit || '').replace(/[-_]/g, '').trim();
+        if (cuit.length !== 11) return false;
+        const coeficientes = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+        let sum = 0;
+        for (let i = 0; i < 10; i++) sum += parseInt(cuit[i]) * coeficientes[i];
+        let result = 11 - (sum % 11);
+        if (result === 11) result = 0;
+        if (result === 10) result = 9;
+        return result === parseInt(cuit[10]);
+    }
+
+    async function autocompletarClienteNuevoPorCuit() {
+        const tipodoc = $('#nc_tipodoc').val();
+        const cuit = $('#nc_numdoc').val().replace(/[-_]/g, '').trim();
+
+        if (tipodoc !== 'CUIT') {
+            return Swal.fire({ icon: 'warning', title: 'Atención', text: 'Seleccioná "CUIT" como Tipo Doc para poder autocompletar.', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
+        }
+        if (!validarCUIT(cuit)) {
+            return Swal.fire({ icon: 'warning', title: 'CUIT inválido', text: 'Ingresá un CUIT válido de 11 dígitos.', toast: true, position: 'top-end', showConfirmButton: false, timer: 3000 });
+        }
+
+        const btn = document.getElementById('btnAutocompletarCuitNC');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        try {
+            const res = await fetch(`api_clientes.php?action=consultar_padron&cuit=${cuit}`, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            }).then(r => r.json());
+            if (!res.success) throw new Error(res.error || 'No se pudo consultar el padrón.');
+
+            const d = res.data;
+            if (d.razonSocial) $('#nc_razon').val(d.razonSocial);
+            if (d.domicilio) $('#nc_domicilio').val(d.domicilio);
+            if (d.localidad) $('#nc_localidad').val(d.localidad);
+            if (d.provincia) {
+                const ALIAS_PROVINCIA_AFIP = {
+                    'CIUDAD AUTONOMA BUENOS AIRES': 'CABA',
+                    'CAPITAL FEDERAL': 'CABA',
+                    'CORDOBA': 'CÓRDOBA'
+                };
+                const provNorm = ALIAS_PROVINCIA_AFIP[d.provincia.toUpperCase().trim()] || d.provincia;
+                $('#nc_provincia').val(provNorm);
+            }
+            if (d.condicionFiscal) {
+                const cf = d.condicionFiscal.toUpperCase();
+                const opt = $('#nc_condicionfiscal option').filter((i, o) => o.value.toUpperCase() === cf);
+                if (opt.length) $('#nc_condicionfiscal').val(opt.val());
+            }
+
+            Swal.fire({ icon: 'success', title: 'Datos completados desde el padrón', toast: true, position: 'top-end', showConfirmButton: false, timer: 2200 });
+        } catch (e) {
+            Swal.fire('No se pudo autocompletar', e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-magic"></i>';
+        }
     }
 
     async function buscarClienteModal(q) {
@@ -811,8 +1112,50 @@ window.bill = (function () {
         renderCart();
     }
 
+    /** Calcula diferencia global (guardado vs. actual) y decide si corresponde mostrar el toggle. */
+    function evaluarDiferenciaPrecioOrigen(tipoOrigen, fechaValidezVencida) {
+        hayDiferenciaPrecios = cart.some(it =>
+            it.codigo !== 'LM' &&
+            it.precio_lista_actual !== undefined &&
+            Math.abs(it.precio_lista_actual - it.precio_guardado) > 0.005
+        );
+        mostrarTogglePrecios = (tipoOrigen === 'pedido')
+            ? hayDiferenciaPrecios
+            : (hayDiferenciaPrecios && !!fechaValidezVencida);
+
+        usarPreciosActuales = false; // arranca siempre en "guardado"
+        $('#btnTogglePreciosOrigen').toggle(mostrarTogglePrecios);
+        actualizarUiTogglePrecios();
+    }
+
+    /** Refleja el estado vigente (guardado/actual) en el botón toggle del toolbar. */
+    function actualizarUiTogglePrecios() {
+        $('#btnTogglePreciosOrigen')
+            .toggleClass('info', usarPreciosActuales)
+            .toggleClass('warn', !usarPreciosActuales)
+            .html(usarPreciosActuales
+                ? '<i class="fas fa-tag"></i>Usando: Precio ACTUAL'
+                : '<i class="fas fa-tag"></i>Usando: Precio GUARDADO');
+    }
+
+    /** Config general + permiso del usuario: ambos deben estar habilitados. */
+    function puedeEditarDescripcion() {
+        return parseInt(config?.permitireditardescripcion) === 1 && window.NF2_PUEDE_EDITAR_DESC === true;
+    }
+
+    /** Alterna ida y vuelta, ilimitadamente, antes de Cobrar. NO toca pordesc ni lista. */
+    function toggleUsarPreciosActualesInternal() {
+        usarPreciosActuales = !usarPreciosActuales;
+        cart.forEach(it => {
+            if (it.codigo === 'LM' || it.precio_lista_actual === undefined) return; // línea manual o agregada después de cargar
+            it.precio_base = usarPreciosActuales ? it.precio_lista_actual : it.precio_guardado;
+        });
+        actualizarUiTogglePrecios();
+        renderCart();
+    }
+
     async function buscarArticuloModal(q) {
-        const res = await fetch(`api_facturar_gets.php?action=buscar_productos&q=${encodeURIComponent(q)}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' } }).then(r => r.json());
+        const res = await fetch(`api_facturar_gets.php?action=buscar_productos&q=${encodeURIComponent(q)}`, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store' }).then(r => r.json());
         const $b = $('#tbody_mod_art').empty();
         const lista = parseInt($('#in_lista').val()) || 1;
         const col = lista === 1 ? 'siniva' : 'siniva' + lista;
@@ -825,7 +1168,7 @@ window.bill = (function () {
                 <tr>
                     <td>${thumbHtml(p.codigo, 'nf2-thumb-mini')}</td>
                     <td class="fw-bold">${p.codigo}</td>
-                    <td>${p.descripcion}</td>
+                    <td>${p.descripcion} ${stkHtml(p)}</td>
                     <td>${p.rubro}</td>
                     <td class="text-end">$ ${neto.toFixed(2)}</td>
                     <td class="text-end text-accent fw-bold">$ ${final.toFixed(2)}</td>
@@ -867,7 +1210,7 @@ window.bill = (function () {
         const existIdx = cart.findIndex(x => x.codigo.toString().trim() === curProd.codigo.toString().trim());
         const cantEnGrilla = existIdx !== -1 ? cart[existIdx].cantidad : 0;
 
-        if (parseInt(config?.stocknegativo) === 0 && stockActual < (cant + cantEnGrilla)) {
+        if (parseInt(config?.stocknegativo) === 0 && !esNotaCredito() && stockActual < (cant + cantEnGrilla)) {
             Swal.fire({
                 title: 'Stock Insuficiente',
                 text: `El producto no permite stock negativo. Disponible: ${stockActual}.`,
@@ -976,13 +1319,15 @@ window.bill = (function () {
                     ${thumbHtml(it.codigo)}
                     <div class="nf2-item-info">
                         <div class="nf2-item-cod">${it.codigo}${promoBadge}</div>
-                        <div class="nf2-item-desc" title="${it.descripcion}">${it.descripcion}</div>
+                        ${(puedeEditarDescripcion() && it.codigo !== 'LM')
+                    ? `<input type="text" class="nf2-item-desc-input" value="${it.descripcion}" title="${it.descripcion}" onblur="bill.updateItem(${i}, 'descripcion', this.value)">`
+                    : `<div class="nf2-item-desc" title="${it.descripcion}">${it.descripcion}</div>`}
                         <div class="nf2-item-sub">${listaHtml} &nbsp;·&nbsp; Unit: $ ${m(d.totalUnit)}</div>
                     </div>
-                    <input type="number" class="nf2-item-qty" value="${it.cantidad}" title="Cantidad" onchange="bill.updateItem(${i}, 'cant', this.value)">
-                    <input type="number" class="nf2-item-desc-pct" value="${it.pordesc}" title="% Descuento" onchange="bill.updateItem(${i}, 'pordesc', this.value)">
-                    ${finalHtml}
-                    <span class="nf2-item-total">${m(d.totalFinal)}</span>
+                    <div class="nf2-item-field"><span class="nf2-item-field-label">Cantidad</span><input type="number" class="nf2-item-qty" value="${it.cantidad}" title="Cantidad" onchange="bill.updateItem(${i}, 'cant', this.value)"></div>
+                    <div class="nf2-item-field"><span class="nf2-item-field-label">% Desc.</span><input type="number" class="nf2-item-desc-pct" value="${it.pordesc}" title="% Descuento" onchange="bill.updateItem(${i}, 'pordesc', this.value)"></div>
+                    <div class="nf2-item-field"><span class="nf2-item-field-label">Precio unit.</span>${finalHtml}</div>
+                    <div class="nf2-item-field"><span class="nf2-item-field-label">Total</span><span class="nf2-item-total">${m(d.totalFinal)}</span></div>
                     <button type="button" class="nf2-item-remove" onclick="bill.rem(${i})" title="Quitar"><i class="fas fa-trash"></i></button>
                 </div>
             `);
@@ -1022,7 +1367,9 @@ window.bill = (function () {
                 <tr data-idx="${i}">
                     <td><input type="number" value="${it.cantidad}" style="text-align:center;color:var(--info);font-weight:700;" onchange="bill.updateItem(${i}, 'cant', this.value)"></td>
                     <td style="text-align:left;font-weight:700;">${it.codigo}</td>
-                    <td style="text-align:left;">${it.descripcion}</td>
+                    <td style="text-align:left;">${(puedeEditarDescripcion() && it.codigo !== 'LM')
+                    ? `<input type="text" style="width:100%;background:transparent;border:none;color:var(--text-main);" value="${it.descripcion}" onblur="bill.updateItem(${i}, 'descripcion', this.value)">`
+                    : it.descripcion}</td>
                     <td class="text-center">
                         ${canModifLista ?
                     `<select style="background:transparent;border:none;color:var(--text-main);font-size:10px;" onchange="bill.updateItem(${i}, 'lista', this.value)">
@@ -1069,15 +1416,22 @@ window.bill = (function () {
         $('#tx_reca_g').text(m(globalAdj.reca));
         $('#tx_neto_f').text(m(s21 + s105 + s0));
         $('#tx_total_f').text(m(totalConAjustes));
+        $('#tx_total_unidades').text(m(cart.reduce((acc, it) => acc + (parseFloat(it.cantidad) || 0), 0)));
 
+        resetPercepciones();
         $('#mod_pay_total').text('$ ' + m(totalConAjustes));
         $('#pay_i1').val(totalConAjustes.toFixed(2));
+        actualizarBalancePago();
     }
 
     function renderCombos() {
         fillSelect('#pay_v', maestros.vendedores, 'nombre');
         fillSelect('#pay_m1', maestros.medios_pago, 'medio');
         fillSelect('#pay_m2', maestros.medios_pago, 'medio');
+        ['#pay_t1_id', '#pay_t2_id'].forEach(sel => {
+            const $t = $(sel).empty().append(new Option('TARJETA...', ''));
+            (maestros.tarjetas || []).forEach(t => $t.append(new Option(t.descripcion, t.id)));
+        });
 
         const $ls = $('#in_lista').empty();
         [1, 2, 3, 4, 5, 6, 7, 8].forEach(n => $ls.append(new Option('LISTA ' + n, n)));
@@ -1126,6 +1480,12 @@ window.bill = (function () {
             tiposPermitidos = tiposPermitidos.filter(t => [1, 6, 11, 100, 101].includes(t.id));
         }
 
+        // Las notas de débito (2/7/12) solo se ofrecen si están habilitadas en
+        // Configuración General (por defecto no).
+        if (parseInt(config?.admitenotasdebito) !== 1) {
+            tiposPermitidos = tiposPermitidos.filter(t => ![2, 7, 12].includes(t.id));
+        }
+
         fillSelect('#sel_tipo', tiposPermitidos, 'n');
     }
 
@@ -1161,11 +1521,18 @@ window.bill = (function () {
 
     function updateItemInternal(index, field, value) {
         const it = cart[index];
+
+        if (field === 'descripcion') {
+            if (puedeEditarDescripcion()) it.descripcion = String(value).trim() || it.descripcion;
+            renderCart();
+            return;
+        }
+
         const val = parseFloat(value) || 0;
 
         if (field === 'cant') {
             const stockActual = parseFloat(it.precios_cache.stock || it.precios_cache.Stock || 0);
-            if (parseInt(config?.stocknegativo) === 0 && val > stockActual) {
+            if (parseInt(config?.stocknegativo) === 0 && !esNotaCredito() && val > stockActual) {
                 Swal.fire('Stock Insuficiente', `No puede superar las ${stockActual} unidades disponibles.`, 'error');
                 renderCart(); return;
             }
@@ -1195,7 +1562,7 @@ window.bill = (function () {
                 }
 
                 const nuevoBase = (val - it.imp_int_unit) / (1 + alicuota);
-                it.precio_base = r(Math.max(0, nuevoBase));
+                it.precio_base = r3(Math.max(0, nuevoBase));
                 it.pordesc = 0;
                 it.promo_label = null; it.promo_id = null;
             }
@@ -1303,8 +1670,49 @@ window.bill = (function () {
     }
 
     async function grabar() {
-        if (cart.length === 0) return;
-        const totalDoc = r(cart.reduce((acc, it) => acc + calculateLineData(it).totalFinal, 0) - globalAdj.desc + globalAdj.reca);
+        // Guard de reentrancia: el POST a api_facturar.php puede tardar hasta 45s
+        // esperando la respuesta de ARCA. Sin esto, un doble click o doble F10
+        // durante esa espera dispara dos facturaciones concurrentes del mismo
+        // carrito, cada una con su propio CAE (doble emisión fiscal real).
+        if (grabando || cart.length === 0) return;
+        grabando = true;
+        $('#btnEmitir').prop('disabled', true);
+        try {
+            await grabarInternal();
+        } finally {
+            grabando = false;
+            $('#btnEmitir').prop('disabled', false);
+        }
+    }
+
+    async function grabarInternal() {
+        const totalDoc = totalDocumento(); // incluye percepciones, si corresponden
+
+        const m2Val = $('#pay_m2').val();
+        let imp1Num = normImporte($('#pay_i1').val());
+        const imp2Raw = $('#pay_i2').val();
+        let imp2Num = (imp2Raw === '' || imp2Raw === null) ? 0 : normImporte(imp2Raw);
+
+        if (isNaN(imp1Num)) {
+            return Swal.fire({ icon: 'warning', title: 'Atención', text: 'El importe del Medio de pago 1 no es válido. Use formato 1500.50 o 1500,50.' });
+        }
+        if (m2Val && isNaN(imp2Num)) {
+            return Swal.fire({ icon: 'warning', title: 'Atención', text: 'El importe del Medio de pago 2 no es válido. Use formato 1500.50 o 1500,50.' });
+        }
+
+        if (imp1Num < 0 || imp2Num < 0) return Swal.fire('Atención', 'Los importes no pueden ser negativos.', 'warning');
+        const diferenciaCentavos = Math.round(imp1Num * 100) + Math.round(imp2Num * 100) - Math.round(totalDoc * 100);
+        if (diferenciaCentavos > 0 && totalDoc >= 0) {
+            const opciones = {};
+            if ($('#pay_m1').val() && Math.round(imp1Num * 100) >= diferenciaCentavos) opciones['1'] = 'Medio de Pago 1: ' + $('#pay_m1 option:selected').text();
+            if (m2Val && Math.round(imp2Num * 100) >= diferenciaCentavos) opciones['2'] = 'Medio de Pago 2: ' + $('#pay_m2 option:selected').text();
+            if (!Object.keys(opciones).length) return Swal.fire('Atención', 'Ningún medio puede absorber el vuelto sin quedar negativo. Redistribuya los importes.', 'warning');
+            const ajuste = await Swal.fire({title: '¿En qué medio ajustar el vuelto?', text: 'Vuelto: $ ' + (diferenciaCentavos / 100).toFixed(2), input: 'select', inputOptions: opciones, showCancelButton: true, confirmButtonText: 'AJUSTAR', cancelButtonText: 'VOLVER'});
+            if (!ajuste.isConfirmed) return;
+            if (ajuste.value === '1') { imp1Num = (Math.round(imp1Num * 100) - diferenciaCentavos) / 100; $('#pay_i1').val(imp1Num.toFixed(2)); }
+            else { imp2Num = (Math.round(imp2Num * 100) - diferenciaCentavos) / 100; $('#pay_i2').val(imp2Num.toFixed(2)); }
+            actualizarBalancePago();
+        }
 
         const localCheck = billValidator.validateBeforePay({
             cart: cart,
@@ -1313,9 +1721,9 @@ window.bill = (function () {
             vendedor: $('#pay_v').val(),
             tipoComp: $('#sel_tipo').val(),
             m1: $('#pay_m1').val(),
-            m2: $('#pay_m2').val(),
-            imp1: $('#pay_i1').val(),
-            imp2: $('#pay_i2').val(),
+            m2: m2Val,
+            imp1: imp1Num,
+            imp2: isNaN(imp2Num) ? 0 : imp2Num,
             maestros: maestros,
             associatedDoc: associatedDoc
         });
@@ -1330,6 +1738,11 @@ window.bill = (function () {
             });
         }
 
+        for (const n of [1, 2]) {
+            const t = datosTarjetaPago(n);
+            if (t && !t.id) return Swal.fire('Atención', `Elija la tarjeta del medio de pago ${n}.`, 'warning');
+        }
+
         const dataPayload = {
             cliente_id: clienteSeleccionado?.id,
             vendedor_id: $('#pay_v').val(),
@@ -1342,8 +1755,9 @@ window.bill = (function () {
                 lista: it.lista, pordesc: it.pordesc, costo: it.costo,
                 promo_id: it.promo_id || null
             })),
-            mp1: $('#pay_m1').val(), imp1: $('#pay_i1').val(),
-            mp2: $('#pay_m2').val(), imp2: $('#pay_i2').val(),
+            mp1: $('#pay_m1').val(), imp1: imp1Num,
+            mp2: m2Val, imp2: isNaN(imp2Num) ? 0 : imp2Num,
+            tarjeta1: datosTarjetaPago(1), tarjeta2: m2Val ? datosTarjetaPago(2) : null,
             total_comprobante: totalDoc,
             globalAdj: globalAdj,
             associatedDoc: associatedDoc,
@@ -1372,29 +1786,50 @@ window.bill = (function () {
             }).then(r => r.json());
 
             if (res.success) {
-                Swal.fire(res.cae_pendiente ? {
-                    title: 'Comprobante grabado - CAE PENDIENTE',
-                    html: `El comprobante se guardó correctamente, pero AFIP/ARCA <b>no autorizó el CAE</b>.<br>` +
-                          `Motivo: ${res.cae_error || 'Sin detalle'}<br><br>` +
-                          `Debe reintentar la obtención del CAE antes de entregar el comprobante al cliente.`,
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonColor: '#3085d6',
-                    cancelButtonColor: '#6c757d',
-                    confirmButtonText: 'Imprimir de todos modos',
-                    cancelButtonText: 'Cerrar',
-                    reverseButtons: true
-                } : {
-                    title: '¡Éxito!',
-                    text: `Comprobante emitido correctamente. ¿Desea imprimirlo ahora?`,
-                    icon: 'success',
-                    showCancelButton: true,
-                    confirmButtonColor: '#3085d6',
-                    cancelButtonColor: '#6c757d',
-                    confirmButtonText: 'Imprimir',
-                    cancelButtonText: 'Cerrar',
-                    reverseButtons: true
-                }).then((result) => {
+                let swalOpts;
+                if (res.cae_pendiente) {
+                    swalOpts = {
+                        title: 'Comprobante grabado - CAE PENDIENTE',
+                        html: `El comprobante se guardó correctamente, pero AFIP/ARCA <b>no autorizó el CAE</b>.<br>` +
+                              `Motivo: ${res.cae_error || 'Sin detalle'}<br><br>` +
+                              `Debe reintentar la obtención del CAE antes de entregar el comprobante al cliente.`,
+                        icon: 'warning',
+                        showCancelButton: true,
+                        confirmButtonColor: '#3085d6',
+                        cancelButtonColor: '#6c757d',
+                        confirmButtonText: 'Imprimir de todos modos',
+                        cancelButtonText: 'Cerrar',
+                        reverseButtons: true
+                    };
+                } else if (res.reconciliacion_fallida) {
+                    swalOpts = {
+                        title: 'CAE OBTENIDO - REVISAR NUMERACIÓN',
+                        html: `ARCA autorizó el comprobante N° <b>${res.numcomp}</b>, pero el sistema no pudo terminar de ` +
+                              `corregir automáticamente ese número en todos sus registros internos.<br>` +
+                              `Detalle: ${res.cae_error || 'Sin detalle'}<br><br>` +
+                              `Avise a soporte/administración para verificar manualmente el comprobante antes de reimprimirlo.`,
+                        icon: 'error',
+                        showCancelButton: true,
+                        confirmButtonColor: '#3085d6',
+                        cancelButtonColor: '#6c757d',
+                        confirmButtonText: 'Imprimir de todos modos',
+                        cancelButtonText: 'Cerrar',
+                        reverseButtons: true
+                    };
+                } else {
+                    swalOpts = {
+                        title: '¡Éxito!',
+                        text: `Comprobante emitido correctamente. ¿Desea imprimirlo ahora?`,
+                        icon: 'success',
+                        showCancelButton: true,
+                        confirmButtonColor: '#3085d6',
+                        cancelButtonColor: '#6c757d',
+                        confirmButtonText: 'Imprimir',
+                        cancelButtonText: 'Cerrar',
+                        reverseButtons: true
+                    };
+                }
+                Swal.fire(swalOpts).then((result) => {
                     if (result.isConfirmed) {
                         const fmt = config?.formatoimpresion || 'A4';
                         const urlFmt = (fmt === '80' || fmt === '58') ? 'ticket' : 'A4';
@@ -1412,9 +1847,15 @@ window.bill = (function () {
                     // seleccionado, para completar bultos/valor declarado e imprimir la
                     // etiqueta/remito de transporte. Solo aplica a ventas de mercadería
                     // (Factura A/B/C o Ticket), no a Notas de Crédito/Débito.
+                    // Si el usuario no tiene permiso de menú para imprimir_envios.php, NO se
+                    // navega ahí: check_access.php trata una URL no autorizada como intento de
+                    // acceso indebido y cierra la sesión del usuario a la fuerza (ver
+                    // check_access.php, denyAccessAndLog) — un vendedor sin ese permiso quedaba
+                    // expulsado del sistema justo después de facturar, sin haber hecho nada malo.
                     const tipoRecienEmitido = parseInt(dataPayload.tipo_comp);
                     const aplicaRemitoAuto = parseInt(config?.imprimeremitoenviopostfactura) === 1
-                        && [1, 6, 11, 100].includes(tipoRecienEmitido);
+                        && [1, 6, 11, 100].includes(tipoRecienEmitido)
+                        && window.NF2_PUEDE_IMPRIMIR_ENVIOS === true;
 
                     if (aplicaRemitoAuto && dataPayload.cliente_id) {
                         loadModule('imprimir_envios.php?cliente_id=' + dataPayload.cliente_id);
@@ -1445,6 +1886,8 @@ window.bill = (function () {
         $('#nc_condicionfiscal').val('CONSUMIDOR FINAL');
         $('#nc_lista').val('1');
         $('#nc_domicilio').val('');
+        $('#nc_localidad').val('');
+        $('#nc_provincia').val('');
         $('#nc_telefono').val('');
         $('#nc_ctacte').prop('checked', false);
         $('#mod_nuevo_cliente').modal('show');
@@ -1462,6 +1905,8 @@ window.bill = (function () {
             condicionfiscal: $('#nc_condicionfiscal').val(),
             ListaDePRecios: $('#nc_lista').val(),
             domicilio: $('#nc_domicilio').val().trim(),
+            localidad: $('#nc_localidad').val().trim(),
+            provincia: $('#nc_provincia').val().trim(),
             telefono: $('#nc_telefono').val().trim(),
             cuentacorriente: $('#nc_ctacte').is(':checked') ? 1 : 0,
             habilitado: 1
@@ -1511,7 +1956,7 @@ window.bill = (function () {
         if (isNaN(cant) || cant <= 0) cant = 1;
 
         const alicuota = esTicketSinIva() ? 0 : poriva;
-        const netoU = r(totalFinalU / (1 + alicuota / 100));
+        const netoU = r3(totalFinalU / (1 + alicuota / 100));
 
         cart.push({
             codigo: 'LM',
@@ -1571,13 +2016,14 @@ window.bill = (function () {
         confirmarNuevoCliente: confirmarNuevoClienteInternal,
         abrirBuscadorArticulo: () => { $('#mod_search_art').modal('show'); buscarArticuloModal(''); },
         seleccionarDesdeModal: (type, obj) => { if (type === 'CLI') { setCliente(obj); $('#mod_search_cli').modal('hide'); } else { setProducto(obj); addItemInternal(); $('#mod_search_art').modal('hide'); } },
-        modalGlobal: modalGlobalInternal, intentarCobro: () => { if (cart.length === 0) return; $('#mod_pay').modal('show'); },
+        modalGlobal: modalGlobalInternal, intentarCobro: async () => { if (cart.length === 0) return; await actualizarPercepciones(); actualizarBalancePago(); $('#mod_pay').modal('show'); },
         abrirAsociar: abrirAsociarInternal,
         confirmarAsociacion: confirmarAsociacionInternal,
         abrirLineaManual: abrirLineaManualInternal,
         confirmarLineaManual: confirmarLineaManualInternal,
         toggleDetalleImpuestos: toggleDetalleImpuestosInternal,
         toggleVistaTabla: toggleVistaTablaInternal,
+        toggleUsarPreciosActuales: toggleUsarPreciosActualesInternal,
         nueva: async () => {
             cart = [];
             curProd = null;
@@ -1586,6 +2032,10 @@ window.bill = (function () {
             globalAdj = { desc: 0, reca: 0 };
             pedidoOrigenId = null;
             presupuestoOrigenId = null;
+            usarPreciosActuales = false;
+            hayDiferenciaPrecios = false;
+            mostrarTogglePrecios = false;
+            $('#btnTogglePreciosOrigen').hide();
 
             $('#sel_cliente').val(null).trigger('change').prop('disabled', false);
             $('#badge_fiscal').html('CONSUMIDOR FINAL');

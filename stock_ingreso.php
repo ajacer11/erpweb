@@ -32,11 +32,20 @@ require_once 'check_access.php';
             <div class="card card-filtros shadow-sm" id="panel-cabecera">
                 <div class="card-body p-3">
                     <div class="row g-2 align-items-end">
-                        <div class="col-md-4 section-externa">
+                        <div class="col-md-3 section-externa">
                             <label class="form-label-custom">PROVEEDOR</label>
                             <select class="form-select" id="cmb-proveedor">
                                 <option value="">SELECCIONE UN PROVEEDOR...</option>
                             </select>
+                            <small class="text-info d-none mt-1 d-block" id="lbl-oc-activa">
+                                <i class="fas fa-clipboard-check me-1"></i>Cargado desde OC #<b id="lbl-oc-activa-num"></b>
+                            </small>
+                        </div>
+                        <div class="col-md-1 section-externa">
+                            <label class="form-label-custom d-block">&nbsp;</label>
+                            <button class="btn btn-outline-info w-100" type="button" id="btn-cargar-oc" disabled title="Cargar desde Orden de Compra pendiente">
+                                <i class="fas fa-clipboard-list"></i>
+                            </button>
                         </div>
                         <div class="col-md-2 section-externa">
                             <label class="form-label-custom">TIPO COMPROBANTE</label>
@@ -153,6 +162,7 @@ require_once 'check_access.php';
                                 <th class="text-center">CANT.</th>
                                 <th class="text-end">NETO</th>
                                 <th class="text-end">IVA</th>
+                                <th class="text-end">IMP.INT</th>
                                 <th class="text-end">TOTAL</th>
                                 <th class="text-center">ACC.</th>
                             </tr>
@@ -173,9 +183,13 @@ require_once 'check_access.php';
                         <span class="text-muted small">NETO:</span>
                         <span class="text-white fw-bold" id="total-neto">0.00</span>
                     </div>
-                    <div class="mb-3 d-flex justify-content-between border-bottom border-secondary pb-2">
+                    <div class="mb-2 d-flex justify-content-between">
                         <span class="text-muted small">IVA:</span>
                         <span class="text-white fw-bold" id="total-iva">0.00</span>
+                    </div>
+                    <div class="mb-3 d-flex justify-content-between border-bottom border-secondary pb-2">
+                        <span class="text-muted small">IMP. INT.:</span>
+                        <span class="text-white fw-bold" id="total-impint">0.00</span>
                     </div>
 
                     <div class="mb-2">
@@ -203,10 +217,44 @@ require_once 'check_access.php';
     </div>
 </div>
 
+<!-- MODAL: OCs PENDIENTES DEL PROVEEDOR SELECCIONADO -->
+<div class="modal fade" id="modalOcPendientes" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content bg-escritorio border-accent shadow-lg text-start">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title text-white"><i class="fas fa-clipboard-list me-2 text-info"></i>Órdenes de Compra Pendientes</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-3">
+                <div class="table-responsive">
+                    <table class="table table-dark table-hover table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>NRO</th>
+                                <th>FECHA</th>
+                                <th>USUARIO</th>
+                                <th class="text-center">LÍNEAS</th>
+                                <th class="text-center">ARTÍCULOS</th>
+                                <th class="text-end">MONTO ESTIMADO</th>
+                                <th class="text-center">ACC.</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tbody-oc-pendientes">
+                            <tr><td colspan="7" class="text-center p-4 text-muted">Cargando...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
     (function () {
         let items = [];
         let productoActivo = null;
+        let ocIdCargada = null;
+        let ocsPendientesCache = [];
         const commonHeaders = { 'X-Requested-With': 'XMLHttpRequest' };
 
         async function init() {
@@ -291,6 +339,11 @@ require_once 'check_access.php';
         function configurarEventos() {
             $('#chk-interna').change(toggleInterna);
 
+            $('#cmb-proveedor').on('change', function () {
+                $('#btn-cargar-oc').prop('disabled', !$(this).val());
+            });
+            $('#btn-cargar-oc').click(abrirModalOcPendientes);
+
             $('#cmb-tipo-comp').on('change', function () {
                 const val = $(this).val();
                 // Si es tipo 100, no es fiscal
@@ -329,6 +382,112 @@ require_once 'check_access.php';
             validarEstadoGuardar();
         }
 
+        /**
+         * CARGA DESDE ORDEN DE COMPRA PENDIENTE
+         */
+        async function abrirModalOcPendientes() {
+            const idProv = $('#cmb-proveedor').val();
+            if (!idProv) return;
+
+            const tbody = $('#tbody-oc-pendientes').html('<tr><td colspan="7" class="text-center p-4 text-muted"><div class="spinner-border spinner-border-sm text-info me-2"></div>Cargando...</td></tr>');
+            $('#modalOcPendientes').modal('show');
+
+            try {
+                const res = await fetch(`api_proveedores_oc.php?action=pendientes_proveedor&proveedor=${idProv}`, { headers: commonHeaders }).then(r => r.json());
+                ocsPendientesCache = res.success ? res.data : [];
+
+                if (!ocsPendientesCache.length) {
+                    tbody.html('<tr><td colspan="7" class="text-center p-4 text-muted">Este proveedor no tiene órdenes de compra pendientes.</td></tr>');
+                    return;
+                }
+
+                tbody.empty();
+                ocsPendientesCache.forEach(oc => {
+                    tbody.append(`
+                        <tr>
+                            <td class="fw-bold text-accent">${oc.id}</td>
+                            <td>${oc.fecha}</td>
+                            <td>${oc.usuario || '-'}</td>
+                            <td class="text-center">${oc.cant_lineas}</td>
+                            <td class="text-center">${parseFloat(oc.cant_articulos).toFixed(0)}</td>
+                            <td class="text-end fw-bold text-white">$ ${parseFloat(oc.total).toLocaleString('es-AR', { minimumFractionDigits: 2 })}</td>
+                            <td class="text-center">
+                                <button class="btn btn-info btn-sm fw-bold" onclick="window.usarOcPendiente(${oc.id})">
+                                    <i class="fas fa-check me-1"></i>USAR
+                                </button>
+                            </td>
+                        </tr>
+                    `);
+                });
+            } catch (e) {
+                console.error(e);
+                tbody.html('<tr><td colspan="7" class="text-center p-4 text-danger">No se pudieron cargar las OCs pendientes.</td></tr>');
+            }
+        }
+
+        window.usarOcPendiente = async function (idOc) {
+            if (items.length > 0) {
+                const confirmar = await Swal.fire({
+                    title: '¿Reemplazar renglones actuales?',
+                    text: 'Ya hay productos cargados en la grilla. Se van a reemplazar por los de la Orden de Compra elegida.',
+                    icon: 'warning', showCancelButton: true,
+                    confirmButtonText: 'SÍ, REEMPLAZAR', cancelButtonText: 'CANCELAR'
+                }).then(r => r.isConfirmed);
+                if (!confirmar) return;
+            }
+
+            $('#modalOcPendientes').modal('hide');
+            Swal.fire({ title: 'Cargando pedido...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+
+            try {
+                const res = await fetch(`api_proveedores_oc.php?action=get_order&id=${idOc}`, { headers: commonHeaders }).then(r => r.json());
+                if (!res.success) { Swal.fire('Error', res.error, 'error'); return; }
+
+                // Se trae el costo ACTUAL del producto (neto/iva/imp.int desglosados,
+                // tal como los maneja este formulario), no el costo estimado que había
+                // en la OC — así el usuario ajusta sobre datos reales y consistentes con
+                // el resto de la pantalla. La cantidad sí viene de la OC.
+                const nuevosItems = await Promise.all(res.items.map(async (it) => {
+                    try {
+                        const rProd = await fetch(`api_stock_ajuste.php?action=get_prod&code=${encodeURIComponent(it.codigo)}`, { headers: commonHeaders }).then(r => r.json());
+                        if (rProd.success) {
+                            const neto = parseFloat(rProd.data.sinivacosto || 0);
+                            const iva = parseFloat(rProd.data.ivacosto || 0);
+                            const impInt = parseFloat(rProd.data.impint || 0);
+                            return {
+                                codigo: rProd.data.codigo,
+                                descripcion: rProd.data.descripcion,
+                                cantidad: parseFloat(it.cantidad) || 0,
+                                neto, iva, imp_int: impInt,
+                                total_un: neto + iva + impInt,
+                                rubro: rProd.data.rubro,
+                                nota: `OC #${idOc}`
+                            };
+                        }
+                    } catch (e) { console.error(e); }
+                    // Fallback: el producto no se pudo resolver (fue dado de baja, etc.)
+                    // Se conserva el costo que tenía la OC como neto, sin desglose.
+                    return {
+                        codigo: it.codigo, descripcion: it.descripcion, cantidad: parseFloat(it.cantidad) || 0,
+                        neto: parseFloat(it.costo) || 0, iva: 0, imp_int: 0,
+                        total_un: parseFloat(it.costo) || 0, rubro: '', nota: `OC #${idOc} (producto no encontrado, revisar costo)`
+                    };
+                }));
+
+                items = nuevosItems;
+                ocIdCargada = idOc;
+                $('#lbl-oc-activa-num').text(idOc);
+                $('#lbl-oc-activa').removeClass('d-none');
+
+                renderTabla();
+                Swal.close();
+                Swal.fire({ icon: 'success', title: `OC #${idOc} cargada`, toast: true, position: 'top-end', timer: 2000, showConfirmButton: false });
+            } catch (e) {
+                console.error(e);
+                Swal.fire('Error', 'No se pudo cargar el pedido.', 'error');
+            }
+        };
+
         async function buscarProducto(codigo) {
             if (!codigo) return;
             try {
@@ -354,7 +513,12 @@ require_once 'check_access.php';
             $('#lbl-stk-actual').text(parseFloat(data.stock).toFixed(2));
             $('#txt-costo-neto').val(parseFloat(data.sinivacosto || 0).toFixed(2));
             $('#txt-iva').val(parseFloat(data.ivacosto || 0).toFixed(2));
-            $('#txt-imp-int').val(parseFloat(data.impint || 0).toFixed(2));
+            // api_stock_ajuste.php?action=get_prod devuelve "impint" (alias explicito en
+            // minuscula), pero api_productos.php?action=search hace SELECT p.* y la columna
+            // real es "ImpInt" (mayusculas) — sin el fallback, ese segundo camino (buscar por
+            // descripcion) precargaba siempre 0.00 y pisaba el imp. interno real del producto
+            // al guardar el ingreso.
+            $('#txt-imp-int').val(parseFloat(data.ImpInt ?? data.impint ?? 0).toFixed(2));
             $('#txt-ing').val(1).focus().select();
             calcularCostoLinea();
             $('#btn-agregar').prop('disabled', false);
@@ -379,6 +543,9 @@ require_once 'check_access.php';
         function limpiarFormularioCompleto() {
             items = [];
             productoActivo = null;
+            ocIdCargada = null;
+            $('#lbl-oc-activa').addClass('d-none');
+            $('#btn-cargar-oc').prop('disabled', true);
 
             // Cabecera
             $('#chk-interna').prop('checked', false); // Por defecto NO es interno
@@ -432,13 +599,14 @@ require_once 'check_access.php';
             const tbody = $('#tbody-ingreso').empty();
             items.forEach((it, idx) => {
                 tbody.append(`
-                <tr>
+                <tr data-row="${idx}">
                     <td class="fw-bold text-white small">${it.codigo}</td>
-                    <td><div class="text-truncate" style="max-width: 250px;"><small>${it.descripcion}</small></div></td>
-                    <td class="text-center fw-bold text-accent">${it.cantidad.toFixed(2)}</td>
-                    <td class="text-end">${it.neto.toFixed(2)}</td>
-                    <td class="text-end">${it.iva.toFixed(2)}</td>
-                    <td class="text-end fw-bold text-white">${(it.total_un * it.cantidad).toFixed(2)}</td>
+                    <td><div class="text-truncate" style="max-width: 220px;"><small>${it.descripcion}</small></div></td>
+                    <td><input type="number" class="form-control form-control-sm text-center fw-bold text-accent row-edit" style="min-width:75px" data-idx="${idx}" data-field="cantidad" value="${it.cantidad}" step="0.01"></td>
+                    <td><input type="number" class="form-control form-control-sm text-end row-edit" style="min-width:80px" data-idx="${idx}" data-field="neto" value="${it.neto.toFixed(2)}" step="0.01"></td>
+                    <td><input type="number" class="form-control form-control-sm text-end row-edit" style="min-width:75px" data-idx="${idx}" data-field="iva" value="${it.iva.toFixed(2)}" step="0.01"></td>
+                    <td><input type="number" class="form-control form-control-sm text-end row-edit" style="min-width:75px" data-idx="${idx}" data-field="imp_int" value="${it.imp_int.toFixed(2)}" step="0.01"></td>
+                    <td class="text-end fw-bold text-white cell-total">${(it.total_un * it.cantidad).toFixed(2)}</td>
                     <td class="text-center"><button class="btn btn-link text-danger p-0" onclick="window.delIng(${idx})"><i class="fas fa-trash-alt"></i></button></td>
                 </tr>
             `);
@@ -447,16 +615,35 @@ require_once 'check_access.php';
             validarEstadoGuardar();
         }
 
+        // Delegado (no reconstruye la tabla en cada tecla, así no se pierde el foco
+        // del input mientras se edita cantidad/precio de una línea).
+        $(document).on('input', '.row-edit', function () {
+            const idx = $(this).data('idx');
+            const field = $(this).data('field');
+            const val = parseFloat($(this).val()) || 0;
+            items[idx][field] = val;
+            items[idx].total_un = items[idx].neto + items[idx].iva + items[idx].imp_int;
+
+            const totalLinea = items[idx].total_un * items[idx].cantidad;
+            $(`#tbody-ingreso tr[data-row="${idx}"] .cell-total`).text(totalLinea.toFixed(2));
+
+            calcularTotales();
+            validarEstadoGuardar();
+        });
+
         window.delIng = (idx) => { items.splice(idx, 1); renderTabla(); };
 
         function calcularTotales() {
-            let n = 0, i = 0, q = 0;
-            items.forEach(it => { n += it.neto * it.cantidad; i += it.iva * it.cantidad; q += it.cantidad; });
-            const sub = n + i;
+            let n = 0, i = 0, imp = 0, q = 0;
+            items.forEach(it => { n += it.neto * it.cantidad; i += it.iva * it.cantidad; imp += it.imp_int * it.cantidad; q += it.cantidad; });
+            // El Imp. Interno no se sumaba acá (solo neto+iva), asi que el total final
+            // quedaba por debajo del total real cuando habia productos con imp. interno.
+            const sub = n + i + imp;
             const final = sub + (parseFloat($('#txt-ret-iva').val()) || 0) + (parseFloat($('#txt-ret-iibb').val()) || 0);
 
             $('#total-neto').text(n.toFixed(2));
             $('#total-iva').text(i.toFixed(2));
+            $('#total-impint').text(imp.toFixed(2));
             $('#total-final').text('$ ' + final.toLocaleString('es-AR', { minimumFractionDigits: 2 }));
             $('#lbl-cant-items').text(q.toFixed(0));
         }
@@ -488,10 +675,14 @@ require_once 'check_access.php';
                 nombre_proveedor: isInt ? 'INTERNO' : $('#cmb-proveedor option:selected').text(),
                 fecha: isInt ? new Date().toISOString().split('T')[0] : $('#txt-fecha-comp').val(),
                 id_deposito: $('#cmb-deposito').val() || null,
+                id_oc: isInt ? null : ocIdCargada,
                 items: items
             };
 
-            const result = await Swal.fire({ title: '¿Confirmar Ingreso?', icon: 'question', showCancelButton: true });
+            const textoConfirm = data.id_oc
+                ? `Se registrará el ingreso y la Orden de Compra #${data.id_oc} quedará marcada como FINALIZADA.`
+                : undefined;
+            const result = await Swal.fire({ title: '¿Confirmar Ingreso?', text: textoConfirm, icon: 'question', showCancelButton: true });
             if (result.isConfirmed) {
                 const res = await fetch('api_stock_ingreso.php', {
                     method: 'POST',

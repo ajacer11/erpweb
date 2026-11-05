@@ -128,7 +128,7 @@ try {
 
             $stmtF = $pdo->prepare("SELECT c.*, CONCAT(t.letracomp, '-', t.ptovta, '-', t.numcomp) as comprobante FROM cobrosfacturasclientes c JOIN tickets t ON c.idfactura = t.id WHERE c.idpago = ?");
             $stmtF->execute([$id]);
-            $stmtC = $pdo->prepare("SELECT c.*, b.denominacion as banco_nom FROM chequesterceros c LEFT JOIN bancos b ON c.banco = b.id WHERE c.compasoc = ?");
+            $stmtC = $pdo->prepare("SELECT c.*, b.denominacion as banco_nom FROM chequesterceros c LEFT JOIN bancos b ON c.banco = b.id WHERE c.recibo_origen_id = ?");
             $stmtC->execute([$id]);
 
             echo json_encode(['success' => true, 'recibo' => $recibo, 'facturas' => $stmtF->fetchAll(), 'cheques' => $stmtC->fetchAll()]);
@@ -175,6 +175,10 @@ try {
             }
 
             $pdo->beginTransaction();
+            $stActivo = $pdo->prepare('SELECT imp1 + imp2 + retiva + retgan + retiibb AS total, estado FROM pagos WHERE id = ? FOR UPDATE');
+            $stActivo->execute([$idPago]); $activo = $stActivo->fetch(PDO::FETCH_ASSOC);
+            if (!$activo || (int)$activo['estado'] === 1000) throw new Exception('El recibo no existe o está anulado.');
+            $total = $activo['total'];
             // 1. Liberar facturas
             $stmt = $pdo->prepare("SELECT idfactura FROM cobrosfacturasclientes WHERE idpago = ?");
             $stmt->execute([$idPago]);
@@ -191,45 +195,14 @@ try {
             break;
 
         case 'annul':
+            require_once 'check_api_access.php';
             $data = json_decode(file_get_contents('php://input'), true);
-            $idRecibo = $data['id'];
-            $fechaAnulacion = $data['annul_date'];
-
-            if (esVendedorRestringido()) {
-                $stmtChkR = $pdo->prepare("SELECT vendedorid FROM alb_clientes WHERE id = (SELECT cliente FROM pagos WHERE id = ?)");
-                $stmtChkR->execute([$idRecibo]);
-                if ((int) $stmtChkR->fetchColumn() !== idVendedorRestringido()) {
-                    throw new Exception("No tiene acceso a este recibo.");
-                }
-            }
-
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($data['confirmar_imputaciones'])) throw new Exception('Debe confirmar la anulación y sus imputaciones.');
+            require_once 'anulacion_pagos_helpers.php';
             $pdo->beginTransaction();
-            $stmtRec = $pdo->prepare("SELECT * FROM pagos WHERE id = ?");
-            $stmtRec->execute([$idRecibo]);
-            $recibo = $stmtRec->fetch();
-
-            $importeEfectivo = 0;
-            $medios = [['id' => $recibo['mp1'], 'imp' => $recibo['imp1']], ['id' => $recibo['mp2'], 'imp' => $recibo['imp2']]];
-            foreach ($medios as $m) {
-                if ($m['id'] > 0) {
-                    $stmtM = $pdo->prepare("SELECT tipodecuenta FROM mediosdepago WHERE id = ?");
-                    $stmtM->execute([$m['id']]);
-                    if ($stmtM->fetchColumn() === 'Caja de Usuarios') $importeEfectivo += $m['imp'];
-                }
-            }
-            if ($importeEfectivo > 0 && !$idcajaabierta) throw new Exception("El recibo contiene efectivo. Debe tener caja abierta.");
-            $pdo->prepare("UPDATE pagos SET estado = 1000 WHERE id = ?")->execute([$idRecibo]);
-            $pdo->prepare("UPDATE ccclientes SET haber = 0 WHERE compasoc = ? AND tabla = 'pagos'")->execute([$idRecibo]);
-            $stmtFac = $pdo->prepare("SELECT idfactura FROM cobrosfacturasclientes WHERE idpago = ?");
-            $stmtFac->execute([$idRecibo]);
-            foreach ($stmtFac->fetchAll() as $f) { $pdo->prepare("UPDATE tickets SET pagada = 0 WHERE id = ?")->execute([$f['idfactura']]); }
-            if ($importeEfectivo > 0) {
-                $pdo->prepare("INSERT INTO cajaxusuario (usuario, debe, haber, idcaja, idcontrolcaja, fechamov, tipomov, horamov) VALUES (?, 0, ?, ?, ?, ?, ?, ?)")
-                    ->execute([$usuario_sesion, $importeEfectivo, $idcajaabierta, $idcontrolcaja, $fechaAnulacion, "Anulación Recibo $idRecibo", date('H:i')]);
-                $pdo->prepare("UPDATE cajas SET saldo = saldo - ? WHERE id = ?")->execute([$importeEfectivo, $idcajaabierta]);
-            }
+            anularPago($pdo, 'cliente', (int)($data['id'] ?? 0), $data['annul_date'] ?? date('Y-m-d'), $_SESSION['usuario_nombre']);
             $pdo->commit();
-            echo json_encode(['success' => true, 'message' => 'Anulado correctamente']);
+            echo json_encode(['success' => true, 'message' => 'Recibo e imputaciones anulados.']);
             break;
 
         case 'toggle_fiscal':

@@ -20,7 +20,7 @@ if ($prov_id) {
 $sql = "SELECT 
             DATE_FORMAT(fechavencimiento, '%d/%m/%Y') as Vencimiento,
             (SELECT razon FROM Proveedores WHERE id = facturasdecompra.proveedorid) as Proveedor,
-            CASE tipocomp WHEN 1 THEN 'FCA' WHEN 3 THEN 'NCA' WHEN 1000 THEN 'REM' WHEN 6 THEN 'FCB' WHEN 8 THEN 'NCB' WHEN 100 THEN 'TKT' WHEN 11 THEN 'FCC' ELSE 'Otro' END AS Tipo,
+            CASE tipocomp WHEN 1 THEN 'FCA' WHEN 2 THEN 'NDA' WHEN 3 THEN 'NCA' WHEN 1000 THEN 'REM' WHEN 6 THEN 'FCB' WHEN 7 THEN 'NDB' WHEN 8 THEN 'NCB' WHEN 100 THEN 'TKT' WHEN 11 THEN 'FCC' WHEN 12 THEN 'NDC' ELSE 'Otro' END AS Tipo,
             CONCAT(LPAD(PV, 4, '0'),'-',LPAD(numfact, 8, '0')) AS NumFactura,
             total AS Total,
             COALESCE((SELECT SUM(importepagado) FROM pagosfacturasproveedores WHERE idfactura = facturasdecompra.id), 0) AS Pagado,

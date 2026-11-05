@@ -9,12 +9,13 @@ require_once 'check_access.php';
 <div class="container-fluid px-4 py-3 fade-in">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
-            <h4 class="text-white mb-0">IMPUTAR COBROS PENDIENTES</h4>
-            <small class="text-accent opacity-75">Cruce de saldos a favor con comprobantes impagos</small>
+            <h4 class="text-white mb-0">GESTIÓN DE IMPUTACIONES DE COBROS</h4>
+            <small class="text-accent opacity-75">Imputación rápida y consulta de vínculos anteriores</small>
         </div>
+        <div class="d-flex gap-2"><button class="btn btn-outline-warning fw-bold" id="btn-auto-fifo" disabled>Auto-imputar FIFO</button>
         <button class="btn btn-info fw-bold px-4 shadow" id="btn-confirmar-imputacion" disabled>
             <i class="fas fa-link me-2"></i>PROCESAR IMPUTACIÓN
-        </button>
+        </button></div>
     </div>
 
     <!-- SELECCIÓN DE CLIENTE -->
@@ -97,6 +98,11 @@ require_once 'check_access.php';
     async function init() {
         configurarSelect2();
         $('#btn-confirmar-imputacion').click(procesarImputacion);
+        $('#btn-auto-fifo').click(function () {
+            $('.chk-pago, .chk-factura').prop('checked', true);
+            actualizarTotales();
+            procesarImputacion();
+        });
     }
 
     function configurarSelect2() {
@@ -123,6 +129,7 @@ require_once 'check_access.php';
                 facturasList = res.facturas;
                 renderPagos();
                 renderFacturas();
+                $('#btn-auto-fifo').prop('disabled', !(pagosList.length && facturasList.length));
             }
         } catch (e) { console.error(e); }
         actualizarTotales();
@@ -209,3 +216,4 @@ require_once 'check_access.php';
     init();
 })();
 </script>
+<?php $gestionTipo = 'cliente'; require 'imputaciones_gestion_panel.php'; ?>

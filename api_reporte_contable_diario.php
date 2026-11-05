@@ -9,8 +9,9 @@ $desde = $input['desde'];
 $hasta = $input['hasta'];
 $fiscal = $input['fiscal'];
 $manual = $input['manual'];
-$pagina = (int)($input['pagina'] ?? 1);
-$tamanioPagina = 50;
+$pagina = max(1, (int)($input['pagina'] ?? 1));
+$tamanioPagina = (int)($input['tamanioPagina'] ?? 50);
+if (!in_array($tamanioPagina, [50, 100, 200, 500], true)) $tamanioPagina = 50;
 
 try {
     // Construcción de filtros comunes
@@ -36,8 +37,9 @@ try {
         $sqlCount = "SELECT COUNT(*) as total FROM librodiario $where";
         $stmtCount = $pdo->prepare($sqlCount);
         $stmtCount->execute($params);
-        $totalRegistros = $stmtCount->fetch()['total'];
-        $totalPaginas = ceil($totalRegistros / $tamanioPagina);
+        $totalRegistros = (int)$stmtCount->fetchColumn();
+        $totalPaginas = max(1, (int)ceil($totalRegistros / $tamanioPagina));
+        $pagina = min($pagina, $totalPaginas);
 
         // 2. Datos paginados
         // REGLA 5: Se incluye 'id' para asegurar que la SPA identifique correctamente cada renglón legacy
@@ -58,6 +60,7 @@ try {
         echo json_encode([
             'success' => true,
             'data' => $data,
+            'totalRegistros' => $totalRegistros,
             'totalPaginas' => $totalPaginas,
             'paginaActual' => $pagina
         ]);

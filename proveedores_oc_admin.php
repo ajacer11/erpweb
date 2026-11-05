@@ -16,6 +16,9 @@ require_once 'check_access.php';
             <button class="btn btn-outline-success border-0 btn-sm" id="btn-export-oc">
                 <i class="fas fa-file-excel me-1"></i> <span class="d-none d-sm-inline">EXCEL</span>
             </button>
+            <button class="btn btn-outline-danger border-0 btn-sm" id="btn-export-pdf-oc">
+                <i class="fas fa-file-pdf me-1"></i> <span class="d-none d-sm-inline">PDF</span>
+            </button>
             <button class="btn btn-info btn-sm fw-bold px-4 rounded-pill shadow" id="btn-actualizar-oc">
                 <i class="fas fa-sync-alt me-1"></i> <span class="d-none d-sm-inline">ACTUALIZAR</span>
             </button>
@@ -165,6 +168,7 @@ require_once 'check_access.php';
             </div>
             <div class="modal-footer border-secondary">
                 <button class="btn btn-outline-success btn-sm" id="mdl-oc-btn-excel"><i class="fas fa-file-excel me-2"></i>EXPORTAR ESTA OC</button>
+                <button class="btn btn-outline-danger btn-sm" id="mdl-oc-btn-pdf"><i class="fas fa-file-pdf me-2"></i>IMPRIMIR PDF</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">CERRAR</button>
             </div>
         </div>
@@ -204,6 +208,7 @@ require_once 'check_access.php';
         $('#btn-actualizar-oc').click(buscar);
         $('.filter-oc').on('change', buscar);
         $('#btn-export-oc').click(exportarExcel);
+        $('#btn-export-pdf-oc').click(exportarPDF);
         $('#btn-limpiar-filtros-oc').click(() => {
             $('#f-desde-oc').val("<?= date('Y-m-d', strtotime('-1 month')) ?>");
             $('#f-hasta-oc').val("<?= date('Y-m-d') ?>");
@@ -290,6 +295,7 @@ require_once 'check_access.php';
                                 <i class="fas ${isPendiente ? 'fa-edit' : 'fa-eye'}"></i>
                             </button>
                             ${isPendiente ? `<button class="btn btn-outline-success" onclick="window.finalizarOC(${absoluteIdx})" title="Finalizar"><i class="fas fa-check-circle"></i></button>` : ''}
+                            <button class="btn btn-outline-secondary" onclick="window.exportarPdfOC(${absoluteIdx})" title="Imprimir PDF"><i class="fas fa-file-pdf"></i></button>
                             <button class="btn btn-outline-danger" onclick="window.eliminarOC(${absoluteIdx})" title="Eliminar"><i class="fas fa-trash-alt"></i></button>
                         </div>
                     </td>
@@ -343,12 +349,18 @@ require_once 'check_access.php';
                     <button class="btn btn-outline-success btn-sm flex-fill fw-bold" onclick="window.finalizarOC(${absoluteIdx})">
                         <i class="fas fa-check-circle me-1"></i> FINALIZAR
                     </button>
+                    <button class="btn btn-outline-secondary btn-sm flex-fill" onclick="window.exportarPdfOC(${absoluteIdx})" title="Imprimir PDF">
+                        <i class="fas fa-file-pdf"></i>
+                    </button>
                     <button class="btn btn-outline-danger btn-sm flex-fill" onclick="window.eliminarOC(${absoluteIdx})" title="Eliminar">
                         <i class="fas fa-trash-alt"></i>
                     </button>`;
             } else {
                 // Si está finalizado, permitimos que se borre si es necesario (el código original lo permitía)
                 html += `
+                    <button class="btn btn-outline-secondary btn-sm flex-fill" onclick="window.exportarPdfOC(${absoluteIdx})" title="Imprimir PDF">
+                        <i class="fas fa-file-pdf"></i>
+                    </button>
                     <button class="btn btn-outline-danger btn-sm flex-fill" onclick="window.eliminarOC(${absoluteIdx})" title="Eliminar">
                         <i class="fas fa-trash-alt"></i>
                     </button>`;
@@ -427,6 +439,7 @@ require_once 'check_access.php';
                 });
                 
                 $('#mdl-oc-btn-excel').off('click').on('click', () => exportarSingleOC(res));
+                $('#mdl-oc-btn-pdf').off('click').on('click', () => solicitarPdfOC(id));
                 $('#modalDetalleOC').modal('show');
             }
         } catch (e) { console.error(e); }
@@ -495,6 +508,41 @@ require_once 'check_access.php';
         link.click();
     }
 
+    // Pregunta si el PDF debe incluir precios/costos antes de abrirlo (el usuario
+    // puede querer un remito "ciego" sin precios para el dep\u00f3sito/proveedor).
+    async function solicitarPrecios() {
+        const result = await Swal.fire({
+            title: '\u00bfIncluir precios en el PDF?',
+            text: 'Pod\u00e9s generar el pedido con o sin precios/costos visibles.',
+            icon: 'question',
+            showDenyButton: true,
+            showCancelButton: true,
+            confirmButtonText: 'CON PRECIOS',
+            denyButtonText: 'SIN PRECIOS',
+            cancelButtonText: 'CANCELAR'
+        });
+        if (result.isConfirmed) return '1';
+        if (result.isDenied) return '0';
+        return null;
+    }
+
+    async function solicitarPdfOC(idPedido) {
+        const precios = await solicitarPrecios();
+        if (precios === null) return;
+        const orden = await Swal.fire({
+            title: 'Orden de impresión', input: 'select',
+            inputOptions: {grabado: 'Como está grabado', alfabetico: 'Alfabético', cantidad: 'Cantidad de mayor a menor', precio: 'Precio de mayor a menor', codigo: 'Código', proveedor: 'Código proveedor'},
+            inputValue: 'grabado', showCancelButton: true, confirmButtonText: 'IMPRIMIR', cancelButtonText: 'CANCELAR'
+        });
+        if (!orden.isConfirmed) return;
+        window.open(`imprimir_oc.php?id=${idPedido}&precios=${precios}&orden=${orden.value}`, '_blank');
+    }
+
+    window.exportarPdfOC = (absoluteIdx) => {
+        const p = listado[absoluteIdx];
+        solicitarPdfOC(p['Nro Pedido']);
+    };
+
     window.finalizarOC = async (absoluteIdx) => {
         const p = listado[absoluteIdx];
         if (await Swal.fire({ title: `¿Finalizar Pedido Nº ${p['Nro Pedido']}?`, text: "No podrá editarse luego.", icon: 'question', showCancelButton: true }).then(r => r.isConfirmed)) {
@@ -513,10 +561,92 @@ require_once 'check_access.php';
         }
     };
 
+    // Genera el .xls enteramente en el navegador (Blob), a partir del `listado`
+    // ya cargado en memoria. Evita depender de una descarga directa por
+    // window.open contra la API (bloqueada por el filtro AJAX-only de
+    // check_api_access.php, que no ve el header X-Requested-With en una
+    // navegación normal de ventana).
     function exportarExcel() {
-        if (listado.length === 0) return;
-        const params = new URLSearchParams({ desde: $('#f-desde-oc').val(), hasta: $('#f-hasta-oc').val(), proveedor: $('#cmb-proveedor-admin-oc').val() || 'todos', estado: $('#cmb-estado-oc').val(), action: 'export_excel' }).toString();
-        window.open(`api_proveedores_oc_admin.php?${params}`, '_blank');
+        if (listado.length === 0) return Swal.fire('Atención', 'No hay pedidos para exportar.', 'warning');
+
+        const totalGeneral = listado.reduce((acc, p) => acc + (parseFloat(p['Monto Estimado']) || 0), 0);
+
+        let html = `
+            <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+            <head>
+                <meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8">
+                <style>
+                    td, th { border: 1px solid #999999; padding: 5px 10px; font-family: Calibri, Arial, sans-serif; font-size: 12px; }
+                    .title { font-size: 18px; font-weight: bold; text-align: center; background-color: #001020; color: #00e5ff; }
+                    .subtitle { background-color: #f0f0f0; font-style: italic; text-align: left; color: #333; }
+                    .header { background-color: #001020; color: #ffffff; font-weight: bold; text-align: center; }
+                    .text { text-align: left; mso-number-format: '\\@'; }
+                    .num { text-align: right; mso-number-format: '0.00'; }
+                    .row-even { background-color: #ffffff; }
+                    .row-odd { background-color: #eaf3fc; }
+                    .estado-pend { color: #b8860b; font-weight: bold; text-align: center; }
+                    .estado-fin { color: #1e7e34; font-weight: bold; text-align: center; }
+                    .total-label { text-align: right; font-weight: bold; background-color: #001020; color: #ffffff; }
+                    .total-val { text-align: right; font-weight: bold; background-color: #ffd54f; color: #001020; font-size: 14px; }
+                </style>
+            </head>
+            <body>
+                <table>
+                    <tr><td colspan="6" class="title">LISTADO DE ÓRDENES DE COMPRA</td></tr>
+                    <tr><td colspan="6" class="subtitle">Generado el: ${new Date().toLocaleString('es-AR')} | Rango: ${$('#f-desde-oc').val()} a ${$('#f-hasta-oc').val()} | Estado: ${$('#cmb-estado-oc option:selected').text()}</td></tr>
+                    <tr><td colspan="6"></td></tr>
+                    <thead>
+                        <tr>
+                            <th class="header">NRO PEDIDO</th>
+                            <th class="header">FECHA</th>
+                            <th class="header">PROVEEDOR</th>
+                            <th class="header">MONTO ESTIMADO</th>
+                            <th class="header">ESTADO</th>
+                            <th class="header">USUARIO</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+
+        listado.forEach((p, idx) => {
+            const rowCls = idx % 2 === 0 ? 'row-even' : 'row-odd';
+            const estadoCls = p.Estado === 'PENDIENTE' ? 'estado-pend' : 'estado-fin';
+            html += `
+                        <tr class="${rowCls}">
+                            <td class="text">${p['Nro Pedido']}</td>
+                            <td class="text">${p.Fecha}</td>
+                            <td>${p.Proveedor}</td>
+                            <td class="num">${parseFloat(p['Monto Estimado']).toFixed(2)}</td>
+                            <td class="${estadoCls}">${p.Estado}</td>
+                            <td>${p.Usuario}</td>
+                        </tr>`;
+        });
+
+        html += `
+                    </tbody>
+                    <tr>
+                        <td colspan="3" class="total-label">TOTAL ESTIMADO (${listado.length} pedidos)</td>
+                        <td colspan="3" class="total-val">${totalGeneral.toFixed(2)}</td>
+                    </tr>
+                </table>
+            </body>
+            </html>`;
+
+        const blob = new Blob(['﻿', html], { type: 'application/vnd.ms-excel' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `Ordenes_Compra_${new Date().toISOString().slice(0, 10)}.xls`;
+        link.click();
+    }
+
+    function exportarPDF() {
+        if (listado.length === 0) return Swal.fire('Atención', 'No hay pedidos para exportar.', 'warning');
+        const params = new URLSearchParams({
+            desde: $('#f-desde-oc').val(),
+            hasta: $('#f-hasta-oc').val(),
+            proveedor: $('#cmb-proveedor-admin-oc').val() || 'todos',
+            estado: $('#cmb-estado-oc').val()
+        }).toString();
+        window.open(`imprimir_listado_oc.php?${params}`, '_blank');
     }
 
     init();

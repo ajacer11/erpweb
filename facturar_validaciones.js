@@ -67,9 +67,17 @@ window.billValidator = (function() {
 
         // Validación de Importes
         const totalDoc = parseFloat(total.replace(/\./g,'').replace(',','.'));
-        const totalCobrado = parseFloat(imp1 || 0) + parseFloat(imp2 || 0);
-        if (totalCobrado < (totalDoc - 0.01)) {
-            return { isValid: false, message: `El importe cobrado ($${totalCobrado.toFixed(2)}) no cubre el total ($${totalDoc.toFixed(2)}).` };
+        const imp1Num = parseFloat(imp1 || 0);
+        const imp2Num = parseFloat(imp2 || 0);
+        if (imp1Num < 0 || imp2Num < 0) {
+            return { isValid: false, message: "Los importes de los medios de pago no pueden ser negativos." };
+        }
+        const totalCobrado = imp1Num + imp2Num;
+        if (Math.abs(totalCobrado - totalDoc) > 0.01) {
+            const message = totalCobrado < totalDoc
+                ? `El importe cobrado ($${totalCobrado.toFixed(2)}) no cubre el total ($${totalDoc.toFixed(2)}).`
+                : `El importe cobrado ($${totalCobrado.toFixed(2)}) supera el total ($${totalDoc.toFixed(2)}). Ajuste los medios de pago.`;
+            return { isValid: false, message };
         }
 
         // Validación de Cuenta Corriente

@@ -22,6 +22,16 @@ try {
 } catch (Throwable $e) {
     error_log('menu.php: no se pudo cargar la identidad visual de la empresa: ' . $e->getMessage());
 }
+// Multidepósito: se muestra el logo del depósito de trabajo; si no tiene, queda el de configuración.
+$empresaLogoDefaultUri = $empresaLogoUri;
+try {
+    require_once 'stock_deposito_helpers.php';
+    if (multidepositoHabilitado($pdo)) {
+        $empresaLogoUri = logoDepositoUrl($pdo, depositoDeTrabajo($pdo, (string) ($_SESSION['usuario_nombre'] ?? ''))) ?? $empresaLogoUri;
+    }
+} catch (Throwable $e) {
+    // Sin depósito elegido todavía: queda el logo de configuración.
+}
 
 $version = (int)($_SESSION['version'] ?? 1);
 $version = $version === 2 ? 2 : 1;
@@ -42,6 +52,11 @@ if (isset($_SESSION['es_admin']) && (int) $_SESSION['es_admin'] === 1) {
     $_SESSION['pe_modificarprecios'] = 0;
     $_SESSION['pe_facturarpedidos'] = 0;
     $_SESSION['pe_modificarfacturas'] = 0;
+    // Permisos positivos (permitir X): el admin siempre puede, a diferencia de las
+    // restricciones de arriba (que van a 0 = sin restricción).
+    $_SESSION['pe_editardescripcionfacturar'] = 1;
+    $_SESSION['pe_editardescripcionpedidos'] = 1;
+    $_SESSION['pe_editardescripcionpresupuestos'] = 1;
 
 } else {
     // 2. Usuario Normal: Filtramos según DB
@@ -77,9 +92,17 @@ if (isset($_SESSION['es_admin']) && (int) $_SESSION['es_admin'] === 1) {
 
         $menu_items = filterMenuItems($full_menu_items, $allowed_ids);
 
-        // Los paneles forman parte de la licencia 2 y no dependen de roles
-        // históricos, que aún no contienen los nuevos IDs del menú.
-        if ($version === 2) {
+        // Compatibilidad: los registros de permisos guardados antes de que
+        // existiera el árbol de "Dashboards" en el menú no van a tener
+        // NINGUNO de estos IDs, y sin este fallback esos usuarios se
+        // quedarían sin dashboards. Pero si el registro SÍ menciona algún
+        // ID de dashboard (fue guardado con la niveles_acceso.php actual),
+        // hay que respetar el filtro tal cual quedó armado — incluye que
+        // un panel puntual (p.ej. Panel Gerencial) haya sido deshabilitado
+        // a propósito.
+        $dashboardRelatedIds = ['dashboards', 'dash_gerencial', 'dash_rapido'];
+        $tieneDashboardsEnPermisos = count(array_intersect($dashboardRelatedIds, $allowed_ids)) > 0;
+        if ($version === 2 && !$tieneDashboardsEnPermisos) {
             foreach ($full_menu_items as $rootItem) {
                 if (($rootItem['id'] ?? '') === 'dashboards') {
                     array_unshift($menu_items, $rootItem);
@@ -103,6 +126,9 @@ if (isset($_SESSION['es_admin']) && (int) $_SESSION['es_admin'] === 1) {
             $_SESSION['pe_modificarprecios'] = (int) $pe['modificarprecios'];
             $_SESSION['pe_facturarpedidos'] = (int) $pe['facturarpedidos'];
             $_SESSION['pe_modificarfacturas'] = (int) $pe['modificarfacturas'];
+            $_SESSION['pe_editardescripcionfacturar'] = (int) ($pe['editardescripcionfacturar'] ?? 0);
+            $_SESSION['pe_editardescripcionpedidos'] = (int) ($pe['editardescripcionpedidos'] ?? 0);
+            $_SESSION['pe_editardescripcionpresupuestos'] = (int) ($pe['editardescripcionpresupuestos'] ?? 0);
         } else {
             // Sin registro → sin restricciones especiales
             $_SESSION['pe_precioscosto'] = 0;
@@ -111,6 +137,9 @@ if (isset($_SESSION['es_admin']) && (int) $_SESSION['es_admin'] === 1) {
             $_SESSION['pe_modificarprecios'] = 0;
             $_SESSION['pe_facturarpedidos'] = 0;
             $_SESSION['pe_modificarfacturas'] = 0;
+            $_SESSION['pe_editardescripcionfacturar'] = 0;
+            $_SESSION['pe_editardescripcionpedidos'] = 0;
+            $_SESSION['pe_editardescripcionpresupuestos'] = 0;
         }
 
     } catch (Exception $e) {
@@ -165,11 +194,9 @@ function renderMenuItem($item)
         <span class="status-date"><i class="fa-solid fa-calendar-day me-1"></i> <?= date('d/m/Y') ?></span>
     </div>
     <div class="status-company" title="Empresa activa: <?= htmlspecialchars($empresaRazon) ?>">
-        <?php if ($empresaLogoUri): ?>
-            <img src="<?= htmlspecialchars($empresaLogoUri) ?>" alt="Logo de <?= htmlspecialchars($empresaRazon) ?>">
-        <?php else: ?>
-            <span class="status-company-placeholder"><i class="fa-solid fa-building"></i></span>
-        <?php endif; ?>
+        <img id="status-company-logo" src="<?= htmlspecialchars((string) $empresaLogoUri) ?>" alt="Logo de <?= htmlspecialchars($empresaRazon) ?>"
+            data-default="<?= htmlspecialchars((string) $empresaLogoDefaultUri) ?>"<?= $empresaLogoUri ? '' : ' class="d-none"' ?>>
+        <span id="status-company-placeholder" class="status-company-placeholder<?= $empresaLogoUri ? ' d-none' : '' ?>"><i class="fa-solid fa-building"></i></span>
         <span class="status-company-copy">
             <strong><?= htmlspecialchars($empresaRazon) ?></strong>
             <?php if ($empresaSucursal && strcasecmp($empresaSucursal, $empresaRazon) !== 0): ?>
@@ -371,6 +398,17 @@ function renderMenuItem($item)
             }
         }
     }
+    // Logo del depósito de trabajo; sin logo propio vuelve al de configuración.
+    function actualizarLogoEncabezado(logoDeposito) {
+        const img = document.getElementById('status-company-logo');
+        const ph = document.getElementById('status-company-placeholder');
+        if (!img) return;
+        const src = logoDeposito || img.dataset.default || '';
+        if (src) img.src = src;
+        img.classList.toggle('d-none', !src);
+        if (ph) ph.classList.toggle('d-none', !!src);
+    }
+
     async function checkDepositoStatus() {
         try {
             const resp = await fetch('api_depositos.php?action=mi_estado', {
@@ -385,6 +423,7 @@ function renderMenuItem($item)
             }
             wrap.classList.remove('d-none');
             window.__depositoEstado = res;
+            actualizarLogoEncabezado(res.logo);
 
             if (res.requiere_seleccion) {
                 el.className = 'ms-1 badge bg-danger text-white fw-bold border border-danger shadow-sm';
@@ -505,7 +544,10 @@ function renderMenuItem($item)
     async function cargarAyudaData() {
         if (__ayudaData) return __ayudaData;
         try {
-            const resp = await fetch('ayuda_sistema.json', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            // Cache-buster atado a la fecha de modificación real del archivo: evita que
+            // el navegador siga sirviendo una versión vieja de la ayuda desde su caché
+            // HTTP después de actualizar ayuda_sistema.json.
+            const resp = await fetch('ayuda_sistema.json?v=<?= (int)(@filemtime(__DIR__ . '/ayuda_sistema.json') ?: 0) ?>', { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
             __ayudaData = await resp.json();
         } catch (e) {
             console.error('No se pudo cargar la ayuda del sistema', e);
@@ -545,7 +587,14 @@ function renderMenuItem($item)
         }
         if (Array.isArray(entry.como_se_usa) && entry.como_se_usa.length) {
             html += '<p class="mb-1"><strong>¿Cómo se usa?</strong></p><ol>';
-            entry.como_se_usa.forEach(paso => { html += `<li>${paso}</li>`; });
+            entry.como_se_usa.forEach((paso, i) => {
+                // Capturas opcionales del paso (campo "capturas" de la ficha). Clic: tamaño completo.
+                const caps = (entry.capturas && entry.capturas[String(i)]) || [];
+                const imgs = caps.length ? '<div class="d-flex flex-wrap gap-2 mt-2 mb-3">' + caps.map(c =>
+                    `<a href="${c.src}" target="_blank" rel="noopener" title="Ver en tamaño completo"><img src="${c.src}" alt="${c.alt || ''}" loading="lazy" style="max-width:100%;border:1px solid rgba(0,0,0,.15);border-radius:6px;background:#fff"></a>`
+                ).join('') + '</div>' : '';
+                html += `<li>${paso}${imgs}</li>`;
+            });
             html += '</ol>';
         }
         if (Array.isArray(entry.tips) && entry.tips.length) {

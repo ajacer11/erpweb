@@ -238,7 +238,7 @@ require_once 'check_access.php';
                                    placeholder="Escriba código o descripción..." oninput="promoApp.buscarProd(this.value)">
                             <input type="hidden" id="pm_codigo_prod">
                         </div>
-                        <div id="pm_prod_sugg" class="list-group mt-1" style="position:absolute;z-index:9999;width:calc(100% - 56px);max-height:180px;overflow-y:auto;display:none;"></div>
+                        <div id="pm_prod_sugg" class="list-group mt-1" style="max-height:180px;overflow-y:auto;display:none;"></div>
                         <small class="text-muted" id="pm_prod_desc"></small>
                     </div>
 

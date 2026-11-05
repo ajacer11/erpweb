@@ -197,7 +197,8 @@ require_once 'check_access.php';
                     '</div></div>' +
                     '<hr class="border-secondary border-opacity-25 my-3">' +
                     renderField('Comisiones a Vendedores', 'comisionesvend', data.comisionesvend, accounts, 'Cuenta para el pasivo por comisiones a vendedores (antes se usaba la misma cuenta que Proveedores).') +
-                    renderField('Cheques Rechazados a Cobrar', 'chequesrechazados', data.chequesrechazados, accounts, 'Cuenta puente para cheques de clientes rechazados (rebotados), separada de Deudores por Ventas.')
+                    renderField('Cheques Rechazados a Cobrar', 'chequesrechazados', data.chequesrechazados, accounts, 'Cuenta puente para cheques de clientes rechazados (rebotados), separada de Deudores por Ventas.') +
+                    ('comisionestarjetas' in data ? renderField('Aranceles y Comisiones de Tarjetas', 'comisionestarjetas', data.comisionestarjetas, accounts, 'Gasto por aranceles, comisiones y otros descuentos de las liquidaciones de tarjeta (Fondos > Tarjetas y Cupones). El IVA de los aranceles va a IVA Compras y las retenciones a las cuentas de retenciones de arriba.') : '')
                 );
 
                 // Sección Ajustes

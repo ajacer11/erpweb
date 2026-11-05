@@ -7,6 +7,7 @@ require_once 'check_api_access.php';
 require_once 'fiscal_imputacion_helpers.php';
 require_once 'contabilidad_cuentas_helpers.php';
 require_once 'permisos_helpers.php';
+require_once 'tarjetas_helpers.php';
 
 $action = $_GET['action'] ?? '';
 $usuario = $_SESSION['usuario_nombre'] ?? 'SISTEMA';
@@ -58,7 +59,7 @@ try {
                     ORDER BY medio ASC";
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$idcajaabierta, $idcajaabierta]);
-            echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
+            echo json_encode(['success' => true, 'data' => $stmt->fetchAll(), 'tarjetas' => tarjetasHabilitadas($pdo)]);
             exit;
 
         case 'get_medios_pago':
@@ -117,7 +118,7 @@ try {
                     END AS tipo_label,
                     CONCAT(LPAD(PtoVta, 4, '0'),'-',LPAD(numcomp, 8, '0')) AS num_factura,
                     total,
-                    total - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0) AS pendiente,
+                    COALESCE(importectacte, total) - COALESCE((SELECT SUM(importepagado) FROM cobrosfacturasclientes WHERE idfactura = tickets.id), 0) AS pendiente,
                     DATE_FORMAT(fecha, '%d-%m-%Y') as fecha_f,
                     DATE_FORMAT(vencimiento, '%d-%m-%Y') as vence_f,
                     (tipocomp < 100) as es_fiscal
@@ -264,10 +265,17 @@ try {
             if ($data['medio1']['importe'] > 0) $medios[] = $data['medio1'];
             if ($data['medio2']['importe'] > 0) $medios[] = $data['medio2'];
 
-            foreach ($medios as $m) {
+            foreach ($medios as $nMedio => $m) {
                 $stmtCta = $pdo->prepare("SELECT tipodecuenta, CuentaBancaria, cuentacontable FROM mediosdepago WHERE id = ?");
                 $stmtCta->execute([$m['id']]);
                 $medioInfo = $stmtCta->fetch();
+
+                // Cupón de tarjeta para la liquidación posterior
+                $datosTarjeta = datosTarjetaCobro($pdo, $medioInfo, $m['tarjeta'] ?? null, 'el cobro');
+                if ($datosTarjeta) {
+                    registrarCupon($pdo, $datosTarjeta, (float) $m['importe'], (int) $m['id'], 'pagos', (int) $idPago,
+                        (int) $data['cliente_id'], $esFis, $fecha, $usuario);
+                }
 
                 if ($medioInfo['tipodecuenta'] === 'Caja de Usuarios') {
                     $pdo->prepare("INSERT INTO cajaxusuario (fechamov, horamov, tipomov, debe, haber, usuario, idcaja, idcontrolcaja) VALUES (?, CURTIME(), ?, ?, 0, ?, ?, ?)")
@@ -289,8 +297,8 @@ try {
 
             // 7. GRABACIÓN DE CHEQUES DE TERCEROS
             if (!empty($data['cheques'])) {
-                $sqlChq = "INSERT INTO chequesterceros (cliente, numero, fechaemision, fechavencimiento, importe, banco, tipo, origen, emisor, observaciones, noalaorden, estado, compasoc, tabla) 
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'pagos')";
+                $sqlChq = "INSERT INTO chequesterceros (cliente, numero, fechaemision, fechavencimiento, importe, banco, tipo, origen, emisor, observaciones, noalaorden, estado, compasoc, recibo_origen_id, tabla)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, 'pagos')";
                 $stmtChq = $pdo->prepare($sqlChq);
                 foreach ($data['cheques'] as $c) {
                     $stmtChq->execute([
@@ -305,7 +313,7 @@ try {
                         $c['emisor'],
                         '',
                         $c['nala'] ? 1 : 0,
-                        $idPago
+                        $idPago, $idPago
                     ]);
                 }
             }
@@ -372,100 +380,13 @@ try {
 
         case 'annul':
             $data = json_decode(file_get_contents('php://input'), true);
-            $idRecibo = $data['id'];
-            $fechaAnulacion = $data['annul_date'];
-
-            // VALIDACIÓN CONTABLE PARA ANULACIÓN (Ejercicio y Período, misma regla que save_cobro)
-            $stmtEjerAnul = $pdo->prepare("SELECT id FROM ejercicios WHERE abierto = 1 AND (apertura <= ? AND cierre >= ?) LIMIT 1");
-            $stmtEjerAnul->execute([$fechaAnulacion, $fechaAnulacion]);
-            $ejercicioAnul = (int) $stmtEjerAnul->fetchColumn();
-            if (!$ejercicioAnul)
-                throw new Exception("No hay un ejercicio contable abierto para la fecha de anulación ($fechaAnulacion).");
-
-            $stmtPerAnul = $pdo->prepare("SELECT * FROM ejperidodos WHERE idejercicio = ? LIMIT 1");
-            $stmtPerAnul->execute([$ejercicioAnul]);
-            $rowPerAnul = $stmtPerAnul->fetch(PDO::FETCH_ASSOC);
-            if (!$rowPerAnul)
-                throw new Exception("No se encontró la estructura de períodos para el ejercicio actual.");
-
-            $fechaAnulDT = new DateTime($fechaAnulacion);
-            $mesesDesdeInicioAnul = (((int) $fechaAnulDT->format('Y') - (int) $rowPerAnul['anioinicio']) * 12) + ((int) $fechaAnulDT->format('m') - (int) $rowPerAnul['mesinicio']);
-            $periodoAnul = $mesesDesdeInicioAnul + 1;
-            if ($periodoAnul < 1 || $periodoAnul > (int) $rowPerAnul['cantperiodos'])
-                throw new Exception("La fecha de anulación no pertenece a ningún período válido del ejercicio.");
-            $campoPAnul = "p" . $periodoAnul;
-            if (!isset($rowPerAnul[$campoPAnul]) || (int) $rowPerAnul[$campoPAnul] === 0)
-                throw new Exception("El período contable $periodoAnul está cerrado. No se pueden registrar anulaciones.");
-
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($data['confirmar_imputaciones'])) throw new Exception('Debe confirmar la anulación y sus imputaciones.');
+            require_once 'anulacion_pagos_helpers.php';
             $pdo->beginTransaction();
-
-            $stmtRec = $pdo->prepare("SELECT * FROM pagos WHERE id = ?");
-            $stmtRec->execute([$idRecibo]);
-            $recibo = $stmtRec->fetch();
-            if (!$recibo)
-                throw new Exception("Recibo no encontrado.");
-
-            if (esVendedorRestringido()) {
-                $stmtChkCliAnul = $pdo->prepare("SELECT vendedorid FROM alb_clientes WHERE id = ?");
-                $stmtChkCliAnul->execute([$recibo['cliente']]);
-                if ((int) $stmtChkCliAnul->fetchColumn() !== idVendedorRestringido()) {
-                    throw new Exception("No tiene acceso a anular este recibo.");
-                }
-            }
-
-            $importeEfectivo = 0;
-            $medios_anul = [
-                ['id' => $recibo['mp1'], 'importe' => $recibo['imp1']],
-                ['id' => $recibo['mp2'], 'importe' => $recibo['imp2']]
-            ];
-            foreach ($medios_anul as $m) {
-                if ($m['id'] > 0) {
-                    $stmtM = $pdo->prepare("SELECT tipodecuenta FROM mediosdepago WHERE id = ?");
-                    $stmtM->execute([$m['id']]);
-                    if ($stmtM->fetchColumn() === 'Caja de Usuarios')
-                        $importeEfectivo += $m['importe'];
-                }
-            }
-
-            if ($importeEfectivo > 0 && !$idcajaabierta)
-                throw new Exception("El recibo contiene efectivo. Debe tener caja abierta.");
-
-            $pdo->prepare("UPDATE pagos SET estado = 1000 WHERE id = ?")->execute([$idRecibo]);
-            $pdo->prepare("UPDATE ccclientes SET haber = 0 WHERE compasoc = ? AND tabla = 'pagos'")->execute([$idRecibo]);
-
-            $stmtFac = $pdo->prepare("SELECT idfactura FROM cobrosfacturasclientes WHERE idpago = ?");
-            $stmtFac->execute([$idRecibo]);
-            foreach ($stmtFac->fetchAll() as $f) {
-                $pdo->prepare("UPDATE tickets SET pagada = 0 WHERE id = ?")->execute([$f['idfactura']]);
-            }
-
-            if ($importeEfectivo > 0) {
-                $pdo->prepare("INSERT INTO cajaxusuario (usuario, debe, haber, idcaja, idcontrolcaja, fechamov, tipomov, horamov) VALUES (?, 0, ?, ?, ?, ?, ?, ?)")
-                    ->execute([$usuario, $importeEfectivo, $idcajaabierta, $idcontrolcaja, $fechaAnulacion, "Anulación Recibo $idRecibo", date('H:i')]);
-                $pdo->prepare("UPDATE cajas SET saldo = saldo - ? WHERE id = ?")->execute([$importeEfectivo, $idcajaabierta]);
-            }
-
-            // Reversar el asiento contable del cobro: nunca se edita/borra el historial, se postea
-            // un asiento espejo (debe<->haber invertidos) con el mismo compasoc/tabla, para que el
-            // neto de este cobro en el libro diario quede en cero.
-            $stmtLineasOrig = $pdo->prepare("SELECT cuenta, debe, haber, fiscal FROM librodiario WHERE compasoc = ? AND tabla = 'pagos'");
-            $stmtLineasOrig->execute([$idRecibo]);
-            $lineasOriginales = $stmtLineasOrig->fetchAll(PDO::FETCH_ASSOC);
-
-            if (!empty($lineasOriginales)) {
-                $stmtNumAnul = $pdo->prepare("SELECT MAX(numasiento) FROM librodiario WHERE idejercicio = ? FOR UPDATE");
-                $stmtNumAnul->execute([$ejercicioAnul]);
-                $numAsientoAnul = ((int) $stmtNumAnul->fetchColumn()) + 1;
-                $detalleAnul = "Anulación Cobro #$idRecibo";
-
-                foreach ($lineasOriginales as $l) {
-                    grabarLineaAsiento($pdo, $numAsientoAnul, $fechaAnulacion, $l['cuenta'], (float) $l['haber'], (float) $l['debe'], $idRecibo, "pagos", $l['fiscal'], $usuario, $detalleAnul, $ejercicioAnul, $periodoAnul);
-                }
-            }
-
+            anularPago($pdo, 'cliente', (int)($data['id'] ?? 0), $data['annul_date'] ?? date('Y-m-d'), $_SESSION['usuario_nombre']);
             $pdo->commit();
-            echo json_encode(['success' => true, 'message' => 'Anulado correctamente']);
-            exit;
+            echo json_encode(['success' => true, 'message' => 'Recibo e imputaciones anulados.']);
+            break;
     }
 } catch (Exception $e) {
     if (isset($pdo) && $pdo->inTransaction())

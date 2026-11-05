@@ -12,6 +12,9 @@
 require_once 'check_api_access.php';
 require_once 'contabilidad_cuentas_helpers.php';
 require_once 'stock_deposito_helpers.php';
+require_once 'tarjetas_helpers.php';
+require_once 'retper_helpers.php';
+require_once 'libro_iva_helpers.php';
     require_once 'arca_certificados.php';
 
     // ---------------------------------------------------------------------------
@@ -30,7 +33,7 @@ require_once 'stock_deposito_helpers.php';
         if ($cajaIdDB) {
             $idcajaabierta = $cajaIdDB;
             // Recuperar el ID de control (auditoría) asociado
-            $stmtCtrl = $pdo->prepare("SELECT id FROM controlcajas WHERE idcaja = ? AND usuario = ? ORDER BY id DESC LIMIT 1");
+            $stmtCtrl = $pdo->prepare("SELECT id FROM controlcajas WHERE idcaja = ? AND usuario = ? AND (cerradael IS NULL OR cerradael = '0000-00-00 00:00:00') ORDER BY id DESC LIMIT 1");
             $stmtCtrl->execute([$idcajaabierta, $usuario_nombre]);
             $idcontrolcaja = $stmtCtrl->fetchColumn() ?: 0;
         }
@@ -44,15 +47,19 @@ require_once 'stock_deposito_helpers.php';
     {
         $tktsiniva = ((int) ($config['ticketsiniva'] ?? 0) === 1 && ($tipo_comp === 100 || $tipo_comp === 101));
         $poriva = $tktsiniva ? 0 : (float) ($art['poriva'] ?? $art['Poriva'] ?? 0);
-        $netoU = round((float) $it['precio_base'], 2);
+        // Neto unitario de lista con 3 decimales (igual que newfactura.js / facturar.js, r3): redondearlo a 2
+        // antes de sumar el IVA cobraba $4.000,01 un precio de lista de $4.000.
+        $netoU = round((float) $it['precio_base'], 3);
         $iiU = round((float) ($art['ImpInt'] ?? $art['impint'] ?? 0), 2);
         $finalOriginalU = round($netoU * (1 + $poriva / 100) + $iiU, 2);
         $descU = round(((float) $it['pordesc'] * $finalOriginalU) / 100, 2);
         $baseNetoIvaU = round($netoU * (1 + $poriva / 100), 2);
 
         if ($descU <= $baseNetoIvaU) {
-            $netoEfU = round(($baseNetoIvaU - $descU) / (1 + $poriva / 100), 2);
-            $ivaEfU = round($netoEfU * ($poriva / 100), 2);
+            $brutoU = round($baseNetoIvaU - $descU, 2);
+            $netoEfU = round($brutoU / (1 + $poriva / 100), 2);
+            // El IVA es la diferencia: neto + IVA = precio final exacto (con IVA 0 da 0).
+            $ivaEfU = round($brutoU - $netoEfU, 2);
             $iiEfU = $iiU;
         } else {
             $netoEfU = 0;
@@ -77,31 +84,145 @@ require_once 'stock_deposito_helpers.php';
     // minúsculas en nombres de función, así que esta copia local duplicaba el
     // nombre y provocaba "Cannot redeclare grabarLineaAsiento()" al facturar.
 
-    /**
-     * Consulta el próximo número a ARCA (Sincronización Externa)
-     */
-    function obtenerProximoComprobanteARCA($cuit, $pv, $tipo, $modo)
+    function mapTipoComprobanteArca($t)
     {
-        $ch = curl_init("https://erp.westit.com.ar/ARCA/fe_prox_comprobante.php");
-        $payload = [
-            'emisorCuit' => $cuit,
-            'puntoVenta' => $pv,
-            'cbteTipo' => $tipo,
-            'produccion' => $modo
-        ];
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => http_build_query($payload),
-            CURLOPT_TIMEOUT => 12,
-            CURLOPT_SSL_VERIFYPEER => false
-        ]);
-        $resp = curl_exec($ch);
-        $data = json_decode($resp, true);
-        if ($data && isset($data['resultado']) && $data['resultado'] === 'A') {
-            return (int) $data['proximoComprobante'];
+        if (in_array($t, [1, 6, 11]))
+            return "F";
+        if (in_array($t, [2, 7, 12]))
+            return "D";
+        if (in_array($t, [3, 8, 13]))
+            return "C";
+        throw new Exception("Tipo inválido");
+    }
+    function mapCondicionArca($c)
+    {
+        return match ($c) { "Responsable Inscripto" => 1, "Consumidor Final" => 5, "Exento" => 4, "Monotributo" => 6, default => 5};
+    }
+
+    // Carpeta de auditoría ARCA de la empresa emisora actual (ARCA/<cuit>/), separada por
+    // cliente para no mezclar el rastro de auditoría de una empresa con el de otra.
+    function carpetaArcaCliente()
+    {
+        $cuit = preg_replace('/[^0-9]/', '', (string) ($_SESSION['cliente_cuit'] ?? ''));
+        if ($cuit === '')
+            $cuit = 'sin_cuit';
+        $dir = __DIR__ . "/ARCA/{$cuit}";
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
         }
-        return null;
+        return $dir;
+    }
+
+    // Log de texto de auditoría ARCA, uno por cliente (antes era un único log_arca_audit.txt
+    // compartido por todas las empresas del sistema, lo que mezclaba el rastro de todas).
+    function logArcaCliente($linea)
+    {
+        @file_put_contents(carpetaArcaCliente() . '/log_arca_audit.txt', date('Y-m-d H:i:s') . ' ' . $linea . "\n", FILE_APPEND);
+    }
+
+    // El QR que devuelve el motor ARCA (campos qr/qr_base64/qrData) es una imagen SVG en
+    // base64 embebida en la respuesta — pesa mucho más que el resto del JSON y no se usa
+    // para nada acá (imprimir_ticket.php genera su propio QR al momento de imprimir, a
+    // partir del CAE ya grabado). Se descarta antes de guardar el archivo de auditoría.
+    function limpiarQrParaAuditoria($jsonStr)
+    {
+        $data = json_decode($jsonStr, true);
+        if (is_array($data)) {
+            unset($data['qr'], $data['qr_base64'], $data['qr_mime'], $data['qrData']);
+            return json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+        }
+        return $jsonStr;
+    }
+
+    // Guarda lo enviado/recibido con el intermediario ARCA, un archivo por comprobante
+    // y por empresa emisora (ARCA/<cuit del emisor>/).
+    function guardarAuditoriaArca($sufijo, $contenido, $tipo_comp, $pv_emisor, $identificador)
+    {
+        $nombre = "{$tipo_comp}-{$pv_emisor}-{$identificador}_{$sufijo}.json";
+        @file_put_contents(carpetaArcaCliente() . "/{$nombre}", $contenido);
+    }
+
+    // Cola de emergencia: cualquier comprobante fiscal que no llegue a grabarse en
+    // tickets/Lineadeventa queda registrado acá (con CAE o sin él) para no perder
+    // nunca el rastro de qué se intentó vender y por qué falló. Abre su propia
+    // transacción, independiente de la que ya se haya hecho rollback en el llamador.
+    // Devuelve el id de auxticket, o null si ni siquiera esto se pudo grabar (en ese
+    // caso el log de texto de logArcaCliente queda como último recurso).
+    function guardarEnAuxiliares($pdo, $estado, $tipo_comp, $pv_emisor, $numcomp, $cae, $vtocae,
+                                  $input, $processedItems, $acum, $total, $usuario_nombre, $motivo)
+    {
+        try {
+            $pdo->beginTransaction();
+            $stmt = $pdo->prepare("INSERT INTO auxticket
+                (estado, tipocomp, PtoVta, numcomp, cae, fechacae, cliente, subtotal, subtotal10,
+                 subtotal0, ii, iva, iva10, total, fecha, usuario, vendedor, mpago1, mpago1imp,
+                 mpago2, mpago2imp, motivo_falla, payload_json)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+            $stmt->execute([
+                $estado,
+                $tipo_comp,
+                $pv_emisor,
+                $numcomp ?: null,
+                $cae !== '' ? $cae : null,
+                $vtocae !== '' ? $vtocae : null,
+                $input['cliente_id'] ?? null,
+                $acum['sub21'] ?? 0,
+                $acum['sub10'] ?? 0,
+                $acum['sub0'] ?? 0,
+                $acum['ii'] ?? 0,
+                $acum['iva21'] ?? 0,
+                $acum['iva10'] ?? 0,
+                $total,
+                $input['fecha'] ?? date('Y-m-d'),
+                $usuario_nombre,
+                $input['vendedor_id'] ?? null,
+                $input['mp1'] ?? '',
+                $input['imp1'] ?? 0,
+                $input['mp2'] ?? '',
+                $input['imp2'] ?? 0,
+                $motivo,
+                json_encode($input, JSON_UNESCAPED_UNICODE)
+            ]);
+            $idAux = (int) $pdo->lastInsertId();
+
+            $stmtL = $pdo->prepare("INSERT INTO auxlineadeventa
+                (id_auxticket, pdv, Tipocomp, numcomp, cliente, fecha, prodcod, proddes, cant,
+                 siniva, iva, ii, total, rubro, alicuota, costo, usuario, vendedor)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+            foreach ($processedItems as $p) {
+                $it = $p['input'];
+                $art = $p['art'];
+                $res = $p['calc'];
+                $stmtL->execute([
+                    $idAux,
+                    $pv_emisor,
+                    $tipo_comp,
+                    $numcomp ?: null,
+                    $input['cliente_id'] ?? null,
+                    $input['fecha'] ?? date('Y-m-d'),
+                    $it['codigo'],
+                    $it['descripcion'],
+                    $it['cantidad'],
+                    $res['neto'],
+                    $res['iva'],
+                    $res['ii'],
+                    $res['total'],
+                    $art['rubro'] ?? '',
+                    $res['alicuota'],
+                    round(($art['preciocosto'] ?? 0) * $it['cantidad'], 2),
+                    $usuario_nombre,
+                    $input['vendedor_id'] ?? null
+                ]);
+            }
+            $pdo->commit();
+            logArcaCliente("GUARDADO EN COLA AUXILIAR auxticket #{$idAux} (estado={$estado}) | {$pv_emisor}-" . ($numcomp ?: '?') . " (tipo {$tipo_comp}) | CAE " . ($cae ?: '(sin CAE)') . " | motivo: {$motivo}");
+            return $idAux;
+        } catch (Exception $ex) {
+            if ($pdo->inTransaction())
+                $pdo->rollBack();
+            logArcaCliente("ERROR CRÍTICO: no se pudo grabar ni en tickets ni en la cola auxiliar | {$pv_emisor}-" . ($numcomp ?: '?') . " (tipo {$tipo_comp}) | CAE " . ($cae ?: '(sin CAE)') . " | vto {$vtocae} | motivo original: {$motivo} | error auxiliar: " . $ex->getMessage());
+            return null;
+        }
     }
 
     try {
@@ -148,21 +269,28 @@ require_once 'stock_deposito_helpers.php';
             $associated['fecha'] = substr((string) $ticketAsoc['fecha'], 0, 10);
         }
 
+        // Sin multidepósito se conserva el comportamiento histórico. Con la opción
+        // activa, el depósito de trabajo define el punto de venta emisor.
+        $idDepositoVenta = null;
         $pv_emisor = (int) $_SESSION['pdv'];
+        if (multidepositoHabilitado($pdo)) {
+            $emisor = datosEmisorFacturacion($pdo, $usuario_nombre);
+            if (!$emisor['completo']) {
+                throw new Exception('Complete los datos de la empresa o del depósito antes de facturar: ' . implode(', ', $emisor['faltantes']) . '.');
+            }
+            $idDepositoVenta = (int) $emisor['id_deposito'];
+            $pv_emisor = (int) $emisor['pdv'];
+        }
 
-        // --- 1. SINCRONIZACIÓN EXTERNA (PRE-TRANSACCIÓN) ---
+        // El número de comprobante YA NO se reserva/adivina acá. Para tipos fiscales se pide
+        // a ARCA antes de grabar nada (ver más abajo, justo antes del bucle de grabado): el
+        // numcomp que se usa para Lineadeventa/tickets/etc. es directamente el que ARCA
+        // autorizó, así no hace falta reconciliar/renumerar nada después del INSERT. Para
+        // Ticket/Ticket de Crédito (100/101, no fiscales) sigue siendo una reserva local simple.
         $numcomp = 0;
-        if (!in_array($tipo_comp, [100, 101])) {
-            $numcomp = obtenerProximoComprobanteARCA($_SESSION['cliente_cuit'], $pv_emisor, $tipo_comp, $_SESSION['modo']);
-        }
-
-        // Si ARCA falla o es interno, usamos el contador local
-        if (!$numcomp) {
-            // CORRECCIÓN DB: PtoVta
-            $stmtNum = $pdo->prepare("SELECT COALESCE(MAX(numcomp), 0) + 1 FROM tickets WHERE PtoVta = ? AND tipocomp = ?");
-            $stmtNum->execute([$pv_emisor, $tipo_comp]);
-            $numcomp = (int) $stmtNum->fetchColumn();
-        }
+        $cae = '';
+        $vtocae = '';
+        $caeError = null;
 
         // --- 2. CUENTAS PREDETERMINADAS ---
         $stmtPred = $pdo->query("SELECT * FROM cuentaspredeterminadas WHERE id = 1 LIMIT 1");
@@ -235,6 +363,15 @@ require_once 'stock_deposito_helpers.php';
         }
 
         // --- 5. RECÁLCULO Y LOCK DE PRODUCTOS ---
+        // Sin este chequeo, un $input['items'] vacío (o ausente) no rompe nada: el foreach de
+        // abajo simplemente no itera, y el resto del flujo sigue de largo y graba un ticket
+        // cabecera sin una sola fila en Lineadeventa (el bug que motivó este chequeo). La
+        // validación del navegador (cart.length === 0) no protege este endpoint si se lo
+        // invoca directo.
+        if (empty($input['items']) || !is_array($input['items'])) {
+            throw new Exception("No se puede facturar un comprobante sin productos.");
+        }
+
         $processedItems = [];
         $acum = ['sub21' => 0, 'sub10' => 0, 'sub0' => 0, 'iva21' => 0, 'iva10' => 0, 'ii' => 0, 'total_items' => 0];
 
@@ -246,6 +383,7 @@ require_once 'stock_deposito_helpers.php';
                     'rubro' => 'Otros',
                     'marca' => '1',
                     'preciocosto' => 0,
+                    'ivacosto' => 0,
                     'stock' => 0,
                     'controlastock' => 0,
                     'poriva' => (float) $it['poriva'],
@@ -264,6 +402,11 @@ require_once 'stock_deposito_helpers.php';
                 $art['poriva'] = (float) ($art['poriva'] ?? $art['Poriva'] ?? 0);
                 $art['ImpInt'] = (float) ($art['ImpInt'] ?? $art['impint'] ?? 0);
                 $art['preciocosto'] = (float) ($art['preciocosto'] ?? $art['Preciocosto'] ?? 0);
+                // IVA del costo unitario. En alb_productos vale
+                // preciocosto = sinivacosto + ivacosto + impint, así que es el
+                // crédito fiscal de la compra y no puede quedar en cero: el
+                // reporte de ventas lo resta del costo para calcular la utilidad.
+                $art['ivacosto'] = (float) ($art['ivacosto'] ?? $art['Ivacosto'] ?? 0);
                 $art['stock'] = (float) ($art['stock'] ?? $art['Stock'] ?? 0);
 
                 $art['cuentaventa'] = resolverCuentaContable($pdo, $art['cuentaventas'] ?? $art['cuentaventa'] ?? null, $cp['ventas'], "ventas del producto {$art['codigo']}");
@@ -293,8 +436,37 @@ require_once 'stock_deposito_helpers.php';
         $recaG = (float) $input['globalAdj']['reca'];
         $total_final_server = round($acum['total_items'] - $descG + $recaG, 2);
 
-        if (abs($total_final_server - (float) $input['total_comprobante']) > 0.01)
-            throw new Exception("Error de integridad en totales.");
+        // --- PERCEPCIONES (agente de percepción, retper_helpers.php) ---
+        // Solo comprobantes fiscales y solo si hay regímenes de percepción habilitados. La base
+        // es el neto/IVA que se declara a ARCA (mismo prorrateo del ajuste global). Se suman al
+        // total y viajan a ARCA como Tributos en el mismo pedido de CAE.
+        $percepciones = [];
+        if (!in_array($tipo_comp, [100, 101], true)) {
+            $declaradoPerc = ivaVentaComoArca(['subtotal' => $acum['sub21'], 'iva' => $acum['iva21'], 'subtotal10' => $acum['sub10'],
+                                               'iva10' => $acum['iva10'], 'subtotal0' => $acum['sub0'], 'recargo' => $recaG, 'descuento' => $descG]);
+            [$netoPerc, $ivaPerc] = percepcionBaseVenta($declaradoPerc, $tipo_comp);
+            $percepciones = calcularPercepcionesVenta($pdo, (int) $input['cliente_id'], $tipo_comp, $netoPerc, $ivaPerc, $total_final_server, $input['fecha']);
+            foreach ($percepciones as $pTmp) retperCuenta($pdo, $pTmp); // cuenta contable configurada, antes de pedir CAE
+        }
+        $totalPercepciones = round(array_sum(array_column($percepciones, 'importe')), 2);
+        $total_final_server = round($total_final_server + $totalPercepciones, 2);
+
+        if (abs($total_final_server - (float) $input['total_comprobante']) > 0.01) {
+            throw new Exception($totalPercepciones > 0
+                ? "Las percepciones del comprobante cambiaron (\$" . number_format($totalPercepciones, 2, ',', '.') . "). Cierre el cobro y vuelva a abrirlo para recalcular el total."
+                : "El total de la pantalla no coincide con el del sistema. Recargue la página (F5) y vuelva a cargar la venta: no se grabó nada.");
+        }
+
+        // Esta validación debe vivir también acá (no solo en el front y en
+        // api_facturacion_validaciones_previas.php): este endpoint se puede invocar
+        // directo. Un imp2 negativo compensado con un imp1 inflado pasaría la
+        // igualdad de suma=total de más abajo, pero en la sección de movimientos de
+        // fondos el importe negativo se salteaba el movimiento de caja/banco
+        // (if ($pg['imp'] > 0)), dejando el ticket "pagado" sin que el ingreso real
+        // quede reflejado en ese medio.
+        if ((float) $input['imp1'] < 0 || (float) ($input['imp2'] ?? 0) < 0) {
+            throw new Exception("Los importes de los medios de pago no pueden ser negativos.");
+        }
 
         // Los medios de pago deben cubrir exactamente el total del comprobante, o el asiento
         // (pata de pago vs. pata de ventas/IVA) queda desbalanceado sin que nada lo detecte.
@@ -324,28 +496,210 @@ require_once 'stock_deposito_helpers.php';
         // fijado todavía, esto lanza DepositoNoSeleccionadoException (Exception simple,
         // no PDOException) que se escapa del catch de reintentos de abajo sin
         // consumir ningún intento, y cae directo al catch general del archivo.
-        $idDepositoVenta = null;
-        if (multidepositoHabilitado($pdo)) {
-            $idDepositoVenta = depositoDeTrabajo($pdo, $usuario_nombre);
+        // --- 5.5 CAE (ANTES DE GRABAR NADA) ---
+        // Comprobantes fiscales SOLO se graban si ARCA autoriza. Se pide el CAE ACÁ, antes de
+        // insertar una sola fila, y el numcomp que se usa para Lineadeventa/controlstock/tickets
+        // es directamente el que ARCA aprobó (numeroComprobante) — no una reserva local que haya
+        // que corregir después. Si ARCA no autoriza (rechazo, error de comunicación, timeout),
+        // se corta acá con una excepción: no queda ningún ticket "pendiente de CAE", no se mueve
+        // stock, no hay asiento contable — nada, tal como se grabaría todo mal a partir de un
+        // numcomp que después terminaría sin corresponderse con lo que diga AFIP.
+        if (in_array($tipo_comp, [100, 101], true)) {
+            // Ticket / Ticket de Crédito: no son comprobantes fiscales, no pasan por ARCA.
+            $stmtNum = $pdo->prepare("SELECT COALESCE(MAX(numcomp), 0) + 1 FROM tickets WHERE PtoVta = ? AND tipocomp = ?");
+            $stmtNum->execute([$pv_emisor, $tipo_comp]);
+            $numcomp = (int) $stmtNum->fetchColumn();
+        } else {
+            $tipoArca = mapTipoComprobanteArca($tipo_comp);
+            $condArca = mapCondicionArca($cli['condicionfiscal']);
+            $docTipo = ($condArca == 5) ? 99 : 80;
+            $docNro = ($condArca == 5) ? 0 : (int) $cli['numdoc'];
+            $condiemisor = mapCondicionArca($_SESSION['condicion_iva_empresa']);
+            $ivaArray = [];
+
+            // El descuento/recargo global ($descG/$recaG) ya está incluido en $total_final_server
+            // (lo que se cobra), pero $acum solo trae los importes "crudos" de los ítems. Sin este
+            // prorrateo, el ImpNeto/ImpIVA pedido a ARCA no coincide con el total real del
+            // comprobante apenas hay un descuento o recargo global. Mismo criterio de prorrateo
+            // que el usado para las líneas de "Descuento" en Lineadeventa (paso 7 más abajo).
+            $ajusteG = $recaG - $descG;
+            $subFiscal21 = $acum['sub21'];
+            $ivaFiscal21 = $acum['iva21'];
+            $subFiscal10 = $acum['sub10'];
+            $ivaFiscal10 = $acum['iva10'];
+            $subFiscal0 = $acum['sub0'];
+            if ($ajusteG != 0) {
+                $baseF = $acum['sub21'] + $acum['iva21'] + $acum['sub10'] + $acum['iva10'] + $acum['sub0'];
+                if ($baseF > 0) {
+                    $montoF21 = $ajusteG * (($acum['sub21'] + $acum['iva21']) / $baseF);
+                    $montoF10 = $ajusteG * (($acum['sub10'] + $acum['iva10']) / $baseF);
+                    $montoF0 = $ajusteG * ($acum['sub0'] / $baseF);
+
+                    $netoF21 = round($montoF21 / 1.21, 2);
+                    $ivaFiscal21 += round($montoF21 - $netoF21, 2);
+                    $subFiscal21 += $netoF21;
+
+                    $netoF10 = round($montoF10 / 1.105, 2);
+                    $ivaFiscal10 += round($montoF10 - $netoF10, 2);
+                    $subFiscal10 += $netoF10;
+
+                    $subFiscal0 += round($montoF0, 2);
+                }
+            }
+
+            if ($acum['iva21'] > 0)
+                $ivaArray[] = ["id" => 5, "baseImp" => round($subFiscal21, 2), "importe" => round($ivaFiscal21, 2)];
+            if ($acum['iva10'] > 0)
+                $ivaArray[] = ["id" => 4, "baseImp" => round($subFiscal10, 2), "importe" => round($ivaFiscal10, 2)];
+
+            $payload = [
+                "tipo" => $tipoArca,
+                "emisorCuit" => $_SESSION['cliente_cuit'],
+                "emisorCondicionIva" => $condiemisor,
+                "docTipo" => $docTipo,
+                "docNro" => $docNro,
+                "puntoVenta" => $pv_emisor,
+                "condicionIVA" => $condArca,
+                "importeNeto" => round($subFiscal21 + $subFiscal10 + $subFiscal0, 2),
+                "importeIVA" => round($ivaFiscal21 + $ivaFiscal10, 2),
+                "importeTributo" => round($acum['ii'], 2),
+                "percepciones" => array_map(static fn($p) => [
+                    'id' => $p['codigo_tributo_arca'], 'desc' => $p['nombre'], 'base' => $p['base'],
+                    'alic' => $p['alicuota'], 'importe' => $p['importe']
+                ], $percepciones),
+                "iva" => $ivaArray,
+                "produccion" => $_SESSION['modo']
+            ];
+
+            if (in_array($tipo_comp, [2, 3, 7, 8, 12, 13], true)) {
+                $payload['comprobanteAsociado'] = [
+                    'tipo' => (int) $associated['tipo'],
+                    'puntoVenta' => (int) $associated['pv'],
+                    'numero' => (int) $associated['num'],
+                    'cuit' => (string) $_SESSION['cliente_cuit'],
+                    'fecha' => str_replace('-', '', (string) $associated['fecha'])
+                ];
+            }
+
+            // Identificador provisorio para los archivos de auditoría: todavía no existe un
+            // numcomp (viene recién en la respuesta), así que no se puede nombrar el archivo con
+            // el número real hasta después de la llamada.
+            $idAuditoriaPrevia = 'PRE-' . str_replace('.', '', (string) microtime(true));
+            $logData = "====================================================\nFECHA: " . date('Y-m-d H:i:s') . "\nSOLICITUD PREVIA A GRABAR | PV {$pv_emisor} TIPO {$tipo_comp}\n";
+            $logData .= "PAYLOAD ENVIADO:\n" . json_encode($payload, JSON_PRETTY_PRINT) . "\n";
+            guardarAuditoriaArca('enviado', json_encode($payload, JSON_PRETTY_PRINT), $tipo_comp, $pv_emisor, $idAuditoriaPrevia);
+
+            if ($percepciones) {
+                // El CAE lo pide el servidor de facturación electrónica con su propia copia de
+                // ArcaFunctions.php. Si todavía no sabe declarar percepciones, ARCA autorizaría un
+                // total sin ellas: se pregunta antes y, si no las admite, no se emite nada.
+                $chCap = curl_init("https://erp.westit.com.ar/ARCA/new_fe_cae_api.php?capacidades=1");
+                curl_setopt_array($chCap, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 15, CURLOPT_SSL_VERIFYPEER => false, CURLOPT_USERAGENT => 'SistemaERP/CAE']);
+                $capRaw = curl_exec($chCap);
+                curl_close($chCap);
+                $cap = json_decode(preg_replace('/^\xEF\xBB\xBF/', '', trim((string) $capRaw)), true);
+                if (empty($cap['percepciones'])) {
+                    throw new Exception('El servidor de facturación electrónica todavía no admite percepciones (falta actualizar ARCA/ArcaFunctions.php y ARCA/new_fe_cae_api.php). No se emitió el comprobante.');
+                }
+            }
+
+            $ch = curl_init("https://erp.westit.com.ar/ARCA/new_fe_cae_api.php");
+            curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_FOLLOWLOCATION => true, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => json_encode($payload), CURLOPT_TIMEOUT => 45, CURLOPT_SSL_VERIFYPEER => false, CURLOPT_ENCODING => '', CURLOPT_USERAGENT => 'SistemaERP/CAE']);
+
+            $resp = curl_exec($ch);
+            $curlError = curl_error($ch);
+            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $contentType = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+            curl_close($ch);
+            // Sin QR: el campo qr/qr_base64 que devuelve el motor ARCA es una imagen SVG en
+            // base64 que pesa mucho más que el resto de la respuesta y no se usa para nada acá.
+            $logData .= "RESPUESTA RAW API:\n" . ($resp ? limpiarQrParaAuditoria($resp) : "SIN RESPUESTA") . "\n";
+            $logData .= "====================================================\n\n";
+            file_put_contents(carpetaArcaCliente() . '/log_arca_audit.txt', $logData, FILE_APPEND);
+
+            if ($resp === false) {
+                throw new Exception('No se pudo comunicar con ARCA: ' . $curlError . '. No se grabó ningún dato.');
+            }
+            $cleanResp = preg_replace('/^\xEF\xBB\xBF/', '', trim($resp));
+            $afip = json_decode($cleanResp, true);
+            if (!is_array($afip)) {
+                $firstJson = strpos($cleanResp, '{');
+                $lastJson = strrpos($cleanResp, '}');
+                if ($firstJson !== false && $lastJson !== false && $lastJson >= $firstJson) {
+                    $afip = json_decode(substr($cleanResp, $firstJson, $lastJson - $firstJson + 1), true);
+                }
+            }
+            if (!is_array($afip)) {
+                $preview = preg_replace('/\s+/', ' ', trim(strip_tags($cleanResp)));
+                if (strlen($preview) > 180) $preview = substr($preview, 0, 180) . '...';
+                throw new Exception("Respuesta inválida del servicio ARCA (HTTP {$httpCode}, {$contentType})" . ($preview !== '' ? ": {$preview}" : ': respuesta vacía.') . ' No se grabó ningún dato.');
+            }
+
+            if (!isset($afip['resultado']) || $afip['resultado'] !== 'A' || empty($afip['cae']) || empty($afip['numeroComprobante'])) {
+                $detalle = $afip['error'] ?? implode(' - ', $afip['observaciones'] ?? []) ?: 'ARCA rechazó la solicitud sin detalle.';
+                throw new Exception("ARCA no autorizó el comprobante: {$detalle}. No se grabó ningún dato.");
+            }
+
+            $numcomp = (int) $afip['numeroComprobante'];
+            $cae = (string) $afip['cae'];
+            $vtocaeRaw = (string) ($afip['vencimiento'] ?? '');
+            if (!empty($vtocaeRaw)) {
+                $cleanVto = preg_replace('/[^0-9]/', '', $vtocaeRaw);
+                if (strlen($cleanVto) === 8) {
+                    $vtocae = $cleanVto;
+                } else {
+                    $dt = DateTime::createFromFormat('d-m-Y', $vtocaeRaw);
+                    if ($dt instanceof DateTime)
+                        $vtocae = $dt->format('Ymd');
+                }
+            }
+
+            guardarAuditoriaArca('recibido', limpiarQrParaAuditoria($cleanResp), $tipo_comp, $pv_emisor, $numcomp);
+            logArcaCliente("CAE AUTORIZADO ANTES DE GRABAR | {$pv_emisor}-{$numcomp} (tipo {$tipo_comp}) | CAE {$cae} | USUARIO {$usuario_nombre}");
         }
 
         // --- 6. BUCLE DE GRABADO (HASTA 3 INTENTOS POR CONCURRENCIA) ---
         $idTicket = 0;
         $successGrabado = false;
+        // IDs propios de las filas de Lineadeventa y promociones_ventas grabadas para este
+        // comprobante: Lineadeventa para lvdesde/lvhasta en la cabecera del ticket,
+        // promociones_ventas porque su idticket real recién se conoce después de insertar
+        // el ticket (ver más abajo).
+        $promoVentaIds = [];
+        $lineaVentaIds = [];
         $maxIntentos = 3;
 
         for ($intento = 1; $intento <= $maxIntentos; $intento++) {
             try {
+                // Un intento anterior pudo haber quedado a mitad de camino y hacer
+                // rollback: los arrays de IDs no se revierten solos, hay que vaciarlos.
+                $promoVentaIds = [];
+                $lineaVentaIds = [];
+
                 $pdo->beginTransaction();
 
                 // Bloqueo de fila para el contador específico (CORRECCIÓN DB: PtoVta)
                 $pdo->prepare("SELECT id FROM tickets WHERE PtoVta = ? AND tipocomp = ? ORDER BY id DESC LIMIT 1 FOR UPDATE")->execute([$pv_emisor, $tipo_comp]);
 
-                $esNota = in_array($tipo_comp, [2, 3, 7, 8, 12, 13, 101]);
+                // Solo las notas de CRÉDITO (3/8/13 y ticket de crédito 101) invierten la
+                // operación: reingresan stock, acreditan la cuenta corriente, son egreso de
+                // caja y revierten el asiento. Las notas de DÉBITO (2/7/12) son un cargo
+                // adicional al cliente y se graban igual que una factura.
+                $esNota = in_array($tipo_comp, [3, 8, 13, 101]);
                 $esAdmin = isset($input['es_admin']) && $input['es_admin'] === true;
 
-                $stmtInsertLin = $pdo->prepare("INSERT INTO Lineadeventa (lista, pdv, Tipocomp, numcomp, cliente, fecha, prodcod, proddes, cant, 
-                siniva, iva, ii, total, rubro, alicuota, mpago1, mpago2, mpago22, costo, usuario, marca, totaldescuento, sinremitir, vendedor, unitariofinallista) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                // Solo los tickets internos (100) y el ticket de crédito (101) son
+                // no fiscales; el resto son comprobantes de ARCA. Es el mismo
+                // criterio que usa api_comprobantes_emitidos para separarlos.
+                $esFiscal = ($tipo_comp == 100 || $tipo_comp == 101) ? 0 : 1;
+
+                // fiscal e ivacosto faltaban en este INSERT y las dos columnas tienen
+                // DEFAULT 0, así que toda venta quedaba grabada como no fiscal y sin
+                // IVA de compra. Con ivacosto en cero el reporte de ventas calcula
+                // (Total - IVA) - (Costo - IVA compra) restando el costo con IVA
+                // incluido, y la utilidad sale más baja de lo que es.
+                $stmtInsertLin = $pdo->prepare("INSERT INTO Lineadeventa (lista, pdv, Tipocomp, numcomp, cliente, fecha, prodcod, proddes, cant,
+                siniva, iva, ii, total, rubro, alicuota, mpago1, mpago2, mpago22, costo, ivacosto, usuario, marca, totaldescuento, sinremitir, vendedor, unitariofinallista, fiscal) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                 foreach ($processedItems as $p) {
                     $it = $p['input'];
                     $art = $p['art'];
@@ -370,17 +724,17 @@ require_once 'stock_deposito_helpers.php';
                         $input['mp2'],
                         $tipo_comp,
                         round($art['preciocosto'] * $it['cantidad'], 2),
+                        round(((float) ($art['ivacosto'] ?? 0)) * $it['cantidad'], 2),
                         $_SESSION['usuario_nombre'],
                         $art['Marca'] ?? 1,
                         round($res['descU'] * $it['cantidad'], 2),
                         ($esAdmin ? $it['cantidad'] : 0),
                         $input['vendedor_id'],
-                        $res['finalOriginalU']
+                        $res['finalOriginalU'],
+                        $esFiscal
                     ]);
-                    $fiscalidad = 1;
-                    if ($tipo_comp == 100 || $tipo_comp == 101) {
-                        $fiscalidad = 0;
-                    }
+                    $lineaVentaIds[] = (int) $pdo->lastInsertId();
+                    $fiscalidad = $esFiscal;
                     if ($it['codigo'] !== 'LM' && (int) ($art['controlastock'] ?? $art['Controlastock'] ?? 0) === 1) {
                         $stkI = (float) $art['stock'];
                         $stkF = $esNota ? ($stkI + $it['cantidad']) : ($stkI - $it['cantidad']);
@@ -425,6 +779,7 @@ require_once 'stock_deposito_helpers.php';
                             $input['fecha'],
                             $_SESSION['usuario_nombre']
                         ]);
+                        $promoVentaIds[] = (int) $pdo->lastInsertId();
                     }
                 }
 
@@ -438,17 +793,26 @@ require_once 'stock_deposito_helpers.php';
                                 continue;
                             $netoD = round($d['monto'] / (1 + $d['ali'] / 100), 2);
                             $ivaD = round($d['monto'] - $netoD, 2);
-                            $pdo->prepare("INSERT INTO Lineadeventa (lista, pdv, Tipocomp, numcomp, cliente, fecha, prodcod, proddes, cant, siniva, iva, total, rubro, alicuota, usuario) VALUES (1, ?, ?, ?, ?, ?, 'DESC', 'Descuento', 1, ?, ?, ?, 'Descuentos', ?, ?)")
-                                ->execute([$pv_emisor, $tipo_comp, $numcomp, $input['cliente_id'], $input['fecha'], $netoD * -1, $ivaD * -1, $d['monto'] * -1, $d['ali'], $_SESSION['usuario_nombre']]);
+                            // La línea de descuento no tiene costo, pero sí comparte
+                            // la fiscalidad del comprobante que la genera.
+                            $pdo->prepare("INSERT INTO Lineadeventa (lista, pdv, Tipocomp, numcomp, cliente, fecha, prodcod, proddes, cant, siniva, iva, total, rubro, alicuota, usuario, fiscal) VALUES (1, ?, ?, ?, ?, ?, 'DESC', 'Descuento', 1, ?, ?, ?, 'Descuentos', ?, ?, ?)")
+                                ->execute([$pv_emisor, $tipo_comp, $numcomp, $input['cliente_id'], $input['fecha'], $netoD * -1, $ivaD * -1, $d['monto'] * -1, $d['ali'], $_SESSION['usuario_nombre'], $esFiscal]);
+                            $lineaVentaIds[] = (int) $pdo->lastInsertId();
                         }
                     }
                 }
 
-                $stmtRange = $pdo->prepare("SELECT MIN(id) as desde, MAX(id) as hasta FROM Lineadeventa WHERE pdv = ? AND Tipocomp = ? AND numcomp = ?");
-                $stmtRange->execute([$pv_emisor, $tipo_comp, $numcomp]);
-                $lineRange = $stmtRange->fetch(PDO::FETCH_ASSOC);
-                $lvdesde = $lineRange['desde'] ?: 0;
-                $lvhasta = $lineRange['hasta'] ?: 0;
+                // OJO: antes esto se recalculaba con "SELECT MIN(id),MAX(id) FROM Lineadeventa
+                // WHERE numcomp = ?", filtrando solo por número. Si otra emisión concurrente para
+                // el mismo pdv/tipo pisaba momentáneamente el mismo numcomp (colisión de reserva
+                // local resuelta más abajo, en la reconciliación con ARCA), ese rango por
+                // proximidad de IDs podía terminar apuntando a filas de OTRO comprobante — o, tras
+                // la reconciliación, la propia UPDATE de Lineadeventa usaba ese mismo rango
+                // "prestado" y le pisaba el numcomp a líneas ajenas. Usar los IDs exactos que
+                // devolvió cada INSERT (mismo patrón ya usado para controlstock/movimientosdestock)
+                // elimina la ambigüedad: cada comprobante solo toca sus propias filas.
+                $lvdesde = !empty($lineaVentaIds) ? min($lineaVentaIds) : 0;
+                $lvhasta = !empty($lineaVentaIds) ? max($lineaVentaIds) : 0;
 
                 // --- 8. TICKET CABECERA ---
                 $mapLetras = [
@@ -467,14 +831,24 @@ require_once 'stock_deposito_helpers.php';
                 $letracomp = $mapLetras[$tipo_comp] ?? 'OTRO';
 
                 // CORRECCIÓN DB: Se respeta PtoVta, NumdocCli y fecha original.
-                $sqlTkt = "INSERT INTO tickets (mpago1, mpago1imp, mpago2, mpago2imp, tipocomp, PtoVta, numcomp, cliente, NumdocCli, lvdesde, lvhasta, subtotal, subtotal10, subtotal0, ii, iva, 
-                iva10, total, cae, fechacae, fecha, hora, usuario, recargo, descuento, pagada, vencimiento, remitidototal, afectastock, vendedor, letracomp, fecharemito, fecharemitostr) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', ?, DATE_FORMAT(NOW(), '%H:%i'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                // El CAE (y su vencimiento) ya se conocen ACÁ, de antes de este bucle: para
+                // comprobantes fiscales es el que ARCA autorizó, para 100/101 quedan vacíos
+                // porque no llevan CAE. Van directo en el INSERT, no hace falta un UPDATE
+                // posterior.
+                // Lo que queda pendiente de cobro (o de imputar, en una NC) es solo la
+                // parte enviada a cuenta corriente, no el total: en un pago mixto
+                // (ej. efectivo + cuenta corriente) el resto ya se cobró en el acto.
+                $impCtaCte = ($mp1['tipo'] === 'Cuenta Corriente' ? (float) $input['imp1'] : 0)
+                           + ($mp2['tipo'] === 'Cuenta Corriente' ? (float) $input['imp2'] : 0);
+
+                $sqlTkt = "INSERT INTO tickets (mpago1, mpago1imp, mpago2, mpago2imp, tipocomp, PtoVta, numcomp, cliente, NumdocCli, lvdesde, lvhasta, subtotal, subtotal10, subtotal0, ii, iva,
+                iva10, total, cae, fechacae, fecha, hora, usuario, recargo, descuento, pagada, vencimiento, remitidototal, afectastock, vendedor, letracomp, fecharemito, fecharemitostr, id_deposito, importectacte) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_FORMAT(NOW(), '%H:%i'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmtTkt = $pdo->prepare($sqlTkt);
                 $stmtTkt->execute([
                     $mp1['nombre'],
-                    $input['imp1'],
+                    (float) $input['imp1'],
                     $mp2['nombre'],
-                    $input['imp2'],
+                    (float) $input['imp2'],
                     $tipo_comp,
                     $pv_emisor,
                     $numcomp,
@@ -489,6 +863,8 @@ require_once 'stock_deposito_helpers.php';
                     $acum['iva21'],
                     $acum['iva10'],
                     $total_final_server,
+                    $cae,
+                    $vtocae,
                     $input['fecha'],
                     $_SESSION['usuario_nombre'],
                     $recaG,
@@ -500,13 +876,28 @@ require_once 'stock_deposito_helpers.php';
                     $input['vendedor_id'],
                     $letracomp,
                     $input['fecha'],
-                    $input['fecha']
+                    $input['fecha'],
+                    $idDepositoVenta,
+                    round($impCtaCte, 2)
                 ]);
                 $idTicket = $pdo->lastInsertId();
+                if ($percepciones) {
+                    registrarPercepciones($pdo, $percepciones, (int) $idTicket, (int) $input['cliente_id'], $input['fecha'],
+                        in_array($tipo_comp, [3, 8, 13], true), $_SESSION['usuario_nombre']);
+                }
+
+                // El insert de promociones_ventas (paso 6, dentro del bucle de ítems)
+                // ocurre antes de que exista este $idTicket real, así que grabó 0 en
+                // idticket. Se corrige ahora contra los IDs propios ya capturados.
+                if (!empty($promoVentaIds)) {
+                    $inPv = implode(',', array_fill(0, count($promoVentaIds), '?'));
+                    $pdo->prepare("UPDATE promociones_ventas SET idticket=? WHERE id IN ($inPv)")
+                        ->execute(array_merge([$idTicket], $promoVentaIds));
+                }
 
                 // --- 9. CUENTA CORRIENTE ---
                 if ($mp1['tipo'] === 'Cuenta Corriente' || $mp2['tipo'] === 'Cuenta Corriente') {
-                    $impCC = ($mp1['tipo'] === 'Cuenta Corriente' ? (float) $input['imp1'] : 0) + ($mp2['tipo'] === 'Cuenta Corriente' ? (float) $input['imp2'] : 0);
+                    $impCC = $impCtaCte;
                     $stmtS = $pdo->prepare("SELECT saldo FROM ccclientes WHERE cliente = ? ORDER BY id DESC LIMIT 1");
                     $stmtS->execute([$input['cliente_id']]);
                     $saldoP = $stmtS->fetchColumn() ?: 0;
@@ -531,8 +922,8 @@ require_once 'stock_deposito_helpers.php';
                 $fiscal = (in_array($tipo_comp, [100, 101])) ? 0 : 1;
 
                 $pagos_procesar = [
-                    ['id' => $input['mp1'], 'imp' => (float) $input['imp1']],
-                    ['id' => $input['mp2'], 'imp' => (float) $input['imp2']]
+                    ['id' => $input['mp1'], 'imp' => (float) $input['imp1'], 'tarjeta' => $input['tarjeta1'] ?? null, 'n' => 1],
+                    ['id' => $input['mp2'], 'imp' => (float) $input['imp2'], 'tarjeta' => $input['tarjeta2'] ?? null, 'n' => 2]
                 ];
 
                 foreach ($pagos_procesar as $pg) {
@@ -567,17 +958,13 @@ require_once 'stock_deposito_helpers.php';
                                 }
 
                                 // Validar que siga abierta (Regla User)
-                                $stmtOpen = $pdo->prepare("SELECT COUNT(*) FROM controlcajas WHERE id = ? AND cerradael IS NULL");
+                                $stmtOpen = $pdo->prepare("SELECT COUNT(*) FROM controlcajas WHERE id = ? AND (cerradael IS NULL OR cerradael = '0000-00-00 00:00:00')");
                                 $stmtOpen->execute([$idcontrolcaja]);
                                 if ($stmtOpen->fetchColumn() == 0) {
                                     throw new Exception("Su caja se ha cerrado durante la operación. No puede realizar movimientos.");
                                 }
 
-                                // Calcular importe real (Neto de vuelto)
                                 $impReal = $pg['imp'];
-                                if (isset($input['vuelto']) && (float) $input['vuelto'] > 0) {
-                                    $impReal -= (float) $input['vuelto'];
-                                }
 
                                 // Movimiento Físico (Auditoría)
                                 $debeCaja = $esNota ? 0 : $impReal;
@@ -595,6 +982,13 @@ require_once 'stock_deposito_helpers.php';
                                     $pdo->prepare("UPDATE cajas SET saldo = saldo + ? WHERE id = ?")->execute([$impReal, $idcajaabierta]);
                                     $pdo->prepare("UPDATE controlcajas SET cantidadmovimientos = cantidadmovimientos + 1, saldofinal = saldofinal + ? WHERE id = ?")->execute([$impReal, $idcontrolcaja]);
                                 }
+                            }
+
+                            // 2b. CUPÓN DE TARJETA (para la liquidación posterior)
+                            $datosTarjeta = datosTarjetaCobro($pdo, $mpData, $pg['tarjeta'], "el medio de pago {$pg['n']}");
+                            if ($datosTarjeta) {
+                                registrarCupon($pdo, $datosTarjeta, $esNota ? -$pg['imp'] : $pg['imp'], (int) $pg['id'], 'tickets',
+                                    (int) $idTicket, (int) $input['cliente_id'], $fiscal, $input['fecha'], $_SESSION['usuario_nombre']);
                             }
 
                             // 3. LÓGICA BANCOS
@@ -634,12 +1028,6 @@ require_once 'stock_deposito_helpers.php';
 
                 $imp1_c = (float) $input['imp1'];
                 $imp2_c = (float) $input['imp2'];
-                if (isset($input['vuelto']) && (float) $input['vuelto'] > 0) {
-                    if ($mp1['tipo'] == 'Caja de Usuarios')
-                        $imp1_c -= (float) $input['vuelto'];
-                    if ($mp2['tipo'] == 'Caja de Usuarios')
-                        $imp2_c -= (float) $input['vuelto'];
-                }
 
                 $debe1 = 0;
                 $haber1 = 0;
@@ -685,6 +1073,10 @@ require_once 'stock_deposito_helpers.php';
                     GrabarLineaAsiento($pdo, $numAsiento, $input['fecha'], $cp['ivaventas'], $debeIva, $haberIva, $idTicket, "tickets", $fiscal, $_SESSION['usuario_nombre'], $detalleAsiento, $idEjercicio, $periodoactual);
                 if ($acum['ii'] > 0)
                     GrabarLineaAsiento($pdo, $numAsiento, $input['fecha'], $cp['impintventas'], $debeImp, $haberImp, $idTicket, "tickets", $fiscal, $_SESSION['usuario_nombre'], $detalleAsiento, $idEjercicio, $periodoactual);
+                // Percepciones practicadas: pasivo a depositar (la NC lo devuelve).
+                foreach ($percepciones as $pAs) {
+                    GrabarLineaAsiento($pdo, $numAsiento, $input['fecha'], retperCuenta($pdo, $pAs), $esNota ? $pAs['importe'] : 0, $esNota ? 0 : $pAs['importe'], $idTicket, "tickets", $fiscal, $_SESSION['usuario_nombre'], $detalleAsiento, $idEjercicio, $periodoactual);
+                }
 
                 $totalesVenta = [];
                 $sumaimpventa = 0;
@@ -769,8 +1161,21 @@ require_once 'stock_deposito_helpers.php';
                 if ($pdo->inTransaction())
                     $pdo->rollBack();
                 if ($e->getCode() == '23000') { // Duplicate Entry
-                    $numcomp++;
-                    continue; // Reintentamos con el siguiente número
+                    if (in_array($tipo_comp, [100, 101], true)) {
+                        // Ticket/Ticket de Crédito: numcomp es una reserva local propia, sin
+                        // autoridad externa — bump y reintentar es seguro acá.
+                        $numcomp++;
+                        continue;
+                    }
+                    // Comprobante fiscal: $numcomp es el número que ARCA YA autorizó (con CAE
+                    // real emitido) antes de este bucle. Que choque acá significa que otro
+                    // registro local ya ocupa ese pdv+tipo+número — no se puede "probar con el
+                    // siguiente" sin inventar un número que ARCA nunca aprobó para ESTE
+                    // comprobante. Es una alarma real (posible doble autorización del mismo
+                    // número ante AFIP) que requiere revisión manual; el CAE queda igual en el
+                    // log para no perderlo.
+                    logArcaCliente("ERROR CRÍTICO: ARCA autorizó {$pv_emisor}-{$numcomp} (tipo {$tipo_comp}) con CAE {$cae}, pero ya existe un registro local con ese mismo número. No se grabó nada. Requiere corrección manual — verificar en AFIP si el número {$numcomp} quedó duplicado.");
+                    throw new Exception("ARCA autorizó el comprobante {$pv_emisor}-{$numcomp} (CAE {$cae}), pero ya existe un registro local con ese mismo número. No se grabó nada para evitar una inconsistencia fiscal — contactá a soporte con este CAE para resolverlo a mano.");
                 }
                 throw $e;
             }
@@ -778,155 +1183,69 @@ require_once 'stock_deposito_helpers.php';
 
         if (!$successGrabado)
             throw new Exception("No se pudo asignar numeración tras {$maxIntentos} intentos.");
-
-        // --- 13. AFIP ---
-        $cae = '';
-        $vtocae = '';
-        $caeError = null;
-        if (!in_array($tipo_comp, [100, 101])) {
-            try {
-                function mapTipo($t)
-                {
-                    if (in_array($t, [1, 6, 11]))
-                        return "F";
-                    if (in_array($t, [2, 7, 12]))
-                        return "D";
-                    if (in_array($t, [3, 8, 13]))
-                        return "C";
-                    throw new Exception("Tipo inválido");
-                }
-                function mapCond($c)
-                {
-                    return match ($c) { "Responsable Inscripto" => 1, "Consumidor Final" => 5, "Exento" => 4, "Monotributo" => 6, default => 5};
-                }
-
-                $tipo = mapTipo($tipo_comp);
-                $cond = mapCond($cli['condicionfiscal']);
-                $docTipo = ($cond == 5) ? 99 : 80;
-                $docNro = ($cond == 5) ? 0 : (int) $cli['numdoc'];
-                $ivaArray = [];
-                $condiemisor = mapCond($_SESSION['condicion_iva_empresa']);
-
-                if ($acum['iva21'] > 0)
-                    $ivaArray[] = ["id" => 5, "baseImp" => round($acum['sub21'], 2), "importe" => round($acum['iva21'], 2)];
-                if ($acum['iva10'] > 0)
-                    $ivaArray[] = ["id" => 4, "baseImp" => round($acum['sub10'], 2), "importe" => round($acum['iva10'], 2)];
-
-                $payload = [
-                    "tipo" => $tipo,
-                    "emisorCuit" => $_SESSION['cliente_cuit'],
-                    "emisorCondicionIva" => $condiemisor,
-                    "docTipo" => $docTipo,
-                    "docNro" => $docNro,
-                    "puntoVenta" => $pv_emisor,
-                    "numeroComp" => $numcomp,
-                    "condicionIVA" => $cond,
-                    "importeNeto" => round($acum['sub21'] + $acum['sub10'] + $acum['sub0'], 2),
-                    "importeIVA" => round($acum['iva21'] + $acum['iva10'], 2),
-                    "importeTributo" => round($acum['ii'], 2),
-                    "iva" => $ivaArray,
-                    "produccion" => $_SESSION['modo']
-                ];
-
-                if (in_array($tipo_comp, [2, 3, 7, 8, 12, 13], true)) {
-                    $payload['comprobanteAsociado'] = [
-                        'tipo' => (int) $associated['tipo'],
-                        'puntoVenta' => (int) $associated['pv'],
-                        'numero' => (int) $associated['num'],
-                        'cuit' => (string) $_SESSION['cliente_cuit'],
-                        'fecha' => str_replace('-', '', (string) $associated['fecha'])
-                    ];
-                }
-
-                // --- AUDITORÍA DE LOG ---
-                $logFile = 'log_arca_audit.txt';
-                $logData = "====================================================\nFECHA: " . date('Y-m-d H:i:s') . "\nTICKET ID: " . $idTicket . " | COMP: " . $numcomp . "\n";
-                $logData .= "PAYLOAD ENVIADO:\n" . json_encode($payload, JSON_PRETTY_PRINT) . "\n";
-
-                $ch = curl_init("https://erp.westit.com.ar/ARCA/new_fe_cae_api.php");
-                curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_FOLLOWLOCATION => true, CURLOPT_HTTPHEADER => ['Content-Type: application/json'], CURLOPT_POSTFIELDS => json_encode($payload), CURLOPT_TIMEOUT => 45, CURLOPT_SSL_VERIFYPEER => false, CURLOPT_ENCODING => '', CURLOPT_USERAGENT => 'SistemaERP/CAE']);
-
-                $resp = curl_exec($ch);
-                $curlError = curl_error($ch);
-                $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                $contentType = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
-                curl_close($ch);
-                $logData .= "RESPUESTA RAW API:\n" . ($resp ?: "SIN RESPUESTA") . "\n";
-                if ($resp === false) {
-                    throw new Exception('No se pudo comunicar con ARCA: ' . $curlError);
-                }
-                $cleanResp = preg_replace('/^\xEF\xBB\xBF/', '', trim($resp));
-                $afip = json_decode($cleanResp, true);
-                if (!is_array($afip)) {
-                    $firstJson = strpos($cleanResp, '{');
-                    $lastJson = strrpos($cleanResp, '}');
-                    if ($firstJson !== false && $lastJson !== false && $lastJson >= $firstJson) {
-                        $afip = json_decode(substr($cleanResp, $firstJson, $lastJson - $firstJson + 1), true);
-                    }
-                }
-                if (!is_array($afip)) {
-                    $preview = preg_replace('/\s+/', ' ', trim(strip_tags($cleanResp)));
-                    if (strlen($preview) > 180) $preview = substr($preview, 0, 180) . '...';
-                    throw new Exception("Respuesta inválida del servicio ARCA (HTTP {$httpCode}, {$contentType})" . ($preview !== '' ? ": {$preview}" : ': respuesta vacía.'));
-                }
-
-                // --- RECUPERACIÓN CONCURRENTE SI EL NÚMERO YA FUE EMITIDO ---
-                if ($afip && isset($afip['error']) && (strpos($afip['error'], 'registrado') !== false || strpos($afip['error'], 'proximo') !== false)) {
-                    $ch_get = curl_init("https://erp.westit.com.ar/ARCA/fe_get_cae.php?cuit={$_SESSION['cliente_cuit']}&pv={$pv_emisor}&tipo={$tipo_comp}&num={$numcomp}&modo={$_SESSION['modo']}");
-                    curl_setopt($ch_get, CURLOPT_RETURNTRANSFER, true);
-                    $resp_get = curl_exec($ch_get);
-                    $afip_get = json_decode($resp_get, true);
-                    if ($afip_get && isset($afip_get['resultado']) && $afip_get['resultado'] === 'A') {
-                        $afip = $afip_get;
-                    }
-                }
-
-                if ($afip && isset($afip['resultado']) && $afip['resultado'] === 'A') {
-                    $cae = (string) $afip['cae'];
-                    $vtocaeRaw = (string) ($afip['vencimiento'] ?? '');
-                    $vtocae = '';
-                    if (!empty($vtocaeRaw)) {
-                        $cleanVto = preg_replace('/[^0-9]/', '', $vtocaeRaw);
-                        if (strlen($cleanVto) === 8) {
-                            $vtocae = $cleanVto;
-                        } else {
-                            $dt = DateTime::createFromFormat('d-m-Y', $vtocaeRaw);
-                            if ($dt instanceof DateTime)
-                                $vtocae = $dt->format('Ymd');
-                        }
-                    }
-                    $pdo->prepare("UPDATE tickets SET cae=?, fechacae=? WHERE id=?")->execute([$cae, $vtocae, $idTicket]);
-                    $logData .= "CAE ASIGNADO EXITOSAMENTE: " . $cae . "\n";
-                } else {
-                    $caeError = $afip['error'] ?? 'AFIP no autorizó el comprobante.';
-                    $logData .= "ESTADO: AFIP NO AUTORIZÓ O ERROR EN API\n";
-                }
-
-                $logData .= "====================================================\n\n";
-                file_put_contents($logFile, $logData, FILE_APPEND);
-
-            } catch (Exception $e) {
-                $caeError = $e->getMessage();
-                file_put_contents('log_arca_audit.txt', "ERROR EXCEPCIÓN AFIP: " . $e->getMessage() . "\n", FILE_APPEND);
-            }
-        }
-
-        // El comprobante y sus movimientos ya están grabados (transacción confirmada más arriba).
-        // Si no se obtuvo CAE, se informa igual como éxito de grabación pero marcando
-        // explícitamente que la autorización fiscal quedó pendiente, para que la UI avise
-        // al usuario en vez de mostrar "emitido correctamente" sin CAE real.
+        // El CAE (para comprobantes fiscales) ya se obtuvo y grabó ANTES de este bucle — acá no
+        // hace falta llamar a ARCA de nuevo ni reconciliar nada, porque numcomp/cae/vtocae ya
+        // son, por construcción, exactamente lo que ARCA autorizó.
         echo json_encode([
             'success' => true,
             'numcomp' => $numcomp,
             'cae' => $cae,
-            'cae_pendiente' => empty($cae) && !in_array($tipo_comp, [100, 101]),
+            'cae_pendiente' => false,
             'cae_error' => $caeError,
+            'reconciliacion_fallida' => false,
             'id_ticket' => $idTicket
         ]);
 
     } catch (Exception $e) {
         if ($pdo->inTransaction())
             $pdo->rollBack();
+
+        $idAux = null;
+        if (isset($tipo_comp) && !in_array($tipo_comp, [100, 101], true)) {
+            // Cualquier comprobante fiscal que no se termine de grabar queda
+            // registrado acá, tenga o no CAE — para no perder nunca el rastro de
+            // qué se intentó vender y por qué falló.
+            $idAux = guardarEnAuxiliares(
+                $pdo,
+                !empty($cae ?? '') ? 'cae_sin_grabar' : 'sin_cae',
+                $tipo_comp,
+                $pv_emisor ?? 0,
+                $numcomp ?? 0,
+                $cae ?? '',
+                $vtocae ?? '',
+                $input ?? [],
+                $processedItems ?? [],
+                $acum ?? [],
+                $total_final_server ?? 0,
+                $usuario_nombre,
+                $e->getMessage()
+            );
+        }
+
+        if (!empty($cae ?? '')) {
+            // ARCA YA autorizó y consumió un número real: no es seguro reintentar
+            // (duplicaría el comprobante ante AFIP). Se responde como éxito con
+            // reconciliacion_fallida=true para que la pantalla se resetee sola
+            // (mismo codepath que usa newfactura.js para el caso de éxito) y el
+            // cajero no vuelva a apretar grabar sobre el mismo carrito.
+            echo json_encode([
+                'success' => true,
+                'numcomp' => $numcomp,
+                'cae' => $cae,
+                'cae_pendiente' => false,
+                'cae_error' => "ARCA autorizó el comprobante {$pv_emisor}-{$numcomp} (CAE {$cae}) pero no se pudo grabar en el sistema ({$e->getMessage()})." .
+                    ($idAux ? " Guardado en la cola de revisión (auxticket #{$idAux})." : " ADEMÁS no se pudo guardar en la cola de revisión — avisar a soporte YA con este CAE.") .
+                    " NO reintentes: contactá a soporte con este CAE para resolverlo a mano.",
+                'reconciliacion_fallida' => true,
+                'id_ticket' => null
+            ]);
+            exit;
+        }
+
+        // Sin CAE: no se gastó ningún número fiscal real. Es seguro que la pantalla
+        // se quede tal cual (carrito cargado) para reintentar o pasar a Ticket no
+        // fiscal — mismo comportamiento de siempre, solo que ahora además queda
+        // registrado en la cola auxiliar.
         echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     }
     ?>

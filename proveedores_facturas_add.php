@@ -34,11 +34,15 @@ require_once 'check_access.php';
                                 <option value="1">Factura A</option>
                                 <option value="6">Factura B</option>
                                 <option value="11">Factura C</option>
+                                <option value="2">Nota de Débito A</option>
+                                <option value="7">Nota de Débito B</option>
+                                <option value="12">Nota de Débito C</option>
                                 <option value="3">Nota de Crédito A</option>
                                 <option value="8">Nota de Crédito B</option>
                                 <option value="13">Nota de Crédito C</option>
                                 <option value="1000">Remito</option>
                                 <option value="100">Ticket NF</option>
+                                <option value="101">Ticket de Crédito NF</option>
                             </select>
                         </div>
                         <div class="col-md-2">
@@ -170,12 +174,29 @@ require_once 'check_access.php';
     async function init() {
         configurarSelect2();
         cargarConceptos();
+        aplicarFiscalPorDefecto();
         $('.calc-trigger').on('input', calcularTotales);
         $('#btn-add-linea').click(agregarLinea);
         $('#btn-grabar').click(grabar);
+        $('#f-comp').on('change input', function() {
+            if (this.value) $('#f-imput').val(this.value);
+        });
         
         // Listeners para refrescar facturas cuando sea NC o cambie fiscalidad
-        $('#cmb-tipo, #chk-fiscal').on('change', toggleImputaciones);
+        $('#cmb-tipo').on('change', function() {
+            aplicarFiscalPorDefecto();
+            toggleImputaciones();
+        });
+        $('#chk-fiscal').on('change', toggleImputaciones);
+    }
+
+    // Facturas y Notas de Débito/Crédito (A/B/C) son fiscales por defecto.
+    // Tickets NF y Tickets de Crédito NF no son fiscales. Remitos son fiscales
+    // por defecto. En todos los casos el usuario puede cambiarlo manualmente.
+    function aplicarFiscalPorDefecto() {
+        const tipo = parseInt($('#cmb-tipo').val());
+        const TICKETS_NF = [100, 101];
+        $('#chk-fiscal').prop('checked', !TICKETS_NF.includes(tipo));
     }
 
     function limpiarFormFactCompra() {
@@ -185,10 +206,10 @@ require_once 'check_access.php';
         $('#t-neto, #t-iva10, #t-iva21, #t-iva27').val('0.00');
         $('#cmb-proveedor').val(null).trigger('change');
         $('#cmb-tipo').val('1');
-        $('#cmb-add-concepto').val('');
+        $('#cmb-add-concepto').val(null).trigger('change');
         const hoy = new Date().toISOString().split('T')[0];
         $('#f-comp, #f-imput, #f-venci').val(hoy);
-        $('#chk-fiscal').prop('checked', true);
+        aplicarFiscalPorDefecto();
         $('#tbody-lineas, #tbody-pendientes').empty();
         $('#card-imputaciones').addClass('d-none');
         $('#lbl-total').text('$ 0.00');
@@ -196,6 +217,12 @@ require_once 'check_access.php';
     }
 
     function configurarSelect2() {
+        $('#cmb-add-concepto').select2({
+            placeholder: 'BUSCAR CONCEPTO...',
+            dropdownParent: $('#main-content'),
+            width: '250px',
+            allowClear: true
+        });
         $('#cmb-proveedor').select2({
             placeholder: 'BUSCAR PROVEEDOR...',
             dropdownParent: $('#main-content'),
@@ -210,10 +237,11 @@ require_once 'check_access.php';
     }
 
     async function cargarConceptos() {
-        const res = await fetch('api_conceptos_compra.php?action=list', { headers: commonHeaders }).then(r => r.json());
+        const res = await fetch('api_conceptos_compra.php?action=list&solo_habilitados=1', { headers: commonHeaders }).then(r => r.json());
         if (res.success) {
-            $('#cmb-add-concepto').append(new Option('SELECCIONE CONCEPTO...', ''));
+            $('#cmb-add-concepto').empty().append(new Option('', ''));
             res.data.forEach(c => $('#cmb-add-concepto').append(new Option(c.Concepto, c.ID)));
+            $('#cmb-add-concepto').trigger('change');
         }
     }
 
