@@ -286,6 +286,18 @@
             { "id": "cfg_solicitar_cert", "text": "Descargar Certificado para ARCA", "url": "certificado_descargar.php" },
             { "id": "cfg_subir_cert", "text": "Subir Certificado Generado en ARCA", "url": "certificado_subir.php" }
           ]
+        },
+        {
+          "id": "adm_web_sub",
+          "text": "Web de Clientes",
+          "url": "",
+          "addon": "web_catalogo",
+          "children": [
+            { "id": "web_cfg", "text": "Configuración de la Web", "url": "web_config.php", "addon": "web_catalogo" },
+            { "id": "web_accesos", "text": "Accesos de Clientes", "url": "web_accesos.php", "addon": "web_catalogo" },
+            { "id": "web_avisos", "text": "Pagos Informados", "url": "web_avisos_pago.php", "addon": "web_catalogo" },
+            { "id": "web_atributos", "text": "Características de Productos", "url": "web_atributos.php", "addon": "web_catalogo" }
+          ]
         }
       ]
     },

@@ -26,6 +26,8 @@ $descargasNavegador = [
     'api_transportes_import.php' => ['download_template'],
     'api_conceptos_compra.php' => ['export_excel'],
     'api_depositos.php' => ['logo'], // <img> del encabezado
+    'api_web_config.php' => ['imagen'], // <img> de vista previa (logo/banners de la web)
+    'api_web_avisos_pago.php' => ['comprobante'], // adjunto del pago informado
 ];
 $descargaNavegador = ($_SERVER['REQUEST_METHOD'] ?? '') === 'GET'
     && in_array($_GET['action'] ?? null, $descargasNavegador[$script] ?? [], true);

@@ -219,6 +219,30 @@ if (!$allowedByContract) {
     denyAccessAndLog($pdo, "Módulo bloqueado. La licencia contratada por la empresa no incluye este servicio.", $currentScript);
 }
 
+// Módulos contratados aparte (ítems de menú con "addon", habilitados en tenant_addons).
+if (!$isCoreFile && !empty($menu_data)) {
+    if (!function_exists('extractAddonUrlsGlobal')) {
+        function extractAddonUrlsGlobal($items, &$out) {
+            foreach ($items as $item) {
+                if (!empty($item['addon']) && !empty($item['url']) && $item['url'] !== '#') {
+                    $out[$item['addon']][] = basename($item['url']);
+                }
+                if (!empty($item['children'])) extractAddonUrlsGlobal($item['children'], $out);
+            }
+        }
+    }
+    $addonUrls = [];
+    extractAddonUrlsGlobal($menu_data, $addonUrls);
+    foreach ($addonUrls as $addonKey => $urlsAddon) {
+        if (urlMatchesByPrefixGlobal($currentScript, $urlsAddon)) {
+            require_once __DIR__ . '/web_helpers.php';
+            if (!webAddonHabilitado($pdo_master, (string) $_SESSION['tenant_cuit'], $addonKey)) {
+                denyAccessAndLog($pdo, "Este módulo no está contratado. Consultá a WEST IT para habilitarlo.", $currentScript);
+            }
+        }
+    }
+}
+
 // ======================================================================
 // 6. VALIDACIÓN DE ROLES
 // FIX: los core files Y los admins bypasean la validación de roles

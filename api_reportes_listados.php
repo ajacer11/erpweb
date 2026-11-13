@@ -41,7 +41,7 @@ try {
                             p.precio AS 'Precio Venta', 
                             p.stock AS 'Stock' 
                         FROM alb_productos p
-                        LEFT JOIN marcas m ON p.marca = m.id
+                        LEFT JOIN Marcas m ON p.marca = m.id
                         WHERE p.habilitado = 1 
                         ORDER BY p.Descripcion ASC";
                 break;

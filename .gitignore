@@ -27,3 +27,9 @@ img/
 
 # Volcados de bases con datos reales de clientes
 *.sql.gz
+
+# Correo del sistema (webs de clientes) y clave de cifrado
+config_mail.php
+
+# Web de clientes: dependencias y build del front
+web_catalogo/app/node_modules/

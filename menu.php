@@ -40,6 +40,24 @@ $json_path = 'menu' . $version . '.json';
 $full_menu_items = file_exists($json_path) ? json_decode(file_get_contents($json_path), true) : [];
 $menu_items = [];
 
+// Módulos que se contratan aparte (tenant_addons en la maestra): los ítems con "addon"
+// solo aparecen si la empresa lo tiene habilitado. check_access.php bloquea la URL igual.
+require_once 'web_helpers.php';
+$addonsEmpresa = webAddonsDeEmpresa($pdo_master, (string) ($_SESSION['tenant_cuit'] ?? ''));
+if (!function_exists('quitarItemsSinAddon')) {
+    function quitarItemsSinAddon(array $items, array $addons): array
+    {
+        $res = [];
+        foreach ($items as $item) {
+            if (!empty($item['addon']) && !in_array($item['addon'], $addons, true)) continue;
+            if (!empty($item['children'])) $item['children'] = quitarItemsSinAddon($item['children'], $addons);
+            $res[] = $item;
+        }
+        return $res;
+    }
+}
+$full_menu_items = quitarItemsSinAddon($full_menu_items, $addonsEmpresa);
+
 // LÓGICA DE PERMISOS
 if (isset($_SESSION['es_admin']) && (int) $_SESSION['es_admin'] === 1) {
     // 1. Administrador: Ve todo

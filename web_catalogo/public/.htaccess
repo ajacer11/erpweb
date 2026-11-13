@@ -1,0 +1,31 @@
+# Web de clientes (catálogo + área de clientes). El docroot de cada dominio apunta acá.
+Options -Indexes
+DirectoryIndex index.html
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    # Authorization header para PHP (por si se usa en el futuro)
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # API
+    RewriteRule ^api(/.*)?$ api/index.php [L,QSA]
+
+    # Archivos existentes (assets del build)
+    RewriteCond %{REQUEST_FILENAME} -f
+    RewriteRule ^ - [L]
+
+    # Todo lo demás es una ruta de la app (Vue Router en modo history)
+    RewriteRule ^ index.html [L]
+</IfModule>
+
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    <FilesMatch "\.(js|css|woff2|png|svg|webp|jpg)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+    <FilesMatch "^(index\.html|sw\.js|manifest\.webmanifest|registerSW\.js)$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+</IfModule>

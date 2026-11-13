@@ -4,6 +4,9 @@
 require_once 'check_access.php';
 $codigo = $_GET['codigo'] ?? '';
 $clonar = $_GET['clonar'] ?? '';
+// Características de la web: solo si la empresa tiene contratada la web de clientes.
+require_once 'web_helpers.php';
+$webCaracteristicas = webAddonHabilitado($pdo_master, (string) $_SESSION['tenant_cuit']);
 // Título inicial
 if ($codigo) {
     $titulo = "CARGANDO " . htmlspecialchars($codigo, ENT_QUOTES, 'UTF-8') . "...";
@@ -271,6 +274,18 @@ if ($codigo) {
                         <div class="d-flex gap-2 flex-wrap" id="galeriaAdicional"></div>
                         <small class="text-muted d-block mt-1">Se suman a la foto de portada (junto al título) y se muestran en la API de productos.</small>
                     </div>
+
+                    <?php if ($webCaracteristicas): ?>
+                    <div class="col-12"><hr class="border-secondary opacity-25"></div>
+                    <div class="col-12">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label-custom mb-0">Características (ficha técnica en la web)</label>
+                            <select class="form-select form-select-sm" id="prodAtrAgregar" style="max-width: 260px;"><option value="">+ Agregar otra característica...</option></select>
+                        </div>
+                        <div class="row g-2" id="prodAtributos"><div class="col-12 text-muted small">Cargando...</div></div>
+                        <small class="text-muted d-block mt-1">Las que se piden dependen del rubro y la familia. Se administran en Administrador &gt; Web de Clientes &gt; Características de Productos.</small>
+                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -846,6 +861,10 @@ if ($codigo) {
                     body: JSON.stringify(data)
                 });
                 const res = await resp.json();
+                if(res.success && window.guardarCaracteristicasProducto) {
+                    const errAtr = await window.guardarCaracteristicasProducto(data.codigo);
+                    if (errAtr) { Swal.fire('Producto guardado, pero no sus características', errAtr, 'warning'); return; }
+                }
                 if(res.success) {
                     Swal.fire({icon:'success', title:'Guardado', toast:true, position:'top-end', timer:2000, showConfirmButton:false});
                     setTimeout(() => loadModule('productos_admin.php'), 1200);
@@ -855,4 +874,88 @@ if ($codigo) {
 
         init();
     })();
+
+<?php if ($webCaracteristicas): ?>
+    // ===== Características de la web (prod_atributos / api_web_atributos.php) =====
+    (function() {
+        const API_ATR = 'api_web_atributos.php';
+        const H = {'X-Requested-With': 'XMLHttpRequest'};
+        const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        let mostrados = [];   // atributos en pantalla
+        let todos = [];       // todos los activos (para "agregar otra")
+        let cargado = false;  // si no se pudieron cargar, al guardar no se tocan (no borrar valores existentes)
+
+        function campo(a) {
+            const v = esc(a.valor ?? '');
+            let input;
+            if (a.tipo === 'opciones') {
+                input = `<select class="form-select form-select-sm prod-atr" data-id="${a.id}"><option value=""></option>${a.opciones.map(o => `<option ${o === a.valor ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+            } else if (a.tipo === 'sino') {
+                input = `<select class="form-select form-select-sm prod-atr" data-id="${a.id}"><option value=""></option><option ${a.valor === 'Sí' ? 'selected' : ''}>Sí</option><option ${a.valor === 'No' ? 'selected' : ''}>No</option></select>`;
+            } else if (a.tipo === 'numero') {
+                input = `<div class="input-group input-group-sm"><input type="text" inputmode="decimal" class="form-control prod-atr" data-id="${a.id}" value="${v}">${a.unidad ? `<span class="input-group-text">${esc(a.unidad)}</span>` : ''}</div>`;
+            } else {
+                input = `<input type="text" class="form-control form-control-sm prod-atr" data-id="${a.id}" value="${v}" maxlength="255">`;
+            }
+            return `<div class="col-md-4 col-lg-3"><label class="small text-white-50 mb-1">${esc(a.nombre)}</label>${input}</div>`;
+        }
+
+        function valoresActuales() {
+            const out = {};
+            document.querySelectorAll('#prodAtributos .prod-atr').forEach(el => out[el.dataset.id] = el.value);
+            return out;
+        }
+
+        function render() {
+            $('#prodAtributos').html(mostrados.length ? mostrados.map(campo).join('')
+                : '<div class="col-12 text-muted small">No hay características definidas para este rubro/familia.</div>');
+            const ids = new Set(mostrados.map(a => +a.id));
+            $('#prodAtrAgregar').html('<option value="">+ Agregar otra característica...</option>' +
+                todos.filter(a => !ids.has(+a.id)).map(a => `<option value="${a.id}">${esc(a.nombre)}</option>`).join(''));
+        }
+
+        async function cargar() {
+            const actuales = valoresActuales();
+            const p = new URLSearchParams({action: 'producto', codigo: $('#prod_codigo').val() || '', rubro: $('#cmbRubros').val() || '', familia: $('#cmbFamilias').val() || ''});
+            try {
+                const r = await (await fetch(`${API_ATR}?${p}`, {headers: H})).json();
+                if (!r.success) throw new Error(r.error);
+                // Conserva lo que el usuario ya escribió en pantalla (al cambiar de rubro no se pierde).
+                mostrados = r.data.map(a => ({...a, valor: actuales[a.id] ?? a.valor}));
+                todos = r.todos;
+                cargado = true;
+                render();
+            } catch (e) {
+                $('#prodAtributos').html(`<div class="col-12 text-danger small">No se pudieron cargar las características: ${esc(e.message)}</div>`);
+            }
+        }
+
+        $('#prodAtrAgregar').on('change', async function() {
+            const id = +this.value;
+            if (!id) return;
+            const actuales = valoresActuales();
+            mostrados = mostrados.map(a => ({...a, valor: actuales[a.id] ?? a.valor}));
+            const r = await (await fetch(`${API_ATR}?action=listar`, {headers: H})).json();
+            const a = (r.data || []).find(x => +x.id === id);
+            if (a) mostrados.push({...a, valor: ''});
+            render();
+        });
+
+        // El rubro/familia del producto se cargan después de abrir el formulario: esperamos a que estén.
+        $(document).on('change', '#cmbRubros, #cmbFamilias', () => cargar());
+        setTimeout(cargar, 1200);
+
+        /** Se llama después de guardar el producto. Devuelve null si salió bien o el mensaje de error. */
+        window.guardarCaracteristicasProducto = async function(codigo) {
+            if (!codigo || !cargado) return null;
+            try {
+                const r = await (await fetch(`${API_ATR}?action=guardar_producto`, {
+                    method: 'POST', headers: {...H, 'Content-Type': 'application/json'},
+                    body: JSON.stringify({codigo, valores: valoresActuales()})
+                })).json();
+                return r.success ? null : r.error;
+            } catch (e) { return e.message; }
+        };
+    })();
+<?php endif; ?>
 </script>

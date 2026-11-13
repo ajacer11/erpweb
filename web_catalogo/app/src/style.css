@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+/*
+ * Colores de la empresa: se cargan en runtime desde la configuración del ERP
+ * (--c-primario, --c-secundario, --c-encabezado en :root, ver stores/sitio.ts).
+ * Los tonos claros/oscuros se derivan con color-mix.
+ */
+:root {
+  --c-primario: #0b4f8a;
+  --c-secundario: #f59e0b;
+  --c-encabezado: #0f172a;
+}
+
+@theme inline {
+  --font-sans: "Plus Jakarta Sans", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --color-brand-50: color-mix(in srgb, var(--c-primario) 7%, white);
+  --color-brand-100: color-mix(in srgb, var(--c-primario) 14%, white);
+  --color-brand-200: color-mix(in srgb, var(--c-primario) 28%, white);
+  --color-brand-300: color-mix(in srgb, var(--c-primario) 45%, white);
+  --color-brand-500: color-mix(in srgb, var(--c-primario) 85%, white);
+  --color-brand-600: var(--c-primario);
+  --color-brand-700: color-mix(in srgb, var(--c-primario) 85%, black);
+  --color-brand-800: color-mix(in srgb, var(--c-primario) 70%, black);
+  --color-brand-900: color-mix(in srgb, var(--c-primario) 55%, black);
+
+  --color-accent-50: color-mix(in srgb, var(--c-secundario) 10%, white);
+  --color-accent-500: var(--c-secundario);
+  --color-accent-600: color-mix(in srgb, var(--c-secundario) 85%, black);
+
+  --color-head: var(--c-encabezado);
+  --color-head-soft: color-mix(in srgb, var(--c-encabezado) 88%, white);
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 16px rgb(15 23 42 / 0.06);
+  --shadow-card-hover: 0 2px 4px rgb(15 23 42 / 0.06), 0 12px 32px rgb(15 23 42 / 0.12);
+
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-fade-up: fade-up 0.4s ease-out both;
+  --animate-pop: pop 0.35s cubic-bezier(.34,1.56,.64,1) both;
+
+  @keyframes shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+  @keyframes fade-up { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+}
+
+@layer base {
+  html { scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; }
+  body { @apply bg-slate-50 text-slate-800 antialiased; }
+  ::selection { @apply bg-brand-200 text-brand-900; }
+  input, select, textarea, button { font: inherit; }
+}
+
+@layer components {
+  .container-page { @apply mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8; }
+  .btn-primary { @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-700 hover:shadow-md active:scale-[0.98]; }
+  .btn-accent { @apply btn bg-accent-500 text-white shadow-sm hover:bg-accent-600 active:scale-[0.98]; }
+  .btn-secondary { @apply btn border border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98]; }
+  .btn-ghost { @apply btn text-slate-600 hover:bg-slate-100; }
+  .btn-whatsapp { @apply btn bg-[#25d366] text-white shadow-sm hover:bg-[#1ebe5b] active:scale-[0.98]; }
+  .card { @apply rounded-2xl border border-slate-100 bg-white shadow-card; }
+  .input { @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-base text-slate-800 placeholder:text-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 sm:text-sm; }
+  .label { @apply mb-1.5 block text-sm font-medium text-slate-700; }
+  .skeleton {
+    @apply rounded-lg bg-slate-200;
+    background-image: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.6) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: var(--animate-shimmer);
+  }
+  .section-title { @apply text-xl font-bold tracking-tight text-slate-900 sm:text-2xl; }
+  .chip { @apply inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition hover:border-brand-300 hover:text-brand-700; }
+  .chip-active { @apply border-brand-600 bg-brand-600 text-white hover:text-white; }
+  .badge { @apply inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide; }
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200 select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50;
+}
+/* v-reveal: aparición al hacer scroll */
+.reveal { opacity: 0; transform: translateY(26px) scale(.98); transition: opacity .7s cubic-bezier(.22,1,.36,1), transform .7s cubic-bezier(.22,1,.36,1); }
+.reveal.visible { opacity: 1; transform: none; }
+
+@utility glass { background: rgb(255 255 255 / .9); backdrop-filter: saturate(180%) blur(14px); }
+@utility scrollbar-hide { scrollbar-width: none; &::-webkit-scrollbar { display: none; } }
+@utility pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+
+/* Impresión del catálogo */
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+  @page { margin: 12mm; }
+}
