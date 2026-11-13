@@ -64,9 +64,9 @@ require_once 'check_access.php';
                     <h6 class="text-white mb-3 border-bottom border-secondary pb-2">2. SUBIR Y PROCESAR</h6>
                     
                     <form id="frmUpload" enctype="multipart/form-data" class="mb-4">
-                        <label class="form-label-custom mb-2">SELECCIONAR ARCHIVO MODIFICADO (.CSV)</label>
+                        <label class="form-label-custom mb-2">SELECCIONAR ARCHIVO MODIFICADO (.CSV, .XLS, .XLSX)</label>
                         <div class="input-group">
-                            <input type="file" class="form-control bg-dark border-secondary text-white" id="fileInput" name="archivo" accept=".csv" required>
+                            <input type="file" class="form-control bg-dark border-secondary text-white" id="fileInput" name="archivo" accept=".csv,.xls,.xlsx" required>
                             <button class="btn btn-info fw-bold" type="submit">
                                 <i class="fas fa-eye me-2"></i> PREVISUALIZAR
                             </button>

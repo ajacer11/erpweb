@@ -248,6 +248,23 @@ try {
         }
 
         $tmpName = $_FILES['archivo']['tmp_name'];
+        // Excel (.xls / .xlsx): se convierte a CSV con ';' y punto decimal, y sigue el mismo flujo que un CSV
+        $ext = strtolower(pathinfo($_FILES['archivo']['name'] ?? '', PATHINFO_EXTENSION));
+        if (in_array($ext, ['xls', 'xlsx'], true)) {
+            require_once __DIR__ . '/vendor/autoload.php';
+            try {
+                $filas = \PhpOffice\PhpSpreadsheet\IOFactory::load($tmpName)->getActiveSheet()->toArray(null, true, false, false);
+            } catch (\Throwable $e) {
+                throw new Exception("No se pudo leer el archivo Excel. Verifique que no esté dañado o guárdelo como CSV.");
+            }
+            $fhCsv = fopen($tmpName, 'w');
+            foreach ($filas as $fila) {
+                fputcsv($fhCsv, array_map(fn($v) => $v === null ? '' : (string) $v, $fila), ';');
+            }
+            fclose($fhCsv);
+        } elseif ($ext !== 'csv') {
+            throw new Exception("Formato no soportado. Use un archivo .csv, .xls o .xlsx.");
+        }
         $handle = fopen($tmpName, "r");
         $firstLine = fgets($handle);
         $delimiter = (strpos($firstLine, ';') !== false) ? ';' : ',';
