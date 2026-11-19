@@ -33,6 +33,20 @@ if ($codigo) {
         opacity: 0; transition: .15s;
     }
     .prod-foto-box:hover .prod-foto-overlay { opacity: 1; }
+    /* Solapa RENTABILIDAD */
+    .rent-box { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 14px; }
+    .rent-box-tit { font-size: .72rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; }
+    .rent-kpi { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 12px; height: 100%; }
+    .rent-kpi .k-lbl { font-size: .68rem; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; color: var(--text-muted); }
+    .rent-kpi .k-val { font-size: 1.35rem; font-weight: 800; color: var(--text-titles); line-height: 1.2; }
+    .rent-kpi .k-sub { font-size: .72rem; color: var(--text-muted); }
+    .rent-kpi.k-dest { border-color: var(--accent); background: var(--accent-soft); }
+    .rent-tabla td, .rent-tabla th { white-space: nowrap; }
+    .rent-tabla .rent-grupo { border-left: 1px solid var(--border-color); }
+    .rent-tabla .rent-grupo-ini { border-left: 1px solid var(--border-color); }
+    .rent-tabla tr.rent-sel td { background: var(--accent-soft); }
+    .rent-tabla tbody tr { cursor: pointer; }
+    .rent-neg { color: var(--danger) !important; }
 </style>
 
 <div class="container-fluid px-4 py-3 fade-in">
@@ -62,6 +76,7 @@ if ($codigo) {
         <ul class="nav nav-tabs nav-tabs-custom" role="tablist">
             <li class="nav-item"><button class="nav-link active" type="button" data-bs-toggle="tab" data-bs-target="#tab-gen">DATOS GENERALES</button></li>
             <li class="nav-item"><button class="nav-link" type="button" data-bs-toggle="tab" data-bs-target="#tab-pre" onclick="calcular()">PRECIOS Y COSTOS</button></li>
+            <li class="nav-item"><button class="nav-link" type="button" data-bs-toggle="tab" data-bs-target="#tab-rent" id="btnTabRent">RENTABILIDAD</button></li>
             <li class="nav-item"><button class="nav-link" type="button" data-bs-toggle="tab" data-bs-target="#tab-con">CONTABILIDAD</button></li>
             <li class="nav-item"><button class="nav-link" type="button" data-bs-toggle="tab" data-bs-target="#tab-cat">CATÁLOGO ONLINE</button></li>
             <!-- NUEVA SOLAPA REFERENCIAS -->
@@ -149,11 +164,11 @@ if ($codigo) {
 
                         <div class="mb-3">
                             <label class="form-label-custom">Neto Costo Compra</label>
-                            <input type="number" class="form-control fw-bold border-info text-end" name="sinivacosto" id="costo_neto" step="0.01" oninput="calcular()">
+                            <input type="number" class="form-control fw-bold border-info text-end" name="sinivacosto" id="costo_neto" step="0.001" oninput="calcular()">
                         </div>
                         <div class="mb-3">
                             <label class="form-label-custom">Impuestos Int.</label>
-                            <input type="number" class="form-control text-end" name="impint" id="costo_ii" step="0.01" oninput="calcular()">
+                            <input type="number" class="form-control text-end" name="impint" id="costo_ii" step="0.001" oninput="calcular()">
                         </div>
                         <div class="row g-2">
                             <div class="col-6"><label class="form-label-custom">IVA Costo</label><input type="text" class="form-control bg-dark bg-opacity-50 text-end" name="ivacosto" id="costo_iva" readonly></div>
@@ -214,7 +229,7 @@ if ($codigo) {
                                         <td><input type="number" class="form-control form-control-sm text-center" name="maxdescl<?=$i?>" id="maxdesc_l<?=$i?>" step="0.5" min="0" max="100"></td>
 
                                         <!-- Neto Venta -->
-                                        <td><input type="number" class="form-control form-control-sm text-center" name="siniva<?=$i==1?'':$i?>" id="neto_l<?=$i?>" step="0.01" oninput="calcular(<?=$i?>)"></td>
+                                        <td><input type="number" class="form-control form-control-sm text-center" name="siniva<?=$i==1?'':$i?>" id="neto_l<?=$i?>" step="0.001" oninput="calcular(<?=$i?>)"></td>
 
                                         <!-- IVA Venta -->
                                         <td><input type="text" class="form-control form-control-sm text-center border-0 bg-transparent text-muted" name="iva<?=$i==1?'1':$i?>" id="iva_l<?=$i?>" readonly></td>
@@ -227,12 +242,96 @@ if ($codigo) {
                                         <td style="display:none"><input type="text" name="IIBB<?=$i?>" id="iibb_l<?=$i?>" readonly></td>
 
                                         <!-- Precio Final -->
-                                        <td><input type="number" class="form-control form-control-sm text-end fw-bold text-accent" name="precio<?=$i==1?'':$i?>" id="final_l<?=$i?>" step="0.01" oninput="calcular(<?=$i?>)"></td>
+                                        <td><input type="number" class="form-control form-control-sm text-end fw-bold text-accent" name="precio<?=$i==1?'':$i?>" id="final_l<?=$i?>" step="0.001" oninput="calcular(<?=$i?>)"></td>
                                     </tr>
                                     <?php endfor; ?>
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RENTABILIDAD: solo lectura, se calcula con los valores de PRECIOS Y COSTOS -->
+            <div class="tab-pane fade" id="tab-rent">
+                <div class="d-flex flex-wrap align-items-end gap-3 mb-3">
+                    <div>
+                        <label class="form-label-custom">Lista a analizar</label>
+                        <select class="form-select form-select-sm" id="rentLista" style="min-width:140px"></select>
+                    </div>
+                    <div>
+                        <label class="form-label-custom">Alícuota IIBB %</label>
+                        <input type="number" class="form-control form-control-sm text-end" id="rentIibb" step="0.01" min="0" style="width:110px">
+                    </div>
+                    <div class="form-check mb-1">
+                        <input class="form-check-input" type="checkbox" id="rentIibbConII">
+                        <label class="form-check-label small" for="rentIibbConII">IIBB también sobre imp. internos</label>
+                    </div>
+                    <div class="small text-muted fst-italic mb-1 ms-auto" style="max-width:420px">
+                        Simulación: la alícuota y la base de IIBB de esta solapa no se graban. Por defecto se usa la del rubro (8 % tabaco, 3,5 % resto).
+                    </div>
+                </div>
+
+                <div id="rentVacio" class="text-center text-muted py-5" style="display:none">
+                    <i class="fa-solid fa-chart-pie fa-2x mb-2"></i><br>
+                    Cargá el <b>neto costo</b> y al menos un <b>precio de venta</b> en PRECIOS Y COSTOS para ver la rentabilidad.
+                </div>
+
+                <div id="rentContenido">
+                    <!-- Indicadores de la lista elegida -->
+                    <div class="row g-2 mb-3" id="rentKpis"></div>
+
+                    <div class="row g-3 mb-3">
+                        <div class="col-lg-5">
+                            <div class="rent-box h-100">
+                                <div class="rent-box-tit">¿A dónde va el precio final? <span class="text-muted" id="rentTitDona"></span></div>
+                                <div style="position:relative;height:260px"><canvas id="rentChartDona"></canvas></div>
+                            </div>
+                        </div>
+                        <div class="col-lg-7">
+                            <div class="rent-box h-100">
+                                <div class="rent-box-tit">Utilidad por lista</div>
+                                <div style="position:relative;height:260px"><canvas id="rentChartListas"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="rent-box mb-3">
+                        <div class="rent-box-tit">Todas las utilidades por lista</div>
+                        <div class="table-responsive">
+                            <table class="table table-sm small align-middle mb-0 rent-tabla">
+                                <thead>
+                                    <tr class="text-muted">
+                                        <th rowspan="2">LISTA</th>
+                                        <th class="text-end" rowspan="2">P. FINAL</th>
+                                        <th class="text-center rent-grupo" colspan="5">ANTES DE IIBB</th>
+                                        <th class="text-center rent-grupo" colspan="4">DESPUÉS DE IIBB</th>
+                                        <th class="text-center rent-grupo" colspan="3">CON DESCUENTO MÁXIMO</th>
+                                    </tr>
+                                    <tr class="text-muted">
+                                        <th class="text-end rent-grupo-ini" title="Neto venta − neto costo">GANANCIA $</th>
+                                        <th class="text-end" title="Ganancia / neto costo. Es la utilidad de la solapa PRECIOS Y COSTOS">s/ NETO COSTO</th>
+                                        <th class="text-end" title="Ganancia / (neto costo + imp. internos): lo que rinde la plata que ponés por unidad">s/ COSTO + II</th>
+                                        <th class="text-end" title="Ganancia / neto venta">s/ NETO VTA</th>
+                                        <th class="text-end" title="Ganancia / precio final: de lo que paga el cliente, cuánto te queda">s/ P. FINAL</th>
+                                        <th class="text-end rent-grupo-ini">IIBB $</th>
+                                        <th class="text-end" title="Ganancia − IIBB">GANANCIA $</th>
+                                        <th class="text-end" title="(Ganancia − IIBB) / (neto costo + imp. internos)">s/ COSTO + II</th>
+                                        <th class="text-end" title="(Ganancia − IIBB) / precio final">s/ P. FINAL</th>
+                                        <th class="text-end rent-grupo-ini" title="Descuento máximo permitido para la lista">DESC.</th>
+                                        <th class="text-end" title="Ganancia después de IIBB vendiendo con el descuento máximo">GANANCIA $</th>
+                                        <th class="text-end" title="Descuento sobre el precio final a partir del cual se pierde plata (después de IIBB)">SIN PERDER</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="rentTbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="small text-muted">
+                        <b>Cómo leerlo.</b> El IVA no es ganancia ni costo: el de la compra se recupera y el de la venta se paga a ARCA.
+                        Los impuestos internos se cobran en el precio y se pagan en el costo: no cambian la ganancia en pesos, pero sí cuánta plata ponés por unidad, por eso la utilidad "s/ costo + II" es más baja.
+                        "Sin perder" es el descuento sobre el precio final hasta el cual todavía cubrís costo e IIBB.
                     </div>
                 </div>
             </div>
@@ -695,7 +794,7 @@ if ($codigo) {
                             
                             if (['sinivacosto', 'ivacosto', 'preciocosto', 'impint'].includes(key) || 
                                 key.startsWith('precio') || key.startsWith('siniva') || key.startsWith('iibb')) {
-                                val = (parseFloat(val) / tipoCambio).toFixed(2);
+                                val = (parseFloat(val) / tipoCambio).toFixed(3);
                             }
 
                             if (el.tagName === 'SELECT' && $(el).hasClass('select2-hidden-accessible')) {
@@ -709,16 +808,16 @@ if ($codigo) {
                     });
 
                     // Carga explicita de listas
-                    document.getElementById('neto_l1').value = (parseFloat(pNorm['siniva']) / tipoCambio).toFixed(2);
-                    document.getElementById('iva_l1').value = (parseFloat(pNorm['iva1']) / tipoCambio).toFixed(2);
-                    document.getElementById('final_l1').value = (parseFloat(pNorm['precio']) / tipoCambio).toFixed(2);
-                    document.getElementById('iibb_l1').value = (parseFloat(pNorm['iibb1']) / tipoCambio).toFixed(2);
+                    document.getElementById('neto_l1').value = (parseFloat(pNorm['siniva']) / tipoCambio).toFixed(3);
+                    document.getElementById('iva_l1').value = (parseFloat(pNorm['iva1']) / tipoCambio).toFixed(3);
+                    document.getElementById('final_l1').value = (parseFloat(pNorm['precio']) / tipoCambio).toFixed(3);
+                    document.getElementById('iibb_l1').value = (parseFloat(pNorm['iibb1']) / tipoCambio).toFixed(3);
 
                     for(let i=2; i<=8; i++) {
-                        if(pNorm[`siniva${i}`]) document.getElementById(`neto_l${i}`).value = (parseFloat(pNorm[`siniva${i}`]) / tipoCambio).toFixed(2);
-                        if(pNorm[`iva${i}`]) document.getElementById(`iva_l${i}`).value = (parseFloat(pNorm[`iva${i}`]) / tipoCambio).toFixed(2);
-                        if(pNorm[`precio${i}`]) document.getElementById(`final_l${i}`).value = (parseFloat(pNorm[`precio${i}`]) / tipoCambio).toFixed(2);
-                        if(pNorm[`iibb${i}`]) document.getElementById(`iibb_l${i}`).value = (parseFloat(pNorm[`iibb${i}`]) / tipoCambio).toFixed(2);
+                        if(pNorm[`siniva${i}`]) document.getElementById(`neto_l${i}`).value = (parseFloat(pNorm[`siniva${i}`]) / tipoCambio).toFixed(3);
+                        if(pNorm[`iva${i}`]) document.getElementById(`iva_l${i}`).value = (parseFloat(pNorm[`iva${i}`]) / tipoCambio).toFixed(3);
+                        if(pNorm[`precio${i}`]) document.getElementById(`final_l${i}`).value = (parseFloat(pNorm[`precio${i}`]) / tipoCambio).toFixed(3);
+                        if(pNorm[`iibb${i}`]) document.getElementById(`iibb_l${i}`).value = (parseFloat(pNorm[`iibb${i}`]) / tipoCambio).toFixed(3);
                     }
 
                     const costoNeto = parseFloat(document.getElementById('costo_neto').value) || 0;
@@ -762,6 +861,13 @@ if ($codigo) {
             } catch (e) { console.error("Error crítico en fetch de producto:", e); }
         }
 
+        // Alícuota de IIBB según el rubro (la usa calcular() y la solapa RENTABILIDAD)
+        window.alicIIBBRubro = function() {
+            const rubroText = $("#cmbRubros option:selected").text().toUpperCase();
+            if (rubroText.includes("CIGARRILLOS") || rubroText.includes("TABACO") || rubroText.includes("HABANO")) return 0.08;
+            return 0.035;
+        };
+
         window.calcular = function(rowIdx = null) {
             const mode = document.querySelector('input[name="calc_mode"]:checked').value;
             const costoNeto = parseFloat(document.getElementById('costo_neto').value) || 0;
@@ -772,14 +878,10 @@ if ($codigo) {
             document.getElementById('prod_poriva_val').value = (alicIva * 100).toFixed(2);
 
             const costoIva = costoNeto * alicIva;
-            document.getElementById('costo_iva').value = costoIva.toFixed(2);
-            document.getElementById('costo_final').value = (costoNeto + impInt + costoIva).toFixed(2);
+            document.getElementById('costo_iva').value = costoIva.toFixed(3);
+            document.getElementById('costo_final').value = (costoNeto + impInt + costoIva).toFixed(3);
 
-            const rubroText = $("#cmbRubros option:selected").text().toUpperCase();
-            let alicIIBB = 0.035; 
-            if (rubroText.includes("CIGARRILLOS") || rubroText.includes("TABACO") || rubroText.includes("HABANO")) {
-                alicIIBB = 0.08; 
-            }
+            const alicIIBB = window.alicIIBBRubro();
 
             for (let i = 1; i <= 8; i++) {
                 const utilInput = document.getElementById(`util_l${i}`);
@@ -796,36 +898,37 @@ if ($codigo) {
                     utilInput.value = util;
                     netoVenta = costoNeto * (1 + util / 100);
                     finalVenta = netoVenta * (1 + alicIva) + impInt;
-                    netoInput.value = netoVenta.toFixed(2);
-                    finalInput.value = finalVenta.toFixed(2);
+                    netoInput.value = netoVenta.toFixed(3);
+                    finalInput.value = finalVenta.toFixed(3);
 
                 } else if (mode === 'manual') {
                     util = parseFloat(utilInput.value) || 0;
                     netoVenta = costoNeto * (1 + util / 100);
                     finalVenta = netoVenta * (1 + alicIva) + impInt;
-                    netoInput.value = netoVenta.toFixed(2);
-                    finalInput.value = finalVenta.toFixed(2);
+                    netoInput.value = netoVenta.toFixed(3);
+                    finalInput.value = finalVenta.toFixed(3);
 
                 } else if (mode === 'neto') {
                     netoVenta = parseFloat(netoInput.value) || 0;
                     finalVenta = netoVenta * (1 + alicIva) + impInt;
                     util = costoNeto > 0 ? ((netoVenta - costoNeto) / costoNeto * 100) : 0;
-                    finalInput.value = finalVenta.toFixed(2);
+                    finalInput.value = finalVenta.toFixed(3);
                     utilInput.value = util.toFixed(2);
 
                 } else if (mode === 'final') {
                     finalVenta = parseFloat(finalInput.value) || 0;
                     netoVenta = (finalVenta - impInt) / (1 + alicIva);
                     util = costoNeto > 0 ? ((netoVenta - costoNeto) / costoNeto * 100) : 0;
-                    netoInput.value = netoVenta.toFixed(2);
+                    netoInput.value = netoVenta.toFixed(3);
                     utilInput.value = util.toFixed(2);
                 }
 
-                ivaLabel.value = (netoVenta * alicIva).toFixed(2);
-                document.getElementById(`impint_l${i}`).value = impInt.toFixed(2);
-                iibbLabel.value = (netoVenta * alicIIBB).toFixed(2);
+                ivaLabel.value = (netoVenta * alicIva).toFixed(3);
+                document.getElementById(`impint_l${i}`).value = impInt.toFixed(3);
+                iibbLabel.value = (netoVenta * alicIIBB).toFixed(3);
                 porcCalculado.value = util.toFixed(2);
             }
+            if (document.getElementById('tab-rent')?.classList.contains('active') && window.renderRentabilidad) window.renderRentabilidad();
         }
         
         document.getElementById('frmProducto').onsubmit = async (e) => {
@@ -836,17 +939,17 @@ if ($codigo) {
             const moneyFields = ['sinivacosto', 'ivacosto', 'preciocosto', 'impint'];
             for(let i=1; i<=8; i++) {
                 if(i===1) {
-                    if(data['siniva']) data['siniva'] = (parseFloat(data['siniva']) * tipoCambio).toFixed(2);
-                    if(data['iva1']) data['iva1'] = (parseFloat(data['iva1']) * tipoCambio).toFixed(2);
-                    if(data['precio']) data['precio'] = (parseFloat(data['precio']) * tipoCambio).toFixed(2);
+                    if(data['siniva']) data['siniva'] = (parseFloat(data['siniva']) * tipoCambio).toFixed(3);
+                    if(data['iva1']) data['iva1'] = (parseFloat(data['iva1']) * tipoCambio).toFixed(3);
+                    if(data['precio']) data['precio'] = (parseFloat(data['precio']) * tipoCambio).toFixed(3);
                 } else {
-                    if(data[`siniva${i}`]) data[`siniva${i}`] = (parseFloat(data[`siniva${i}`]) * tipoCambio).toFixed(2);
-                    if(data[`iva${i}`]) data[`iva${i}`] = (parseFloat(data[`iva${i}`]) * tipoCambio).toFixed(2);
-                    if(data[`precio${i}`]) data[`precio${i}`] = (parseFloat(data[`precio${i}`]) * tipoCambio).toFixed(2);
+                    if(data[`siniva${i}`]) data[`siniva${i}`] = (parseFloat(data[`siniva${i}`]) * tipoCambio).toFixed(3);
+                    if(data[`iva${i}`]) data[`iva${i}`] = (parseFloat(data[`iva${i}`]) * tipoCambio).toFixed(3);
+                    if(data[`precio${i}`]) data[`precio${i}`] = (parseFloat(data[`precio${i}`]) * tipoCambio).toFixed(3);
                 }
-                if(data[`IIBB${i}`]) data[`IIBB${i}`] = (parseFloat(data[`IIBB${i}`]) * tipoCambio).toFixed(2);
+                if(data[`IIBB${i}`]) data[`IIBB${i}`] = (parseFloat(data[`IIBB${i}`]) * tipoCambio).toFixed(3);
             }
-            moneyFields.forEach(f => { if(data[f]) data[f] = (parseFloat(data[f]) * tipoCambio).toFixed(2); });
+            moneyFields.forEach(f => { if(data[f]) data[f] = (parseFloat(data[f]) * tipoCambio).toFixed(3); });
 
             const selPrv = document.getElementById('cmbProveedores');
             data.proveedorID = selPrv.options[selPrv.selectedIndex]?.dataset.id || document.getElementById('h_proveedorID').value || 1;
@@ -958,4 +1061,183 @@ if ($codigo) {
         };
     })();
 <?php endif; ?>
+</script>
+
+<script>
+    // ===================== SOLAPA RENTABILIDAD =====================
+    // Solo lectura: toma neto costo, imp. internos, alícuota de IVA y los precios
+    // de cada lista de PRECIOS Y COSTOS. El descuento replica el de api_facturar
+    // (el % se aplica sobre el precio final y descuenta primero de neto + IVA).
+    (function() {
+        const COL = { costo: '#6b7f99', ii: '#e0a030', iva: '#8e7cc3', iibb: '#d9534f', gan: '#2fb67c' };
+        const $id = (x) => document.getElementById(x);
+        const num = (x) => parseFloat($id(x)?.value) || 0;
+        const fmt$ = (v) => '$ ' + (Number.isFinite(v) ? v : 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const fmtP = (v) => (v === null || !Number.isFinite(v)) ? '—' : v.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' %';
+        const pct = (a, b) => b > 0 ? a / b * 100 : null;
+        const cls = (v) => (v !== null && v < 0) ? 'rent-neg' : '';
+        let iibbManual = false;
+        let charts = [];
+
+        function cargarChart() {
+            if (window.Chart) return Promise.resolve();
+            return new Promise((ok, mal) => {
+                const s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+                s.onload = ok; s.onerror = mal;
+                document.head.appendChild(s);
+            });
+        }
+
+        function calcularListas() {
+            const CN = num('costo_neto');
+            const II = num('costo_ii');
+            const selIva = $id('prod_idiva');
+            const a = (parseFloat(selIva?.options[selIva.selectedIndex]?.dataset.iva) || 0) / 100;
+            const r = (parseFloat($id('rentIibb').value) || 0) / 100;
+            const iibbConII = $id('rentIibbConII').checked;
+            const costoII = CN + II;
+            const iibbDe = (neto, ii) => (neto + (iibbConII ? ii : 0)) * r;
+
+            const filas = [];
+            for (let i = 1; i <= 8; i++) {
+                const N = num(`neto_l${i}`);
+                if (N <= 0 && num(`final_l${i}`) <= 0) continue;
+                const F = num(`final_l${i}`) || (N * (1 + a) + II);
+                const ivaV = N * a;
+                const G = N - CN;
+                const iibb = iibbDe(N, II);
+                const G2 = G - iibb;
+
+                // Vendiendo con el descuento máximo de la lista
+                const d = num(`maxdesc_l${i}`) / 100;
+                const baseNetoIva = N * (1 + a);
+                const descU = d * F;
+                let Nd, IId = II;
+                if (descU <= baseNetoIva) { Nd = (baseNetoIva - descU) / (1 + a); }
+                else { Nd = 0; IId = Math.max(0, II - (descU - baseNetoIva)); }
+                const Gd = Nd - CN - iibbDe(Nd, IId);
+
+                // Descuento sobre el precio final hasta el cual no se pierde (después de IIBB)
+                let sinPerder = null;
+                if (F > 0 && r < 1) {
+                    const NEq = (CN + (iibbConII ? II * r : 0)) / (1 - r);
+                    sinPerder = (baseNetoIva - NEq * (1 + a)) / F * 100;
+                }
+
+                filas.push({
+                    i, N, F, ivaV, G, iibb, G2, d: d * 100, Gd, sinPerder,
+                    mkNeto: pct(G, CN), mkII: pct(G, costoII), mgNeto: pct(G, N), mgFinal: pct(G, F),
+                    mkII2: pct(G2, costoII), mgFinal2: pct(G2, F), mkD: pct(Gd, costoII)
+                });
+            }
+            return { filas, CN, II, costoII };
+        }
+
+        function kpi(lbl, val, sub, dest) {
+            return `<div class="col-6 col-md-4 col-xl-2"><div class="rent-kpi ${dest ? 'k-dest' : ''}">
+                <div class="k-lbl">${lbl}</div><div class="k-val">${val}</div><div class="k-sub">${sub}</div></div></div>`;
+        }
+        const txtSinPerder = (v) => v === null ? '—' : (v <= 0 ? 'Pierde' : fmtP(v));
+
+        window.renderRentabilidad = async function() {
+            if (!iibbManual) $id('rentIibb').value = (window.alicIIBBRubro() * 100).toFixed(2);
+            const { filas, CN, II, costoII } = calcularListas();
+
+            const hay = CN > 0 && filas.length > 0;
+            $id('rentVacio').style.display = hay ? '' : 'none';
+            $id('rentContenido').style.display = hay ? '' : 'none';
+            if (!hay) return;
+
+            // Selector de lista (conserva la elegida si sigue existiendo)
+            const sel = $id('rentLista');
+            const previa = parseInt(sel.value) || filas[0].i;
+            sel.innerHTML = filas.map(f => `<option value="${f.i}">Lista ${f.i}</option>`).join('');
+            sel.value = filas.some(f => f.i === previa) ? previa : filas[0].i;
+            const f = filas.find(x => x.i === parseInt(sel.value));
+
+            // Indicadores de la lista elegida
+            $id('rentKpis').innerHTML =
+                kpi('Ganancia por unidad', fmt$(f.G2), `${fmt$(f.G)} antes de IIBB`, true) +
+                kpi('Utilidad s/ neto costo', fmtP(f.mkNeto), 'la de PRECIOS Y COSTOS') +
+                kpi('Utilidad s/ costo + II', fmtP(f.mkII), `ponés ${fmt$(costoII)} por unidad`) +
+                kpi('Después de IIBB', fmtP(f.mkII2), `s/ costo + II · IIBB ${fmt$(f.iibb)}`) +
+                kpi('Te queda del precio final', fmtP(f.mgFinal2), `de ${fmt$(f.F)} que paga el cliente`) +
+                kpi('Descuento sin perder', txtSinPerder(f.sinPerder), f.d > 0 ? `máx. permitido ${fmtP(f.d)}` : 'sin descuento máximo cargado');
+
+            // Tabla con todas las listas
+            $id('rentTbody').innerHTML = filas.map(x => `
+                <tr data-lista="${x.i}" class="${x.i === f.i ? 'rent-sel' : ''}">
+                    <td class="fw-bold">LISTA ${x.i}</td>
+                    <td class="text-end">${fmt$(x.F)}</td>
+                    <td class="text-end rent-grupo-ini ${cls(x.G)}">${fmt$(x.G)}</td>
+                    <td class="text-end fw-bold ${cls(x.mkNeto)}">${fmtP(x.mkNeto)}</td>
+                    <td class="text-end ${cls(x.mkII)}">${fmtP(x.mkII)}</td>
+                    <td class="text-end ${cls(x.mgNeto)}">${fmtP(x.mgNeto)}</td>
+                    <td class="text-end ${cls(x.mgFinal)}">${fmtP(x.mgFinal)}</td>
+                    <td class="text-end rent-grupo-ini">${fmt$(x.iibb)}</td>
+                    <td class="text-end fw-bold ${cls(x.G2)}">${fmt$(x.G2)}</td>
+                    <td class="text-end ${cls(x.mkII2)}">${fmtP(x.mkII2)}</td>
+                    <td class="text-end ${cls(x.mgFinal2)}">${fmtP(x.mgFinal2)}</td>
+                    <td class="text-end rent-grupo-ini">${x.d > 0 ? fmtP(x.d) : '—'}</td>
+                    <td class="text-end ${x.d > 0 ? cls(x.Gd) : ''}">${x.d > 0 ? fmt$(x.Gd) + ` <span class="text-muted">(${fmtP(x.mkD)})</span>` : '—'}</td>
+                    <td class="text-end ${x.sinPerder !== null && x.sinPerder <= 0 ? 'rent-neg' : ''}">${txtSinPerder(x.sinPerder)}</td>
+                </tr>`).join('');
+
+            // Gráficos
+            try { await cargarChart(); } catch (e) { return; }
+            charts.forEach(c => c.destroy()); charts = [];
+            const css = getComputedStyle(document.documentElement);
+            const txt = css.getPropertyValue('--text-muted').trim() || '#999';
+            const grid = css.getPropertyValue('--border-color').trim() || 'rgba(128,128,128,.2)';
+            const bg = css.getPropertyValue('--bg-modal').trim() || '#fff';
+
+            $id('rentTitDona').textContent = `· Lista ${f.i} · ${fmt$(f.F)}`;
+            const partes = [
+                ['Costo neto', CN, COL.costo], ['Imp. internos', II, COL.ii], ['IVA (a ARCA)', f.ivaV, COL.iva],
+                ['IIBB', f.iibb, COL.iibb], ['Ganancia', Math.max(0, f.G2), COL.gan]
+            ].filter(p => p[1] > 0.004);
+            charts.push(new Chart($id('rentChartDona'), {
+                type: 'doughnut',
+                data: { labels: partes.map(p => p[0]), datasets: [{ data: partes.map(p => +p[1].toFixed(2)), backgroundColor: partes.map(p => p[2]), borderColor: bg, borderWidth: 2 }] },
+                options: {
+                    maintainAspectRatio: false, cutout: '58%',
+                    plugins: {
+                        legend: { position: 'right', labels: { color: txt, boxWidth: 12, padding: 10 } },
+                        tooltip: { callbacks: { label: (c) => `${c.label}: ${fmt$(c.parsed)} (${fmtP(pct(c.parsed, f.F))})` } }
+                    }
+                }
+            }));
+
+            charts.push(new Chart($id('rentChartListas'), {
+                type: 'bar',
+                data: {
+                    labels: filas.map(x => `Lista ${x.i}`),
+                    datasets: [
+                        { label: 's/ neto costo', data: filas.map(x => x.mkNeto), backgroundColor: '#3b8fd9' },
+                        { label: 's/ costo + II', data: filas.map(x => x.mkII), backgroundColor: COL.ii },
+                        { label: 'después de IIBB', data: filas.map(x => x.mkII2), backgroundColor: COL.gan },
+                        { label: 'del precio final', data: filas.map(x => x.mgFinal2), backgroundColor: COL.iva }
+                    ]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { ticks: { color: txt }, grid: { display: false } },
+                        y: { ticks: { color: txt, callback: (v) => v + ' %' }, grid: { color: grid } }
+                    },
+                    plugins: {
+                        legend: { labels: { color: txt, boxWidth: 12 } },
+                        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${fmtP(c.parsed.y)}` } }
+                    }
+                }
+            }));
+        };
+
+        $('#btnTabRent').on('shown.bs.tab', () => window.renderRentabilidad());
+        $('#rentLista').on('change', () => window.renderRentabilidad());
+        $('#rentIibb').on('input', () => { iibbManual = true; window.renderRentabilidad(); });
+        $('#rentIibbConII').on('change', () => window.renderRentabilidad());
+        $('#rentTbody').on('click', 'tr[data-lista]', function() { $('#rentLista').val(this.dataset.lista); window.renderRentabilidad(); });
+    })();
 </script>

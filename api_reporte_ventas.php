@@ -104,6 +104,18 @@ try {
                          ELSE $col END";
         };
 
+        // TICKETS NO FISCALES (100 ticket interno, 101 ticket de crédito)
+        // Con "Emitir tickets sin discriminar IVA" apagado, el ticket se graba
+        // abierto en neto + IVA igual que una factura, pero ese IVA no se le
+        // paga a ARCA: queda en la caja como ingreso. El informe lo mostraba
+        // como IVA y la utilidad (Total - IVA - (Costo - IVA compra)) restaba un
+        // impuesto que no existe: lo no fiscal salía con menos margen que lo
+        // fiscal. Acá el IVA de esos tickets se informa en 0 y pasa al neto
+        // (el total no cambia). El sistema viejo ya los grababa así.
+        $esNoFiscal = "a.tipocomp IN (100, 101)";
+        $ivaInforme = "CASE WHEN $esNoFiscal THEN 0 ELSE a.iva END";
+        $netoInforme = "CASE WHEN $esNoFiscal THEN COALESCE(a.siniva,0) + COALESCE(a.iva,0) ELSE a.siniva END";
+
         // QUERY
         $sql = "SELECT
                     a.fecha AS 'Fecha',
@@ -129,8 +141,8 @@ try {
 
                     {$signoNC('a.total')} AS 'Total',
                     {$signoNC('a.ii')} AS 'Imp_Int',
-                    {$signoNC('a.iva')} AS 'IVA',
-                    {$signoNC('a.siniva')} AS 'Neto',
+                    {$signoNC($ivaInforme)} AS 'IVA',
+                    {$signoNC($netoInforme)} AS 'Neto',
 
                     a.rubro AS 'Rubro',
 
