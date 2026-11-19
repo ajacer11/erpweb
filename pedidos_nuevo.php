@@ -48,7 +48,30 @@ $puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) 
         margin-left: 3px;
     }
 
-    /* Control de preparacion (solo en pantalla, no se guarda) */
+    /* Foto del producto al pasar el mouse (como en ventas). Flota junto al puntero. */
+    .ped-foto-pop {
+        position: fixed; z-index: 2000; width: 230px; pointer-events: none;
+        background: var(--bg-card, #0d1b2a); border: 1px solid var(--border-color, #445566); border-radius: 10px;
+        box-shadow: 0 10px 30px rgba(0,0,0,.55); padding: 8px; display: none;
+    }
+    .ped-foto-pop.visible { display: block; }
+    .ped-foto-pop .pf-img {
+        height: 200px; border-radius: 8px; overflow: hidden; background: #fff;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .ped-foto-pop .pf-img img { width: 100%; height: 100%; object-fit: contain; }
+    .ped-foto-pop .pf-img i { font-size: 40px; color: #94a3b8; }
+    .ped-foto-pop .pf-tit { font-size: 12px; font-weight: 700; color: var(--text-main, #fff); margin-top: 6px; line-height: 1.25;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .ped-foto-pop .pf-sub { font-size: 10.5px; color: var(--text-muted, #94a3b8); }
+    #gridPedidos td.celda-cod { cursor: zoom-in; }
+    .ped-thumb { width: 44px; height: 44px; flex-shrink: 0; border-radius: 8px; overflow: hidden; background: #fff;
+        display: flex; align-items: center; justify-content: center; cursor: zoom-in; border: 1px solid var(--border-color, #445566); }
+    .ped-thumb img { width: 100%; height: 100%; object-fit: contain; }
+    .ped-thumb i { color: #94a3b8; }
+    @media (hover: none) { .ped-foto-pop { display: none !important; } }
+
+    /* Control de preparacion (se guarda en lineapedidosclientes.preparado) */
     .chk-preparado { width: 18px; height: 18px; cursor: pointer; accent-color: #22c55e; vertical-align: middle; }
     #gridPedidos tr.item-preparado td { background-color: rgba(34,197,94,0.15) !important; }
     #gridPedidos tr.item-preparado td:nth-child(3) { text-decoration: line-through; }
@@ -207,7 +230,7 @@ $puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) 
         <table class="table table-dark table-sm table-hover mb-0" id="gridPedidos">
             <thead class="bg-black sticky-top border-bottom border-secondary">
                 <tr>
-                    <th class="text-center text-success" rowspan="2" style="width: 34px;" title="Preparado en caja (solo en pantalla, no se guarda)"><i class="fas fa-box"></i></th>
+                    <th class="text-center text-success" rowspan="2" style="width: 34px;" title="Preparado en caja (se guarda automáticamente)"><i class="fas fa-box"></i></th>
                     <th class="ps-2 text-white-50" rowspan="2" style="width: 80px;">CÓDIGO</th>
                     <th class="text-white-50" rowspan="2">DESCRIPCIÓN</th>
                     <th class="text-center text-white-50" rowspan="2" style="width: 50px;">LISTA</th>
@@ -279,6 +302,29 @@ $puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) 
                         <tbody id="tbodyResultadosProd"></tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Foto flotante al pasar el mouse por un producto -->
+<div class="ped-foto-pop" id="pedFotoPop">
+    <div class="pf-img" id="pedFotoPopImg"></div>
+    <div class="pf-tit" id="pedFotoPopTit"></div>
+    <div class="pf-sub" id="pedFotoPopSub"></div>
+</div>
+
+<!-- Modal Foto grande (clic en el código o en la miniatura) -->
+<div class="modal fade" id="mod_foto_pedido" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content" style="background:var(--bg-modal, #001020); border:1px solid var(--border-color, #445566);">
+            <div class="modal-header py-2" style="border-color:var(--border-color, #445566);">
+                <h6 class="modal-title fw-bold text-white" id="fotoPedidoTitulo"></h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center p-4">
+                <img id="fotoPedidoImg" src="" alt="" style="max-width:100%; max-height:70vh; border-radius:10px; object-fit:contain;">
+                <div id="fotoPedidoSin" class="text-white-50 py-5" style="display:none;"><i class="fas fa-box-open fa-3x mb-2 d-block"></i>Este producto no tiene foto cargada.</div>
             </div>
         </div>
     </div>
@@ -415,6 +461,8 @@ $puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) 
                     cantidad: parseFloat(l.cantidad), precio: parseFloat(l.preciounit), 
                     descuento: parseFloat(l.descuento), lista: parseInt(l.lista),
                     iva_pct: parseFloat(l.iva_pct),
+                    linea_id: parseInt(l.id) || null,
+                    preparado: parseInt(l.preparado) === 1,
                     impint_unit: parseFloat(l.impint_unit),
                     precios_cache: {
                         siniva: l.siniva, siniva2: l.siniva2, siniva3: l.siniva3, siniva4: l.siniva4,
@@ -596,7 +644,7 @@ $puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) 
             tb.append(`
                 <tr data-idx="${i}" class="${prepClass}">
                     <td class="text-center align-middle">${chkPrep}</td>
-                    <td class="ps-2 text-white fw-bold align-middle">${it.codigo}</td>
+                    <td class="ps-2 text-white fw-bold align-middle${it.codigo !== 'LM' ? ' celda-cod' : ''}" title="${it.codigo !== 'LM' ? 'Clic para ver la foto' : ''}">${it.codigo}</td>
                     <td class="text-white-50 text-truncate align-middle" style="max-width: 200px;">${(PUEDE_EDITAR_DESC && it.codigo !== 'LM')
                     ? `<input type="text" class="input-grid text-white-50" style="width:100%;" value="${it.descripcion}" onchange="cambiarDescripcionProductoItem(${i}, this.value)">`
                     : it.descripcion}${promoBadge}</td>
@@ -616,8 +664,9 @@ $puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) 
             // RENDERIZADO MOBILE
             wrapCards.append(`
                 <div class="erp-card mb-2 ${prepClass}" data-idx="${i}">
-                    <div class="erp-card-header mb-1 d-flex justify-content-between align-items-start">
-                        <div>
+                    <div class="erp-card-header mb-1 d-flex justify-content-between align-items-start gap-2">
+                        ${it.codigo !== 'LM' ? `<div class="ped-thumb" data-codigo="${it.codigo}"><img src="${urlFotoProducto(it.codigo)}" loading="lazy" alt="" onerror="this.replaceWith(Object.assign(document.createElement('i'), {className:'fas fa-box-open'}))"></div>` : ''}
+                        <div class="flex-grow-1 min-w-0">
                             <div class="erp-card-title text-white" style="font-size: 13px; max-width: 250px;">${(PUEDE_EDITAR_DESC && it.codigo !== 'LM')
                     ? `<input type="text" class="form-control form-control-sm bg-dark text-white border-secondary" value="${it.descripcion}" onchange="cambiarDescripcionProductoItem(${i}, this.value)">`
                     : it.descripcion}</div>
@@ -679,8 +728,9 @@ $puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) 
     }
 
     // --- Buscador dentro del pedido y control de preparacion ---
-    // El flag "preparado" vive solo en memoria (items[i].preparado): no se
-    // envia al guardar, por eso se pierde al recargar la pantalla.
+    // El flag "preparado" se guarda en lineapedidosclientes.preparado: en un pedido ya
+    // grabado se guarda al instante al tildar; en uno nuevo (o en líneas recién agregadas)
+    // viaja con el pedido al presionar Guardar.
     const normalizarTxt = (t) => String(t || '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, '');
 
     window.aplicarFiltroItems = function() {
@@ -707,14 +757,115 @@ $puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) 
         aplicarFiltroItems();
     };
 
-    window.togglePreparado = function(i, marcado) {
-        if (!items[i]) return;
-        items[i].preparado = !!marcado;
+    function pintarPreparado(i, marcado) {
         // Sincroniza el checkbox de la otra vista (PC / mobile) sin re-renderizar
         $(`.chk-preparado[data-idx="${i}"]`).prop('checked', !!marcado);
         $(`#tbodyPedidos tr[data-idx="${i}"], #tblCards .erp-card[data-idx="${i}"]`).toggleClass('item-preparado', !!marcado);
         aplicarFiltroItems();
+    }
+
+    window.togglePreparado = async function(i, marcado) {
+        const it = items[i];
+        if (!it) return;
+        it.preparado = !!marcado;
+        pintarPreparado(i, marcado);
+
+        // Pedido ya grabado y línea existente en la base: se guarda en el momento
+        if (!(pedidoId > 0 && it.linea_id)) return;
+        try {
+            const res = await fetch('api_pedidos.php?action=set_preparado', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest'},
+                body: JSON.stringify({ numpedido: pedidoId, linea_id: it.linea_id, preparado: !!marcado })
+            }).then(r => r.json());
+            if (!res.success) throw new Error(res.error || 'No se pudo guardar');
+        } catch (e) {
+            // Si no se pudo guardar, se vuelve atrás para no mostrar algo que no quedó grabado
+            if (items[i] === it) { it.preparado = !marcado; pintarPreparado(i, !marcado); }
+            Swal.fire({ toast: true, position: 'top-end', icon: 'error', title: 'No se guardó el tilde', text: e.message, timer: 4000, showConfirmButton: false });
+        }
     };
+
+    // --- Foto del producto al pasar el mouse (como en ventas) ---
+    // img_producto.php valida la sesión y el tenant; devuelve 404 si no hay foto.
+    function urlFotoProducto(codigo) { return 'img_producto.php?codigo=' + encodeURIComponent(codigo); }
+    window.urlFotoProducto = urlFotoProducto;
+    // Se cuelga del body: si quedara dentro de un contenedor con transform (animación fade-in del
+    // módulo), position:fixed se mediría contra ese contenedor y no contra la ventana.
+    $('body > #pedFotoPop').remove();
+    $('#pedFotoPop').appendTo('body');
+    const sinFoto = new Set(); // códigos que ya dieron 404, para no reintentar en cada hover
+    let fotoActual = null;
+
+    function mostrarFotoPop(codigo, descripcion, sub, ev) {
+        if (!codigo || codigo === 'LM') return ocultarFotoPop();
+        if (fotoActual !== codigo) {
+            fotoActual = codigo;
+            const $img = $('#pedFotoPopImg');
+            if (sinFoto.has(codigo)) {
+                $img.html('<i class="fas fa-box-open"></i>');
+            } else {
+                const img = new Image();
+                img.alt = '';
+                img.onerror = () => { sinFoto.add(codigo); if (fotoActual === codigo) $img.html('<i class="fas fa-box-open"></i>'); };
+                img.src = urlFotoProducto(codigo);
+                $img.empty().append(img);
+            }
+            $('#pedFotoPopTit').text(descripcion || codigo);
+            $('#pedFotoPopSub').text(sub || codigo);
+        }
+        $('#pedFotoPop').addClass('visible');
+        moverFotoPop(ev);
+    }
+    function moverFotoPop(ev) {
+        const pop = document.getElementById('pedFotoPop');
+        if (!pop || !ev) return;
+        const w = pop.offsetWidth || 230, h = pop.offsetHeight || 260, m = 18;
+        let x = ev.clientX + m, y = ev.clientY + m;
+        if (x + w > window.innerWidth - 8) x = ev.clientX - w - m;   // sin lugar a la derecha: a la izquierda
+        if (y + h > window.innerHeight - 8) y = Math.max(8, window.innerHeight - h - 8);
+        pop.style.left = Math.max(8, x) + 'px';
+        pop.style.top = y + 'px';
+    }
+    function ocultarFotoPop() { fotoActual = null; $('#pedFotoPop').removeClass('visible'); }
+
+    window.abrirFotoGrande = function(codigo, titulo) {
+        if (!codigo || codigo === 'LM') return;
+        ocultarFotoPop();
+        $('#fotoPedidoTitulo').text(titulo ? `${codigo} · ${titulo}` : codigo);
+        $('#fotoPedidoSin').hide();
+        $('#fotoPedidoImg').show().off('error').on('error', function() { $(this).hide(); $('#fotoPedidoSin').show(); })
+            .attr('src', urlFotoProducto(codigo));
+        $('#mod_foto_pedido').modal('show');
+    };
+
+    // Grilla del pedido
+    $(document).off('.fotoPed')
+        .on('mouseenter.fotoPed mousemove.fotoPed', '#tbodyPedidos tr[data-idx]', function(ev) {
+            const it = items[parseInt($(this).data('idx'))];
+            if (!it) return;
+            if (ev.type === 'mousemove' && fotoActual === it.codigo) return moverFotoPop(ev);
+            mostrarFotoPop(it.codigo, it.descripcion, it.codigo + (it.rubro ? ' · ' + it.rubro : ''), ev);
+        })
+        .on('mouseleave.fotoPed', '#tbodyPedidos tr[data-idx]', ocultarFotoPop)
+        // Buscador de productos (modal)
+        .on('mouseenter.fotoPed mousemove.fotoPed', '#tbodyResultadosProd tr', function(ev) {
+            const d = this.dataset;
+            if (ev.type === 'mousemove' && fotoActual === d.codigo) return moverFotoPop(ev);
+            mostrarFotoPop(d.codigo, d.descripcion, d.codigo + (d.rubro ? ' · ' + d.rubro : ''), ev);
+        })
+        .on('mouseleave.fotoPed', '#tbodyResultadosProd tr', ocultarFotoPop)
+        // Clic en el código (grilla) o en la miniatura (celular): foto grande
+        .on('click.fotoPed', '#tbodyPedidos td.celda-cod', function() {
+            const it = items[parseInt($(this).closest('tr').data('idx'))];
+            if (it) abrirFotoGrande(it.codigo, it.descripcion);
+        })
+        .on('click.fotoPed', '#tblCards .ped-thumb', function() {
+            const it = items[parseInt($(this).closest('.erp-card').data('idx'))];
+            if (it) abrirFotoGrande(it.codigo, it.descripcion);
+        })
+        .on('hide.bs.modal.fotoPed', '#modalBuscarProd', ocultarFotoPop);
+    $('#gridPedidos').closest('.grid-container').off('scroll.fotoPed').on('scroll.fotoPed', ocultarFotoPop);
 
     $(document).off('input.filtroItems').on('input.filtroItems', '#txtFiltroItems', aplicarFiltroItems);
     $(document).off('keydown.filtroItems').on('keydown.filtroItems', '#txtFiltroItems', function(e) {
@@ -739,6 +890,9 @@ $puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) 
                 
                 const tr = document.createElement('tr');
                 tr.className = 'cursor-pointer';
+                tr.dataset.codigo = p.codigo;
+                tr.dataset.descripcion = p.descripcion || '';
+                tr.dataset.rubro = p.rubro || '';
                 tr.onclick = () => seleccionarDeModal(p);
                 tr.innerHTML = `<td class="text-white fw-bold ps-3">${p.codigo}</td>
                                 <td class="text-white-50">${p.descripcion}</td>
@@ -762,7 +916,8 @@ $puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) 
                 precio_unitario: i.precio, descuento: i.descuento, lista: i.lista,
                 imp_int_unit: i.impint_unit, iva_pct: i.iva_pct,
                 poriva: i.codigo === 'LM' ? i.iva_pct : null,
-                promo_id: i.promo_id || null
+                promo_id: i.promo_id || null,
+                preparado: !!i.preparado
             }))
         };
         Swal.fire({title:'Guardando...', didOpen:()=>Swal.showLoading(), background:'#001020', color:'#fff'});

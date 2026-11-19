@@ -9,6 +9,20 @@ require_once 'permisos_helpers.php';
 
 $action = $_GET['action'] ?? '';
 
+/**
+ * ¿La base tiene la columna lineapedidosclientes.preparado? (sql/2026-11-13_pedidos_preparado.sql)
+ * Si una base todavía no la tiene, los pedidos siguen funcionando igual, sin guardar el tilde.
+ */
+function pedidosTienePreparado(PDO $pdo): bool {
+    static $tiene = null;
+    if ($tiene === null) {
+        $st = $pdo->query("SELECT COUNT(*) FROM information_schema.COLUMNS
+                           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'lineapedidosclientes' AND COLUMN_NAME = 'preparado'");
+        $tiene = (int) $st->fetchColumn() > 0;
+    }
+    return $tiene;
+}
+
 try {
     switch ($action) {
         case 'get_info_cliente':
@@ -127,16 +141,20 @@ try {
             }
 
             // Inserción de Líneas (Común a ambos procesos)
-            $sqlDet = "INSERT INTO lineapedidosclientes (numpedido, producto, cantidad, tela, color, columna, descripcion, observacion, lista, descuento, preciounit, impint, poriva) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            // "preparado" (tilde de armado en caja) se conserva al re-insertar las líneas
+            $conPrep = pedidosTienePreparado($pdo);
+            $sqlDet = "INSERT INTO lineapedidosclientes (numpedido, producto, cantidad, tela, color, columna, descripcion, observacion, lista, descuento, preciounit, impint, poriva" . ($conPrep ? ", preparado" : "") . ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?" . ($conPrep ? ", ?" : "") . ")";
             $stmtDet = $pdo->prepare($sqlDet);
 
             foreach($input['items'] as $it) {
-                $stmtDet->execute([
+                $valores = [
                     $numpedido, $it['codigo'], $it['cantidad'], $it['tela'] ?? '', $it['color'] ?? '',
                     $it['columna'] ?? '', $it['descripcion'], '', $it['lista'],
                     $it['descuento'], $it['precio_unitario'], $it['imp_int_unit'],
                     $it['codigo'] === 'LM' ? ($it['poriva'] ?? null) : null
-                ]);
+                ];
+                if ($conPrep) $valores[] = !empty($it['preparado']) ? 1 : 0;
+                $stmtDet->execute($valores);
 
                 // Registrar uso de stock comprometido de promoción (si aplica)
                 if (!empty($it['promo_id'])) {
@@ -148,6 +166,32 @@ try {
 
             $pdo->commit();
             echo json_encode(['success' => true, 'numpedido' => $numpedido]);
+            break;
+
+        case 'set_preparado':
+            // Guarda al instante el tilde "preparado en caja" de una línea de un pedido ya grabado
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') throw new Exception("Método no permitido");
+            if (!pedidosTienePreparado($pdo)) throw new Exception("Falta actualizar la base (columna preparado en las líneas de pedido).");
+            $input = json_decode(file_get_contents('php://input'), true) ?: [];
+            $numpedido = (int) ($input['numpedido'] ?? 0);
+            $lineaId = (int) ($input['linea_id'] ?? 0);
+            if ($numpedido <= 0 || $lineaId <= 0) throw new Exception("Datos incompletos");
+
+            $stCab = $pdo->prepare("SELECT vendedorid, estadofac FROM pedidosclientes WHERE numpedido = ?");
+            $stCab->execute([$numpedido]);
+            $cab = $stCab->fetch(PDO::FETCH_ASSOC);
+            if (!$cab) throw new Exception("Pedido no encontrado");
+            if (esVendedorRestringido() && (int) $cab['vendedorid'] !== idVendedorRestringido()) {
+                throw new Exception("No tiene acceso a este pedido.");
+            }
+            if ((int) $cab['estadofac'] !== 0) throw new Exception("El pedido ya no está pendiente.");
+
+            $stUpd = $pdo->prepare("UPDATE lineapedidosclientes SET preparado = ? WHERE id = ? AND numpedido = ?");
+            $stUpd->execute([!empty($input['preparado']) ? 1 : 0, $lineaId, $numpedido]);
+            $stExiste = $pdo->prepare("SELECT COUNT(*) FROM lineapedidosclientes WHERE id = ? AND numpedido = ?");
+            $stExiste->execute([$lineaId, $numpedido]);
+            if ((int) $stExiste->fetchColumn() === 0) throw new Exception("La línea ya no existe: el pedido fue modificado. Recargalo.");
+            echo json_encode(['success' => true]);
             break;
 
         default: throw new Exception("Acción no válida");
