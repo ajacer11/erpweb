@@ -1829,7 +1829,7 @@ window.bill = (function () {
                         reverseButtons: true
                     };
                 }
-                Swal.fire(swalOpts).then((result) => {
+                Swal.fire(swalOpts).then(async (result) => {
                     if (result.isConfirmed) {
                         const fmt = config?.formatoimpresion || 'A4';
                         const urlFmt = (fmt === '80' || fmt === '58') ? 'ticket' : 'A4';
@@ -1843,21 +1843,21 @@ window.bill = (function () {
                     }
 
                     // "Imprimir Remito automáticamente tras facturar" (Configuración General):
-                    // lleva directo a la pantalla de Imprimir Envíos con el cliente ya
-                    // seleccionado, para completar bultos/valor declarado e imprimir la
-                    // etiqueta/remito de transporte. Solo aplica a ventas de mercadería
-                    // (Factura A/B/C o Ticket), no a Notas de Crédito/Débito.
-                    // Si el usuario no tiene permiso de menú para imprimir_envios.php, NO se
-                    // navega ahí: check_access.php trata una URL no autorizada como intento de
-                    // acceso indebido y cierra la sesión del usuario a la fuerza (ver
-                    // check_access.php, denyAccessAndLog) — un vendedor sin ese permiso quedaba
-                    // expulsado del sistema justo después de facturar, sin haber hecho nada malo.
+                    // al imprimir la factura se imprime también el remito de transporte (con las
+                    // etiquetas de los bultos), preguntando cuántas copias. Usa el transporte de la
+                    // ficha del cliente; si no tiene, se va a la pantalla de Imprimir Envíos con el
+                    // cliente ya elegido para completarlo a mano.
+                    // Solo aplica a ventas de mercadería (Factura A/B/C o Ticket), no a Notas de
+                    // Crédito/Débito. Si el usuario no tiene permiso de menú para imprimir_envios.php
+                    // no se hace nada: check_access.php trata una URL no autorizada como intento de
+                    // acceso indebido y cierra la sesión (ver denyAccessAndLog).
                     const tipoRecienEmitido = parseInt(dataPayload.tipo_comp);
                     const aplicaRemitoAuto = parseInt(config?.imprimeremitoenviopostfactura) === 1
                         && [1, 6, 11, 100].includes(tipoRecienEmitido)
-                        && window.NF2_PUEDE_IMPRIMIR_ENVIOS === true;
+                        && window.NF2_PUEDE_IMPRIMIR_ENVIOS === true
+                        && result.isConfirmed && !!dataPayload.cliente_id;
 
-                    if (aplicaRemitoAuto && dataPayload.cliente_id) {
+                    if (aplicaRemitoAuto && !(await imprimirRemitoTransporte(dataPayload.cliente_id))) {
                         loadModule('imprimir_envios.php?cliente_id=' + dataPayload.cliente_id);
                     } else if (pedidoOrigenId) {
                         loadModule('pedidos_admin.php');
@@ -1874,6 +1874,76 @@ window.bill = (function () {
         } catch (e) {
             Swal.fire('Error Crítico', 'No se pudo comunicar con el servidor.', 'error');
         }
+    }
+
+    /**
+     * Remito de transporte automático tras imprimir la factura: pregunta copias y bultos, lo guarda
+     * (alb_envios) e imprime en otra ventana. Devuelve false si no se pudo resolver acá (cliente
+     * sin transporte o error), para que el que llama abra la pantalla de Imprimir Envíos.
+     */
+    async function imprimirRemitoTransporte(clienteId) {
+        const H = { 'X-Requested-With': 'XMLHttpRequest' };
+        let transporte = null;
+        try {
+            const r = await (await fetch('api_imprimir_envios.php?action=transporte_cliente&cliente_id=' + encodeURIComponent(clienteId), { headers: H })).json();
+            transporte = r.transporte;
+        } catch (e) {
+            return false;
+        }
+        if (!transporte) return false;
+
+        let ventana = null;
+        const resp = await Swal.fire({
+            title: 'Remito de transporte',
+            html: `<div class="text-start">
+                     <p class="mb-3">Transporte: <b>${$('<div>').text(transporte.razon).html()}</b></p>
+                     <label class="form-label fw-bold mb-1" for="rt_copias">¿Cuántas copias del remito?</label>
+                     <input id="rt_copias" type="number" class="swal2-input m-0 mb-3 w-100" min="1" max="10" value="1">
+                     <label class="form-label fw-bold mb-1" for="rt_bultos">Cantidad de bultos</label>
+                     <input id="rt_bultos" type="number" class="swal2-input m-0 w-100" min="1" max="200" value="1">
+                   </div>`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Imprimir remito',
+            cancelButtonText: 'No imprimir',
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#6c757d',
+            reverseButtons: true,
+            focusConfirm: false,
+            didOpen: () => { const el = document.getElementById('rt_copias'); el.focus(); el.select(); },
+            preConfirm: () => {
+                const copias = parseInt(document.getElementById('rt_copias').value, 10);
+                const bultos = parseInt(document.getElementById('rt_bultos').value, 10);
+                if (!(copias >= 1 && copias <= 10)) { Swal.showValidationMessage('Las copias tienen que ser entre 1 y 10.'); return false; }
+                if (!(bultos >= 1 && bultos <= 200)) { Swal.showValidationMessage('Los bultos tienen que ser entre 1 y 200.'); return false; }
+                // La ventana se abre acá (todavía dentro del clic) para que el navegador no la bloquee.
+                ventana = window.open('', '_blank');
+                return { copias, bultos };
+            }
+        });
+        if (!resp.isConfirmed) return true;
+
+        try {
+            const r = await fetch('api_imprimir_envios.php?action=save_and_print', {
+                method: 'POST',
+                headers: { ...H, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ cliente_id: clienteId, transporte_id: transporte.id, bultos: resp.value.bultos, unitario: 0, copias: resp.value.copias })
+            });
+            const data = await r.json();
+            if (data.status !== 'ok') throw new Error(data.error || 'No se pudo generar el remito.');
+            if (!ventana || ventana.closed) ventana = window.open('', '_blank');
+            if (!ventana) {
+                Swal.fire('Ventana bloqueada', `Se guardó el envío N° ${data.numero}, pero el navegador bloqueó la ventana. Permití las ventanas emergentes para este sitio.`, 'warning');
+                return true;
+            }
+            ventana.document.write(data.html_content);
+            ventana.document.close();
+        } catch (e) {
+            if (ventana && !ventana.closed) ventana.close();
+            await Swal.fire('Remito de transporte', e.message || 'No se pudo generar el remito.', 'error');
+            return false;
+        }
+        return true;
     }
 
     function abrirNuevoClienteInternal() {

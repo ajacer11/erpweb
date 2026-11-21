@@ -262,7 +262,7 @@ require_once 'check_access.php';
                             </div>
                             <div class="form-check form-switch mb-3">
                                 <input class="form-check-input" type="checkbox" name="imprimeremitoenviopostfactura" id="imprimeremitoenviopostfactura" value="1">
-                                <label class="form-check-label text-white" for="imprimeremitoenviopostfactura">Imprimir Remito automáticamente tras facturar</label>
+                                <label class="form-check-label text-white" for="imprimeremitoenviopostfactura">Imprimir Remito de transporte al imprimir la factura (pregunta copias y bultos)</label>
                             </div>
                             <div class="form-check form-switch mb-3">
                                 <input class="form-check-input" type="checkbox" name="mostrarvendedor" id="mostrarvendedor" value="1">

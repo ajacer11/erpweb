@@ -46,7 +46,9 @@ function copiarBase(string $origen, string $destino): string
 /** Igual que applySchemaUpdates() del backoffice: cada consulta entre comillas, ignorando errores. */
 function aplicarActualizacionesBackoffice(PDO $pdo): array
 {
-    preg_match_all('/"(.*?)"/s', file_get_contents(ADMIN_SQLS . '/actualizaciones.sql'), $m);
+    // ACTUALIZACIONES_SQL: usar la copia del backoffice del VPS (más nueva que la local), ej. bo_vps/actualizaciones_vps.sql
+    $arch = getenv('ACTUALIZACIONES_SQL') ?: ADMIN_SQLS . '/actualizaciones.sql';
+    preg_match_all('/"(.*?)"/s', file_get_contents($arch), $m);
     $ok = 0; $err = 0;
     foreach ($m[1] as $sql) {
         $sql = trim($sql);
@@ -194,6 +196,7 @@ function aplicarMigracionesSistema(string $db): array
         '2026-10-07_tickets_importectacte.sql', '2026-10-08_configuracion_notas_debito.sql',
         '2026-10-14_modificar_medios_cobro.sql', '2026-10-15_chequesterceros_columnas_faltantes.sql',
         '2026-10-15_tarjetas_cupones.sql', '2026-10-15_conciliacion_bancaria.sql', '2026-10-15_retenciones_percepciones.sql',
+        '2026-11-12_web_catalogo_backoffice.sql', '2026-11-13_pedidos_preparado.sql',
     ];
     $out = [];
     foreach ($scripts as $s) {

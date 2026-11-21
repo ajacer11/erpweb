@@ -36,7 +36,7 @@ const atributos = computed(() => {
 const titulo = computed(() => {
   if (q.value) return `Resultados para "${q.value}"`
   if (nuevos.value) return 'Novedades'
-  return rubro.value || 'Catálogo'
+  return rubro.value || nombreFamilia.value || 'Catálogo'
 })
 const nombreFamilia = computed(() => filtros.value?.familias.find((f) => String(f.id) === familia.value)?.nombre)
 const nombreMarca = computed(() => filtros.value?.marcas.find((m) => String(m.id) === marca.value)?.nombre)
@@ -58,11 +58,11 @@ async function cargar(): Promise<void> {
   try {
     const [r, f] = await Promise.all([
       api.get<Pagina<Producto>>('/productos', params),
-      api.get<Filtros>('/filtros', { rubro: rubro.value }),
+      api.get<Filtros>('/filtros', { familia: familia.value, rubro: rubro.value }),
     ])
     resultado.value = r
     filtros.value = f
-    if (rubro.value) setTimeout(() => document.querySelector('.rubro-tile.activo')?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }), 50)
+    if (familia.value) setTimeout(() => document.querySelector('.rubro-tile.activo')?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }), 50)
   } catch (e) {
     error.value = (e as ApiError).message
   } finally {
@@ -85,6 +85,9 @@ watch(pagina, () => window.scrollTo({ top: 0, behavior: 'smooth' }))
       <nav class="mb-2 flex items-center gap-1 text-xs text-slate-400">
         <RouterLink to="/" class="hover:text-brand-600">Inicio</RouterLink><AppIcon name="chevron-right" :size="12" />
         <RouterLink :to="{ name: 'catalogo' }" class="hover:text-brand-600">Catálogo</RouterLink>
+        <template v-if="familia"><AppIcon name="chevron-right" :size="12" />
+          <RouterLink v-if="rubro" :to="{ name: 'catalogo', query: { familia } }" class="hover:text-brand-600">{{ nombreFamilia || 'Familia' }}</RouterLink>
+          <span v-else class="text-slate-600">{{ nombreFamilia }}</span></template>
         <template v-if="rubro"><AppIcon name="chevron-right" :size="12" /><span class="text-slate-600">{{ rubro }}</span></template>
       </nav>
       <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
@@ -108,15 +111,15 @@ watch(pagina, () => window.scrollTo({ top: 0, behavior: 'smooth' }))
         </div>
       </div>
 
-      <!-- Rubros con íconos animados -->
-      <div v-if="filtros?.rubros.length" class="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 pb-2 pt-1 scrollbar-hide sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0">
-        <RubroTile v-for="r in filtros.rubros" :key="r.nombre" :nombre="r.nombre" chico :activo="r.nombre === rubro" class="shrink-0" />
+      <!-- Familias con íconos animados (primer nivel) -->
+      <div v-if="filtros?.familias.length" class="-mx-4 mb-5 flex gap-2 overflow-x-auto px-4 pb-2 pt-1 scrollbar-hide sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0">
+        <RubroTile v-for="f in filtros.familias" :key="f.id" :nombre="f.nombre" :familia="f.id" chico :activo="String(f.id) === familia" class="shrink-0" />
       </div>
 
       <!-- Filtros activos -->
       <div v-if="cantFiltros" class="mb-4 flex flex-wrap gap-2">
-        <button v-if="rubro" type="button" class="chip chip-active" @click="actualizar({ rubro: null, familia: null })">{{ rubro }}<AppIcon name="close" :size="14" /></button>
-        <button v-if="familia" type="button" class="chip chip-active" @click="actualizar({ familia: null })">{{ nombreFamilia || 'Familia' }}<AppIcon name="close" :size="14" /></button>
+        <button v-if="familia" type="button" class="chip chip-active" @click="actualizar({ familia: null, rubro: null })">{{ nombreFamilia || 'Familia' }}<AppIcon name="close" :size="14" /></button>
+        <button v-if="rubro" type="button" class="chip chip-active" @click="actualizar({ rubro: null })">{{ rubro }}<AppIcon name="close" :size="14" /></button>
         <button v-if="marca" type="button" class="chip chip-active" @click="actualizar({ marca: null })">{{ nombreMarca || 'Marca' }}<AppIcon name="close" :size="14" /></button>
         <button v-if="nuevos" type="button" class="chip chip-active" @click="actualizar({ nuevos: null })">Novedades<AppIcon name="close" :size="14" /></button>
         <button v-for="(v, id) in atributos" :key="id" type="button" class="chip chip-active" @click="actualizar({ ['atr_' + id]: null })">{{ v }}<AppIcon name="close" :size="14" /></button>
@@ -133,21 +136,21 @@ watch(pagina, () => window.scrollTo({ top: 0, behavior: 'smooth' }))
             <button type="button" class="rounded-lg p-2 hover:bg-slate-100" aria-label="Cerrar" @click="filtrosAbiertos = false"><AppIcon name="close" /></button>
           </div>
           <div v-if="filtros" class="space-y-6" @click="(e) => { if ((e.target as HTMLElement).closest('button[data-f]')) filtrosAbiertos = false }">
-            <div v-if="!rubro && filtros.rubros.length">
-              <p class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Rubros</p>
-              <div class="flex flex-wrap gap-2 lg:flex-col lg:gap-0.5">
-                <button v-for="r in filtros.rubros" :key="r.nombre" data-f type="button" class="chip lg:flex lg:justify-between lg:rounded-lg lg:border-0 lg:bg-transparent lg:px-2 lg:py-1.5 lg:text-left lg:hover:bg-slate-100"
-                        @click="actualizar({ rubro: r.nombre, familia: null })">
-                  <span>{{ r.nombre }}</span><span class="text-xs text-slate-400">{{ r.cantidad }}</span>
-                </button>
-              </div>
-            </div>
             <div v-if="filtros.familias.length > 1 || familia">
               <p class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Familia</p>
               <div class="flex flex-wrap gap-2 lg:max-h-72 lg:flex-col lg:flex-nowrap lg:gap-0.5 lg:overflow-y-auto">
                 <button v-for="f in filtros.familias" :key="f.id" data-f type="button" class="chip lg:flex lg:justify-between lg:rounded-lg lg:border-0 lg:bg-transparent lg:px-2 lg:py-1.5 lg:text-left lg:hover:bg-slate-100"
-                        :class="{ 'chip-active lg:!bg-brand-600': String(f.id) === familia }" @click="actualizar({ familia: String(f.id) === familia ? null : String(f.id) })">
+                        :class="{ 'chip-active lg:!bg-brand-600': String(f.id) === familia }" @click="actualizar({ familia: String(f.id) === familia ? null : String(f.id), rubro: null })">
                   <span>{{ f.nombre }}</span><span class="text-xs opacity-60">{{ f.cantidad }}</span>
+                </button>
+              </div>
+            </div>
+            <div v-if="filtros.rubros.length > 1 || rubro">
+              <p class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400">Rubro</p>
+              <div class="flex flex-wrap gap-2 lg:max-h-96 lg:flex-col lg:flex-nowrap lg:gap-0.5 lg:overflow-y-auto">
+                <button v-for="r in filtros.rubros" :key="r.nombre" data-f type="button" class="chip lg:flex lg:justify-between lg:rounded-lg lg:border-0 lg:bg-transparent lg:px-2 lg:py-1.5 lg:text-left lg:hover:bg-slate-100"
+                        :class="{ 'chip-active lg:!bg-brand-600': r.nombre === rubro }" @click="actualizar({ rubro: r.nombre === rubro ? null : r.nombre })">
+                  <span>{{ r.nombre }}</span><span class="text-xs opacity-60">{{ r.cantidad }}</span>
                 </button>
               </div>
             </div>

@@ -132,7 +132,21 @@ foreach ($pdo->query("SELECT id, medio, cuentacontable FROM mediosdepago m WHERE
 }
 
 // ------------------------------------------------------------------ 5. datos de la empresa (padrón ARCA)
-$padron = json_decode((string) @file_get_contents("https://erp.westit.com.ar/ARCA/padron/consultar_padron.php?cuit={$T['cuit']}"), true) ?: [];
+// Con reintentos: si ARCA no responde, se frena (antes quedaban datos por defecto, ej. "Responsable Inscripto").
+$padron = [];
+for ($i = 0; $i < 5 && empty($padron['razonSocial']); $i++) {
+    if ($i) sleep(5);
+    $padron = json_decode((string) @file_get_contents("https://erp.westit.com.ar/ARCA/padron/consultar_padron.php?cuit={$T['cuit']}"), true) ?: [];
+}
+if (empty($padron['razonSocial']) || empty($padron['condicionFiscal'])) {
+    if (getenv('PADRON_OPCIONAL') !== '1') {
+        logm('ERROR 9001 el padrón de ARCA no respondió: no se cargan datos de la empresa por defecto');
+        exit(1);
+    }
+    // Re-corte de una base ya publicada: corte_coego.sh reaplica los datos de la empresa que tiene el VPS.
+    logm('ATENCION padrón de ARCA sin respuesta: datos de la empresa provisorios (los repone el corte en el VPS)');
+    $padron = ['razonSocial' => $clave, 'condicionFiscal' => 'Monotributo'];
+}
 $provMap = ['CIUDAD AUTONOMA BUENOS AIRES' => 'CABA', 'BUENOS AIRES' => 'Buenos Aires', 'MENDOZA' => 'Mendoza', 'CORDOBA' => 'Córdoba', 'SANTA FE' => 'Santa Fe'];
 $prov = $provMap[strtoupper((string) ($padron['provincia'] ?? ''))] ?? 'Buenos Aires';
 $pvLegacy = (int) $pdo->query("SELECT PtoVta FROM tickets WHERE tipocomp < 100 AND cae <> '' ORDER BY id DESC LIMIT 1")->fetchColumn();

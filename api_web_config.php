@@ -90,6 +90,7 @@ try {
             }
             $listas = $pdo->query("SELECT ID AS id, descripcion FROM Listas ORDER BY ID")->fetchAll(PDO::FETCH_ASSOC);
             $rubros = $pdo->query("SELECT DISTINCT TRIM(REPLACE(REPLACE(rubro, CHAR(13), ''), CHAR(10), '')) AS r FROM alb_productos WHERE rubro IS NOT NULL AND TRIM(REPLACE(REPLACE(rubro, CHAR(13), ''), CHAR(10), '')) <> '' AND habilitado = 1 ORDER BY r")->fetchAll(PDO::FETCH_COLUMN);
+            $familias = $pdo->query("SELECT DISTINCT f.nombre FROM familias f JOIN alb_productos p ON p.familia = f.id AND p.habilitado = 1 ORDER BY f.nombre")->fetchAll(PDO::FETCH_COLUMN);
             $destacados = $pdo->query("SELECT d.codigo, p.descripcion FROM web_destacados d LEFT JOIN alb_productos p ON p.codigo = d.codigo ORDER BY d.orden, d.codigo")->fetchAll(PDO::FETCH_ASSOC);
             $dominio = webDominioDeEmpresa($pdo_master, $cuit, $dbId);
             $mailSistema = webConfigMailWestit();
@@ -98,6 +99,7 @@ try {
                 'data' => $cfg,
                 'listas' => $listas,
                 'rubros' => $rubros,
+                'familias' => $familias,
                 'destacados' => $destacados,
                 'url_web' => webUrlBase($dominio),
                 'mail_sistema_ok' => !empty($mailSistema['smtp_host']),

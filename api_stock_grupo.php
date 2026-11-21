@@ -128,7 +128,7 @@ try {
                 if ($dif != 0) {
                     $ent = $dif > 0 ? $dif : 0;
                     $sal = $dif < 0 ? abs($dif) : 0;
-                    $pdo->prepare("INSERT INTO movimientosdestock (codigo, entradas, salidas, tipomov, esfiscal, fecha, usuario, rubro, origenmov) VALUES (?, ?, ?, 'AJUSTE DE INVENTARIO', 1, ?, ?, ?, 'AJUSTE')")->execute([$it['codigo'], $ent, $sal, $fecha, $usuario, $it['rubro']]);
+                    $pdo->prepare("INSERT INTO movimientosdestock (codigo, entradas, salidas, tipomov, esfiscal, fecha, usuario, rubro, origenmov, tipocomp, numremito) VALUES (?, ?, ?, 'AJUSTE DE INVENTARIO', 1, ?, ?, ?, 'AJUSTE', 0, 0)")->execute([$it['codigo'], $ent, $sal, $fecha, $usuario, $it['rubro']]);
                     $idMovLegacy = (int) $pdo->lastInsertId();
 
                     $stmtIdProd->execute([$it['codigo']]);

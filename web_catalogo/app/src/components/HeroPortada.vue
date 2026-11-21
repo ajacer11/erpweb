@@ -28,7 +28,8 @@ function buscar(): void {
   const q = busqueda.value.trim()
   router.push({ name: 'catalogo', query: q ? { q } : {} })
 }
-const rubrosTop = computed(() => [...(props.inicio?.rubros ?? [])].sort((a, b) => b.cantidad - a.cantidad).slice(0, 5))
+// Accesos rápidos debajo del buscador: las familias con más productos
+const familiasTop = computed(() => [...(props.inicio?.familias ?? [])].sort((a, b) => b.cantidad - a.cantidad).slice(0, 6))
 const actual = computed(() => s.value.banners[activo.value])
 const externo = (l: string) => /^https?:\/\//i.test(l)
 
@@ -70,9 +71,9 @@ onBeforeUnmount(() => { clearInterval(timerBanner); clearInterval(timerPalabra) 
         <button type="submit" class="btn-accent px-5">Buscar</button>
       </form>
 
-      <div v-if="rubrosTop.length" class="entrada mt-4 flex flex-wrap gap-2" style="--d: 4">
-        <RouterLink v-for="r in rubrosTop" :key="r.nombre" :to="{ name: 'catalogo', query: { rubro: r.nombre } }"
-                    class="rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold backdrop-blur transition hover:bg-white hover:text-slate-900">{{ r.nombre }}</RouterLink>
+      <div v-if="familiasTop.length" class="entrada mt-4 flex flex-wrap gap-2" style="--d: 4">
+        <RouterLink v-for="f in familiasTop" :key="f.id" :to="{ name: 'catalogo', query: { familia: String(f.id) } }"
+                    class="rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-semibold backdrop-blur transition hover:bg-white hover:text-slate-900">{{ f.nombre }}</RouterLink>
       </div>
 
       <div class="entrada mt-6 flex flex-wrap gap-3" style="--d: 5">

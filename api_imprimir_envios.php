@@ -18,6 +18,13 @@ try {
 
         echo json_encode($data);
 
+    } elseif ($action === 'transporte_cliente') {
+        // Transporte habitual del cliente (para el remito automático al facturar)
+        $st = $pdo->prepare("SELECT t.id, t.razon FROM alb_clientes c JOIN transportes t ON t.id = c.transporte AND t.habilitado = 1 WHERE c.id = ? LIMIT 1");
+        $st->execute([(int) ($_GET['cliente_id'] ?? 0)]);
+        $t = $st->fetch(PDO::FETCH_ASSOC);
+        echo json_encode(['status' => 'ok', 'transporte' => $t ?: null]);
+
     } elseif ($action === 'save_and_print') {
         // 1. RECIBIR DATOS
         $input = json_decode(file_get_contents('php://input'), true);

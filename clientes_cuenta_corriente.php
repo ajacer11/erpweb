@@ -20,13 +20,45 @@ require_once 'check_access.php';
         overflow-y: auto;
         border: 1px solid rgba(255,255,255,0.05);
     }
+
+    /* PC: la pantalla ocupa el alto disponible y la tabla toma todo lo que sobra
+       (antes 65vh fijo: en monitores de 768px se cortaba abajo). */
+    @media (min-width: 992px) {
+        #moduloCtaCte { display: flex; flex-direction: column; height: 100%; }
+        #moduloCtaCte > * { flex-shrink: 0; }
+        #moduloCtaCte > .table-container-scroll { flex: 1 1 auto; min-height: 120px; max-height: none; }
+    }
+    /* Monitores bajos (1366x768 y similares): todo más compacto */
+    @media (min-width: 992px) and (max-height: 900px) {
+        #moduloCtaCte { padding: 0 4px !important; }
+        #moduloCtaCte > .d-flex:first-child { margin-bottom: 4px !important; }
+        #moduloCtaCte h4 { font-size: 1rem; }
+        #moduloCtaCte .cc-subtitulo { display: none; }
+        #moduloCtaCte .btn { padding-top: 2px; padding-bottom: 2px; }
+        #moduloCtaCte .card-filtros { margin-bottom: 4px !important; }
+        #moduloCtaCte .card-filtros .card-body { padding: 6px 10px !important; }
+        #moduloCtaCte .card-filtros .row { --bs-gutter-y: 4px; }
+        #moduloCtaCte .form-label-custom { font-size: 0.68rem; margin-bottom: 1px; }
+        #moduloCtaCte .form-control, #moduloCtaCte .form-select { padding-top: 2px; padding-bottom: 2px; min-height: 28px; font-size: 0.85rem; }
+        #moduloCtaCte .select2-container .select2-selection--single { height: 28px; }
+        #moduloCtaCte .select2-container .select2-selection--single .select2-selection__rendered { line-height: 26px; }
+        #moduloCtaCte .select2-container .select2-selection--single .select2-selection__arrow { height: 26px; }
+        #moduloCtaCte .form-check { margin-bottom: 0; min-height: 0; }
+        #moduloCtaCte .mt-2 { margin-top: 2px !important; }
+        #moduloCtaCte .cc-radios-tipo .form-check { display: inline-block; margin-right: 10px; }
+        #moduloCtaCte .erp-pagination { padding: 3px 4px; margin-top: 2px; }
+        #moduloCtaCte .erp-pag-btn { padding: 2px 8px; }
+        #tblCtaCte { margin-bottom: 0; }
+        #tblCtaCte th, #tblCtaCte td { padding-top: 2px; padding-bottom: 2px; }
+        #tblCtaCte td { font-size: 0.85rem; }
+    }
 </style>
 
-<div class="container-fluid px-4 py-3 fade-in">
+<div class="container-fluid px-4 py-3 fade-in" id="moduloCtaCte">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
             <h4 class="text-white mb-0">CUENTAS CORRIENTES DE CLIENTES</h4>
-            <small class="text-accent opacity-75">Visualización de movimientos y saldos</small>
+            <small class="text-accent opacity-75 cc-subtitulo">Visualización de movimientos y saldos</small>
         </div>
         <div class="d-flex gap-2">
             <button class="btn btn-outline-success border-0" id="btnExportExcel">
@@ -61,6 +93,7 @@ require_once 'check_access.php';
                 <!-- Filtro Tipo -->
                 <div class="col-6 col-md-3">
                     <label class="form-label-custom">FILTRO POR TIPO</label>
+                    <div class="cc-radios-tipo">
                     <div class="form-check">
                         <input class="form-check-input" type="radio" name="filtroTipo" id="rbFiscoCualquiera" checked>
                         <label class="form-check-label small" for="rbFiscoCualquiera">VER TODAS</label>
@@ -72,6 +105,7 @@ require_once 'check_access.php';
                     <div class="form-check">
                         <input class="form-check-input" type="radio" name="filtroTipo" id="rbSoloNoFiscales">
                         <label class="form-check-label small" for="rbSoloNoFiscales">SOLO NO FISCALES</label>
+                    </div>
                     </div>
                 </div>
 

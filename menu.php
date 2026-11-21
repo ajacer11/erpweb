@@ -371,6 +371,27 @@ function renderMenuItem($item)
         });
     });
 
+    // Submenús que no entran en pantalla (rubros de la derecha en notebooks de 1366x768):
+    // abren hacia la izquierda y, si se pasan de abajo, se suben lo necesario.
+    function acomodarSubmenu(li) {
+        const sub = li.querySelector(':scope > .dropdown-menu');
+        if (!sub || window.innerWidth < 992) return;
+        sub.classList.remove('abre-izq');
+        sub.style.top = '';
+        requestAnimationFrame(() => {
+            let r = sub.getBoundingClientRect();
+            if (r.width === 0) return;
+            if (r.right > window.innerWidth - 4) sub.classList.add('abre-izq');
+            r = sub.getBoundingClientRect();
+            const sobra = r.bottom - (window.innerHeight - 4);
+            if (sobra > 0) sub.style.top = (-Math.min(sobra, r.top - 4)) + 'px';
+        });
+    }
+    document.querySelectorAll('#navMain .dropdown-submenu').forEach(function (li) {
+        li.addEventListener('mouseenter', () => acomodarSubmenu(li));
+        li.querySelector(':scope > a')?.addEventListener('click', () => acomodarSubmenu(li));
+    });
+
     // Al navegar a un módulo final, cerrar submenús, dropdowns y hamburguesa.
     document.querySelectorAll('#navMain .nav-link-ajax').forEach(function (link) {
         link.addEventListener('click', function () {

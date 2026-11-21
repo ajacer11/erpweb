@@ -290,7 +290,7 @@ try {
             $stmtFresh  = $pdo->prepare("SELECT id, Stock, rubro, sinivacosto FROM alb_productos WHERE codigo = ? LIMIT 1");
             $stmtHabil  = $pdo->prepare("UPDATE alb_productos SET habilitado = 1 WHERE codigo = ?");
             $stmtLine   = $pdo->prepare("INSERT INTO lineajustes (idajuste, codigo, stockportabla, ingresan, salen, stockfinal, costounitario, rubro) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmtMov    = $pdo->prepare("INSERT INTO movimientosdestock (codigo, entradas, salidas, tipomov, esfiscal, fecha, usuario, rubro, origenmov) VALUES (?, ?, ?, 'AJUSTE DE INVENTARIO', ?, ?, ?, ?, 'AJUSTE')");
+            $stmtMov    = $pdo->prepare("INSERT INTO movimientosdestock (codigo, entradas, salidas, tipomov, esfiscal, fecha, usuario, rubro, origenmov, tipocomp, numremito) VALUES (?, ?, ?, 'AJUSTE DE INVENTARIO', ?, ?, ?, ?, 'AJUSTE', 0, 0)");
             $stmtIng    = $pdo->prepare("INSERT INTO ingresosdestock (tipoingreso, tipocomp, idproveedor, proveedor, codigo, stkant, ingreso, stkfinal, fecha, user, netocosto, fechacarga, stock) VALUES (0, 1000, 1, 'Deposito', ?, ?, ?, ?, ?, ?, ?, ?, ?)");
 
             $procesados = 0;

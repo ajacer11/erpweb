@@ -4,8 +4,10 @@ import { useSitio } from '@/stores'
 import { matiz } from '@/utils'
 import RubroIcon from './RubroIcon.vue'
 
-const props = withDefaults(defineProps<{ nombre: string; cantidad?: number; chico?: boolean; activo?: boolean }>(), { cantidad: 0, chico: false, activo: false })
+/** Tarjeta con ícono animado. Con `familia` lleva al catálogo de esa familia; si no, al del rubro `nombre`. */
+const props = withDefaults(defineProps<{ nombre: string; familia?: number; cantidad?: number; chico?: boolean; activo?: boolean }>(), { familia: 0, cantidad: 0, chico: false, activo: false })
 const sitio = useSitio()
+const destino = computed(() => ({ name: 'catalogo', query: props.familia ? { familia: String(props.familia) } : { rubro: props.nombre } }))
 const h = computed(() => matiz(props.nombre))
 const tipo = computed(() => sitio.diseno?.rubrosIconos?.[props.nombre] ?? '')
 
@@ -22,7 +24,7 @@ function mover(e: PointerEvent): void {
 </script>
 
 <template>
-  <RouterLink ref="el" :to="{ name: 'catalogo', query: { rubro: nombre } }" class="rubro-tile group" :class="{ chico, activo }"
+  <RouterLink ref="el" :to="destino" class="rubro-tile group" :class="{ chico, activo }"
               :style="{ '--h': h, transform: tilt }" @pointermove="mover" @pointerleave="tilt = ''">
     <span class="halo" aria-hidden="true" />
     <span class="icono"><RubroIcon :nombre="nombre" :tipo="tipo" :size="chico ? 30 : 52" /></span>

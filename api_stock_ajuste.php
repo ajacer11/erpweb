@@ -110,8 +110,8 @@ switch ($action) {
             $idajuste = $pdo->lastInsertId();
 
             // 3. Movimiento de stock (auditoría legacy, sin depósito)
-            $stmt = $pdo->prepare("INSERT INTO movimientosdestock (codigo, entradas, salidas, tipomov, esfiscal, fecha, usuario, rubro, origenmov)
-                                   VALUES (?, ?, ?, 'AJUSTE DE INVENTARIO', ?, ?, ?, ?, 'AJUSTE')");
+            $stmt = $pdo->prepare("INSERT INTO movimientosdestock (codigo, entradas, salidas, tipomov, esfiscal, fecha, usuario, rubro, origenmov, tipocomp, numremito)
+                                   VALUES (?, ?, ?, 'AJUSTE DE INVENTARIO', ?, ?, ?, ?, 'AJUSTE', 0, 0)");
             $stmt->execute([$data['codigo'], $data['ingreso'], $data['egreso'], $data['fiscal'], $fecha, $usuario, $pOrig['rubro']]);
             $idMovLegacy = (int) $pdo->lastInsertId();
 

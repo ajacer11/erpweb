@@ -84,6 +84,31 @@ $puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) 
     .input-grid { background: transparent; border: none; color: white; font-weight: bold; width: 100%; text-align: center; font-size: 0.85rem; }
     .input-grid:focus { background: #222; border: 1px solid var(--accent); outline: none; }
 
+    /* --- PANTALLAS BAJAS (notebooks 1366x768): menos aire arriba para que la grilla muestre más líneas --- */
+    @media (min-width: 1200px) {
+        .ped-col-fecha input[type="date"] { padding-left: 4px; padding-right: 2px; font-size: 0.8rem; }
+    }
+    @media (min-width: 992px) and (max-height: 900px) {
+        #moduloPedidos.layout-wrapper { padding-top: 4px !important; padding-bottom: 0 !important; height: 100%; }
+        #moduloPedidos > .mb-2 { margin-bottom: 4px !important; }
+        #moduloPedidos h5 { font-size: 0.95rem; }
+        #moduloPedidos .btn-sm.rounded-pill { padding-top: 1px; padding-bottom: 1px; }
+        #moduloPedidos .card-filtros { padding: 4px 6px !important; }
+        #moduloPedidos .card-filtros .row { --bs-gutter-y: 2px; }
+        #moduloPedidos .form-label-custom { font-size: 0.68rem; margin-bottom: 0; line-height: 1.2; }
+        #moduloPedidos .form-control-sm, #moduloPedidos .form-select-sm, #moduloPedidos .input-group-sm > .form-control,
+        #moduloPedidos .input-group-sm > .btn, #moduloPedidos .input-group-sm > .input-group-text, #moduloPedidos .btn-sm:not(.rounded-pill) {
+            padding-top: 1px; padding-bottom: 1px; min-height: 26px;
+        }
+        #moduloPedidos .select2-container .select2-selection--single { height: 26px; }
+        #moduloPedidos .select2-container .select2-selection--single .select2-selection__rendered { line-height: 24px; }
+        #moduloPedidos .select2-container .select2-selection--single .select2-selection__arrow { height: 24px; }
+        #gridPedidos thead th { padding-top: 1px; padding-bottom: 1px; font-size: 0.7rem; }
+        #gridPedidos tbody td { padding-top: 1px; padding-bottom: 1px; }
+        #moduloPedidos .card-totales { padding: 2px 8px !important; }
+        #moduloPedidos .lbl-total-main { font-size: 1.15rem; }
+    }
+
     /* --- RESPONSIVE MOBILE --- */
     @media (max-width: 768px) {
         .layout-wrapper { height: auto; min-height: 100vh; overflow-y: auto; overflow-x: hidden; padding-bottom: 220px; display: block; }
@@ -131,34 +156,34 @@ $puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) 
     <!-- DATOS GENERALES -->
     <div class="card card-filtros p-2 mb-2 border-secondary bg-dark bg-opacity-25 flex-shrink-0">
         <div class="row g-2">
-            <div class="col-6 col-lg-2">
+            <div class="col-6 col-lg-2 col-xl-1 ped-col-fecha">
                 <label class="form-label-custom">FECHA</label>
                 <input type="date" id="txtFecha" class="form-control form-control-sm" value="<?php echo $hoy; ?>">
             </div>
-            <div class="col-6 col-lg-2">
+            <div class="col-6 col-lg-2 col-xl-1">
                 <label class="form-label-custom text-info">SALDO</label>
                 <input type="text" id="txtSaldoCliente" class="form-control form-control-sm fw-bold bg-dark text-info text-end border-0" readonly value="$ 0.00">
             </div>
-            <div class="col-12 col-lg-4">
+            <div class="col-12 col-lg-4 col-xl-3">
                 <label class="form-label-custom">CLIENTE</label>
                 <select id="cmbCliente" class="form-control select2-simple"></select>
             </div>
-            <div class="col-12 col-lg-4">
+            <div class="col-12 col-lg-4 col-xl-2">
                 <label class="form-label-custom">VENDEDOR</label>
                 <select id="cmbVendedor" class="form-control select2-simple"></select>
             </div>
             
-            <div class="col-6 col-lg-2">
+            <div class="col-6 col-lg-2 col-xl-1">
                 <label class="form-label-custom">LISTA GLOBAL</label>
                 <select id="cmbListaGlobal" class="form-select form-select-sm bg-dark text-white border-secondary">
                     <?php for($i=1; $i<=8; $i++) echo "<option value='$i'>Lista $i</option>"; ?>
                 </select>
             </div>
-            <div class="col-6 col-lg-2">
+            <div class="col-6 col-lg-2 col-xl-1">
                  <label class="form-label-custom text-warning">DESC. MASIVO %</label>
                  <input type="number" id="txtDescGral" class="form-control form-control-sm text-end fw-bold text-warning border-secondary" value="0">
             </div>
-            <div class="col-12 col-lg-8">
+            <div class="col-12 col-lg-8 col-xl-3">
                 <label class="form-label-custom">OBSERVACIONES</label> 
                 <input type="text" id="txtObsPedido" class="form-control form-control-sm bg-dark text-white-50 border-secondary" placeholder="Instrucciones...">
             </div>
@@ -175,7 +200,7 @@ $puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) 
                     <button class="btn btn-outline-secondary border-secondary" onclick="abrirModalProductos('')"><i class="fas fa-search"></i></button>
                 </div>
             </div>
-            <div class="col-12 col-md-5 col-lg-4">
+            <div class="col-12 col-md-5 col-lg-4 col-xl-3">
                 <label class="form-label-custom">DESCRIPCIÓN</label>
                 <input type="text" id="txtProdDesc" class="form-control form-control-sm bg-dark text-white-50 border-0" readonly>
             </div>

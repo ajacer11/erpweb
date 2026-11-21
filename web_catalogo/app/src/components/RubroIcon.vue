@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Ícono animado para un rubro. Se elige por palabras clave del nombre (sirve para cualquier empresa).
+ * Ícono animado para una familia o un rubro. Se elige por palabras clave del nombre (sirve para cualquier empresa).
  * Animación suave siempre; más marcada cuando el contenedor tiene la clase "group" y está en hover.
  */
 import { computed } from 'vue'
@@ -10,6 +10,8 @@ const props = withDefaults(defineProps<{ nombre: string; size?: number; tipo?: s
 const REGLAS: [RegExp, string][] = [
   // El orden importa: gana la primera que coincide.
   [/repuesto/i, 'herramienta'],
+  [/accesorios? (de|para) pesca/i, 'anzuelo'],
+  [/art[ií]culos (de|para) pesca/i, 'cana'],
   [/mobiliario|silla|mesa|banqu|reposer|catre|relax|hogar/i, 'silla'],
   [/reel|carrete|rotativ/i, 'reel'],
   [/ca[ñn]a|puntera|mosca|posaca/i, 'cana'],

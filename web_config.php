@@ -241,8 +241,8 @@ require_once 'check_access.php';
                     <div class="col-12"><hr class="border-secondary opacity-25"></div>
 
                     <div class="col-12">
-                        <label class="form-label-custom">ÍCONO DE CADA RUBRO</label>
-                        <div class="webcfg-help mb-2">Por defecto se elige solo según el nombre del rubro. Cambialo si alguno no queda bien.</div>
+                        <label class="form-label-custom">ÍCONO DE CADA FAMILIA Y RUBRO</label>
+                        <div class="webcfg-help mb-2">Las familias son las tarjetas de la portada y del catálogo; los rubros se ven en la franja en movimiento. Por defecto el ícono se elige solo según el nombre. Cambialo si alguno no queda bien.</div>
                         <div class="row g-2" id="wcRubrosIconos"></div>
                     </div>
                 </div>
@@ -407,7 +407,8 @@ require_once 'check_access.php';
     let beneficios = [];
     let rubrosIconos = {};
     let rubrosLista = [];
-    const SECCIONES = {beneficios: 'Beneficios', rubros: 'Rubros con íconos', destacados: 'Productos destacados', novedades: 'Novedades',
+    let familiasLista = [];
+    const SECCIONES = {beneficios: 'Beneficios', rubros: 'Familias con íconos', destacados: 'Productos destacados', novedades: 'Novedades',
                        franja: 'Franja en movimiento', nosotros: 'Quiénes somos', contacto: 'Contacto rápido'};
     const ICONOS_RUBRO = {auto: 'Automático', cana: 'Caña', reel: 'Reel', anzuelo: 'Anzuelo', senuelo: 'Señuelo', linea: 'Línea / hilo', boya: 'Boya',
         carpa: 'Carpa / camping', linterna: 'Linterna', cuchillo: 'Cuchillo', mira: 'Mira / armas', ropa: 'Ropa', dormir: 'Descanso',
@@ -443,10 +444,14 @@ require_once 'check_access.php';
     window.webcfgBenef = (i, k, v) => { beneficios[i][k] = v; };
 
     function renderRubrosIconos() {
-        $('#wcRubrosIconos').html(rubrosLista.length ? rubrosLista.map((r, i) => `
+        const fila = (r, i) => `
             <div class="col-md-4 col-lg-3"><label class="small text-white-50 mb-1 text-truncate d-block" title="${esc(r)}">${esc(r)}</label>
-                <select class="form-select form-select-sm wc-rubro-icono" data-i="${i}">${Object.entries(ICONOS_RUBRO).map(([k, t]) => `<option value="${k}" ${(rubrosIconos[r] || 'auto') === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div>`).join('')
-            : '<div class="col-12 text-muted small">Sin rubros.</div>');
+                <select class="form-select form-select-sm wc-rubro-icono" data-i="${i}">${Object.entries(ICONOS_RUBRO).map(([k, t]) => `<option value="${k}" ${(rubrosIconos[r] || 'auto') === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div>`;
+        const titulo = (t) => `<div class="col-12 small fw-bold text-info mt-2">${t}</div>`;
+        let html = '';
+        if (familiasLista.length) html += titulo('Familias') + familiasLista.map((f, i) => fila(f, i)).join('');
+        if (rubrosLista.length) html += titulo('Rubros') + rubrosLista.map((r, i) => fila(r, familiasLista.length + i)).join('');
+        $('#wcRubrosIconos').html(html || '<div class="col-12 text-muted small">Sin familias ni rubros.</div>');
     }
 
     const imgUrl = (f) => f ? `${API}?action=imagen&f=${encodeURIComponent(f)}` : '';
@@ -481,6 +486,7 @@ require_once 'check_access.php';
             try { beneficios = JSON.parse(cfg.beneficios || '[]'); } catch (e) { beneficios = []; }
             try { rubrosIconos = JSON.parse(cfg.rubros_iconos || '{}') || {}; } catch (e) { rubrosIconos = {}; }
             rubrosLista = r.rubros;
+            familiasLista = r.familias || [];
             renderSecciones(); renderBeneficios(); renderRubrosIconos();
             destacados = r.destacados.map(d => ({codigo: d.codigo, descripcion: d.descripcion || '(producto inexistente)'}));
             renderDestacados();
@@ -609,7 +615,8 @@ require_once 'check_access.php';
         datos.portada_secciones = secciones;
         datos.beneficios = beneficios.filter(b => b.titulo.trim());
         datos.rubros_iconos = {};
-        $('.wc-rubro-icono').each(function() { if (this.value !== 'auto') datos.rubros_iconos[rubrosLista[+this.dataset.i]] = this.value; });
+        const nombresIconos = [...familiasLista, ...rubrosLista];
+        $('.wc-rubro-icono').each(function() { if (this.value !== 'auto') datos.rubros_iconos[nombresIconos[+this.dataset.i]] = this.value; });
         datos.rubros_ocultos = $('.wc-rubro:checked').map(function() { return this.value; }).get();
         if (banners.some(b => !b.imagen)) {
             const c = await Swal.fire({icon: 'warning', title: 'Hay banners sin imagen', text: 'Se van a descartar. ¿Seguimos?', showCancelButton: true, confirmButtonText: 'Sí, guardar'});

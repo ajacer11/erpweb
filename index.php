@@ -63,6 +63,24 @@ if (!isset($_SESSION['usuario_id'])) {
     <script src="tabla_ordenamiento.js?v=20260916"></script>
 
     <script>
+        // El área de trabajo ocupa exactamente lo que queda debajo de las barras de arriba.
+        // Antes era 100vh - 54px fijo, pero las barras miden ~92px (más si el logo/estado ocupan
+        // dos líneas): con body overflow:hidden, el final de cada pantalla quedaba fuera de vista.
+        (function () {
+            const main = document.getElementById('main-content');
+            if (!main) return;
+            const ajustar = () => {
+                const top = Math.max(0, main.getBoundingClientRect().top);
+                main.style.height = (window.innerHeight - top) + 'px';
+            };
+            ajustar();
+            window.addEventListener('resize', ajustar);
+            if (window.ResizeObserver) {
+                const ro = new ResizeObserver(ajustar);
+                document.querySelectorAll('.status-bar, .navbar-erp').forEach(el => ro.observe(el));
+            }
+        })();
+
         let currentUrl = "";
         $.fn.select2.defaults.set("language", "es");
         $.fn.select2.defaults.set("width", "100%");

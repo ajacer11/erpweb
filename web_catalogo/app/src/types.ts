@@ -98,6 +98,7 @@ export interface Inicio {
   destacados: Producto[]
   novedades: Producto[]
   rubros: { nombre: string; cantidad: number; imagen: string | null }[]
+  familias: { id: number; nombre: string; cantidad: number }[]
   contadores: { productos: number; rubros: number; novedades: number }
 }
 

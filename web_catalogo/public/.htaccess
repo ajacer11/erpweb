@@ -7,6 +7,11 @@ DirectoryIndex index.html
     # Authorization header para PHP (por si se usa en el futuro)
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
+    # Direcciones de la web vieja (links guardados, Google): redirección permanente a la nueva
+    RewriteRule ^lista\.php$ /catalogo [R=301,L,NC]
+    RewriteRule ^index\.php$ / [R=301,L,NC]
+    RewriteRule ^backoffice(/.*)?$ /ingresar [R=301,L,NC]
+
     # API
     RewriteRule ^api(/.*)?$ api/index.php [L,QSA]
 

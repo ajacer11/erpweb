@@ -78,8 +78,8 @@ async function compartir(): Promise<void> {
       <nav class="mb-4 flex flex-wrap items-center gap-1 text-xs text-slate-400">
         <RouterLink to="/" class="hover:text-brand-600">Inicio</RouterLink><AppIcon name="chevron-right" :size="12" />
         <RouterLink :to="{ name: 'catalogo' }" class="hover:text-brand-600">Catálogo</RouterLink>
-        <template v-if="p.rubro"><AppIcon name="chevron-right" :size="12" /><RouterLink :to="{ name: 'catalogo', query: { rubro: p.rubro } }" class="hover:text-brand-600">{{ p.rubro }}</RouterLink></template>
-        <template v-if="p.familia"><AppIcon name="chevron-right" :size="12" /><RouterLink :to="{ name: 'catalogo', query: { rubro: p.rubro ?? undefined, familia: String(p.familia.id) } }" class="hover:text-brand-600">{{ p.familia.nombre }}</RouterLink></template>
+        <template v-if="p.familia"><AppIcon name="chevron-right" :size="12" /><RouterLink :to="{ name: 'catalogo', query: { familia: String(p.familia.id) } }" class="hover:text-brand-600">{{ p.familia.nombre }}</RouterLink></template>
+        <template v-if="p.rubro"><AppIcon name="chevron-right" :size="12" /><RouterLink :to="{ name: 'catalogo', query: { familia: p.familia ? String(p.familia.id) : undefined, rubro: p.rubro } }" class="hover:text-brand-600">{{ p.rubro }}</RouterLink></template>
       </nav>
 
       <div class="grid gap-6 md:grid-cols-2 lg:gap-10">

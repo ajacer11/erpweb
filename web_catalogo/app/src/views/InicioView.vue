@@ -18,13 +18,13 @@ const s = computed(() => sitio.sitio!)
 const d = computed(() => sitio.diseno!)
 const secciones = computed<SeccionPortada[]>(() => d.value.secciones.length ? d.value.secciones : ['beneficios', 'rubros', 'destacados', 'novedades', 'franja', 'nosotros', 'contacto'])
 const textoNosotros = computed(() => parrafos(s.value.quienesSomos.texto).slice(0, 2))
-const verTodosRubros = ref(false)
-// En la portada, los 12 rubros con más productos (ordenados por nombre); el resto con "Ver todos"
-const rubrosPortada = computed(() => {
-  const todos = datos.value?.rubros ?? []
-  if (verTodosRubros.value || todos.length <= 12) return todos
-  const top = new Set([...todos].sort((a, b) => b.cantidad - a.cantidad).slice(0, 12).map((r) => r.nombre))
-  return todos.filter((r) => top.has(r.nombre))
+const verTodasFamilias = ref(false)
+// Tarjetas de la portada: las familias (primer nivel del catálogo). Si son más de 12, las 12 con más productos y "Ver todas"
+const familiasPortada = computed(() => {
+  const todas = datos.value?.familias ?? []
+  if (verTodasFamilias.value || todas.length <= 12) return todas
+  const top = new Set([...todas].sort((a, b) => b.cantidad - a.cantidad).slice(0, 12).map((f) => f.id))
+  return todas.filter((f) => top.has(f.id))
 })
 const rubrosFranja = computed(() => [...(datos.value?.rubros ?? [])].sort((a, b) => b.cantidad - a.cantidad).slice(0, 12).map((r) => r.nombre))
 const ICONOS_OK = new Set(['truck', 'wallet', 'shield', 'star', 'percent', 'clock', 'phone', 'box', 'check', 'sparkles', 'user'])
@@ -74,19 +74,19 @@ onMounted(async () => {
         </div>
       </section>
 
-      <!-- Rubros -->
-      <section v-else-if="sec === 'rubros' && sitio.verCatalogo && (cargando || datos?.rubros.length)" class="container-page mt-14">
+      <!-- Familias con íconos (la sección se sigue llamando "rubros" en la configuración) -->
+      <section v-else-if="sec === 'rubros' && sitio.verCatalogo && (cargando || datos?.familias?.length)" class="container-page mt-14">
         <div v-reveal class="mb-5 flex items-end justify-between gap-3">
-          <div><p class="text-xs font-bold uppercase tracking-widest text-accent-600">Explorá</p><h2 class="section-title">Nuestros rubros</h2></div>
+          <div><p class="text-xs font-bold uppercase tracking-widest text-accent-600">Explorá</p><h2 class="section-title">Nuestras categorías</h2></div>
           <RouterLink :to="{ name: 'catalogo' }" class="group inline-flex items-center gap-1 text-sm font-bold text-brand-600">Ver todo<AppIcon name="arrow-right" :size="16" class="transition group-hover:translate-x-1" /></RouterLink>
         </div>
-        <div v-if="cargando" class="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6"><div v-for="i in 6" :key="i" class="skeleton aspect-square rounded-3xl" /></div>
-        <div v-else class="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-          <RubroTile v-for="(r, i) in rubrosPortada" :key="r.nombre" v-reveal="i % 12" :nombre="r.nombre" :cantidad="r.cantidad" />
+        <div v-if="cargando" class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6"><div v-for="i in 6" :key="i" class="skeleton aspect-square rounded-3xl" /></div>
+        <div v-else class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <RubroTile v-for="(f, i) in familiasPortada" :key="f.id" v-reveal="i % 12" :nombre="f.nombre" :familia="f.id" :cantidad="f.cantidad" />
         </div>
-        <div v-if="!cargando && datos && datos.rubros.length > 12" class="mt-5 text-center">
-          <button type="button" class="btn-secondary" @click="verTodosRubros = !verTodosRubros">
-            {{ verTodosRubros ? 'Ver menos' : `Ver los ${datos.rubros.length} rubros` }}<AppIcon name="chevron-down" :size="16" class="transition" :class="{ 'rotate-180': verTodosRubros }" />
+        <div v-if="!cargando && datos && datos.familias.length > 12" class="mt-5 text-center">
+          <button type="button" class="btn-secondary" @click="verTodasFamilias = !verTodasFamilias">
+            {{ verTodasFamilias ? 'Ver menos' : `Ver las ${datos.familias.length} categorías` }}<AppIcon name="chevron-down" :size="16" class="transition" :class="{ 'rotate-180': verTodasFamilias }" />
           </button>
         </div>
       </section>

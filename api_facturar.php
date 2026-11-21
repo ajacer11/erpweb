@@ -326,10 +326,10 @@ require_once 'libro_iva_helpers.php';
         $resolverMP = function ($id) use ($pdo) {
             if (!$id)
                 return ['nombre' => '', 'tipo' => '', 'cuenta' => ''];
-            $st = $pdo->prepare("SELECT medio, tipodecuenta, CuentaContable FROM mediosdepago WHERE id = ?");
+            $st = $pdo->prepare("SELECT medio, tipodecuenta, CuentaContable, vencimiento FROM mediosdepago WHERE id = ?");
             $st->execute([$id]);
             $r = $st->fetch(PDO::FETCH_ASSOC);
-            return $r ? ['nombre' => $r['medio'], 'tipo' => $r['tipodecuenta'], 'cuenta' => $r['CuentaContable']] : ['nombre' => '', 'tipo' => '', 'cuenta' => ''];
+            return $r ? ['nombre' => $r['medio'], 'tipo' => $r['tipodecuenta'], 'cuenta' => $r['CuentaContable'], 'dias' => max(0, (int) $r['vencimiento'])] : ['nombre' => '', 'tipo' => '', 'cuenta' => ''];
         };
         $mp1 = $resolverMP($input['mp1']);
         $mp2 = $resolverMP($input['mp2']);
@@ -841,6 +841,15 @@ require_once 'libro_iva_helpers.php';
                 $impCtaCte = ($mp1['tipo'] === 'Cuenta Corriente' ? (float) $input['imp1'] : 0)
                            + ($mp2['tipo'] === 'Cuenta Corriente' ? (float) $input['imp2'] : 0);
 
+                // Vencimiento: fecha + los días del medio de cuenta corriente (ej. "Cuenta Corriente 30d"
+                // = 30), como hacía el legacy. Sin cuenta corriente, o en notas de crédito, vence el mismo día.
+                $diasVto = 0;
+                if (!$esNota) {
+                    foreach ([$mp1, $mp2] as $mpV)
+                        if (($mpV['tipo'] ?? '') === 'Cuenta Corriente') $diasVto = max($diasVto, (int) ($mpV['dias'] ?? 0));
+                }
+                $fechaVto = (new DateTime($input['fecha']))->modify("+{$diasVto} days")->format('Y-m-d');
+
                 $sqlTkt = "INSERT INTO tickets (mpago1, mpago1imp, mpago2, mpago2imp, tipocomp, PtoVta, numcomp, cliente, NumdocCli, lvdesde, lvhasta, subtotal, subtotal10, subtotal0, ii, iva,
                 iva10, total, cae, fechacae, fecha, hora, usuario, recargo, descuento, pagada, vencimiento, remitidototal, afectastock, vendedor, letracomp, fecharemito, fecharemitostr, id_deposito, importectacte) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_FORMAT(NOW(), '%H:%i'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
                 $stmtTkt = $pdo->prepare($sqlTkt);
@@ -870,7 +879,7 @@ require_once 'libro_iva_helpers.php';
                     $recaG,
                     $descG,
                     (($mp1['tipo'] == 'Cuenta Corriente' || $mp2['tipo'] == 'Cuenta Corriente') ? 0 : 1),
-                    $input['fecha'],
+                    $fechaVto,
                     ($esAdmin ? 0 : 1),
                     ($esAdmin ? 0 : 1),
                     $input['vendedor_id'],

@@ -222,18 +222,22 @@ function hFiltros(): array
     if (!catalogoVisible()) throw new ApiError('Ingresá para ver el catálogo.', 401, 'catalogo_privado');
     $params = [];
     $where = sqlVisible($params);
-    $rubroSel = (string) ($_GET['rubro'] ?? '');
+    $familiaSel = (int) ($_GET['familia'] ?? 0);
+    $rubroSel = trim((string) ($_GET['rubro'] ?? ''));
 
-    $st = $pdo->prepare("SELECT " . SQL_RUBRO . " AS nombre, COUNT(*) AS cantidad FROM alb_productos p WHERE $where AND " . SQL_RUBRO . " <> '' GROUP BY nombre ORDER BY nombre");
+    // Primer nivel: familias (todas). Segundo: rubros de la familia elegida. El resto, según ambos.
+    $st = $pdo->prepare("SELECT f.id, f.nombre, COUNT(*) AS cantidad FROM alb_productos p JOIN familias f ON f.id = p.familia WHERE $where GROUP BY f.id, f.nombre ORDER BY f.nombre");
     $st->execute($params);
+    $familias = $st->fetchAll();
+
+    $extraFamilia = $familiaSel > 0 ? " AND p.familia = ?" : '';
+    $pf = $familiaSel > 0 ? [...$params, $familiaSel] : $params;
+    $st = $pdo->prepare("SELECT " . SQL_RUBRO . " AS nombre, COUNT(*) AS cantidad FROM alb_productos p WHERE $where $extraFamilia AND " . SQL_RUBRO . " <> '' GROUP BY nombre ORDER BY nombre");
+    $st->execute($pf);
     $rubros = $st->fetchAll();
 
-    $extraRubro = $rubroSel !== '' ? " AND " . SQL_RUBRO . " = ?" : '';
-    $pr = $rubroSel !== '' ? [...$params, $rubroSel] : $params;
-
-    $st = $pdo->prepare("SELECT f.id, f.nombre, COUNT(*) AS cantidad FROM alb_productos p JOIN familias f ON f.id = p.familia WHERE $where $extraRubro GROUP BY f.id, f.nombre ORDER BY f.nombre");
-    $st->execute($pr);
-    $familias = $st->fetchAll();
+    $extraRubro = $extraFamilia . ($rubroSel !== '' ? " AND " . SQL_RUBRO . " = ?" : '');
+    $pr = $rubroSel !== '' ? [...$pf, $rubroSel] : $pf;
 
     $st = $pdo->prepare("SELECT m.id, m.Marca AS nombre, COUNT(*) AS cantidad FROM alb_productos p JOIN Marcas m ON m.id = p.Marca WHERE $where $extraRubro AND m.Marca <> 'Sin Informar' GROUP BY m.id, m.Marca ORDER BY m.Marca");
     $st->execute($pr);
@@ -334,7 +338,7 @@ function traerProductosCompletos(array $codigos): array
 function hInicio(): array
 {
     global $pdo;
-    if (!catalogoVisible()) return ['destacados' => [], 'novedades' => [], 'rubros' => []];
+    if (!catalogoVisible()) return ['destacados' => [], 'novedades' => [], 'rubros' => [], 'familias' => []];
 
     $destacados = [];
     $cods = $pdo->query("SELECT codigo FROM web_destacados ORDER BY orden, codigo LIMIT 24")->fetchAll(PDO::FETCH_COLUMN);
@@ -362,12 +366,18 @@ function hInicio(): array
     }
     $rubros = array_map(function ($r) { unset($r['_probados']); return $r; }, array_values($rubros));
 
+    // Familias (primer nivel del catálogo): son las tarjetas con íconos de la portada.
+    $params = [];
+    $st = $pdo->prepare("SELECT f.id, f.nombre, COUNT(*) AS cantidad FROM alb_productos p JOIN familias f ON f.id = p.familia WHERE " . sqlVisible($params) . " GROUP BY f.id, f.nombre ORDER BY f.nombre");
+    $st->execute($params);
+    $familias = array_map(fn($f) => ['id' => (int) $f['id'], 'nombre' => $f['nombre'], 'cantidad' => (int) $f['cantidad']], $st->fetchAll());
+
     $params = [];
     $st = $pdo->prepare("SELECT COUNT(*) FROM alb_productos p WHERE " . sqlVisible($params));
     $st->execute($params);
     $contadores = ['productos' => (int) $st->fetchColumn(), 'rubros' => count($rubros), 'novedades' => count(idsNovedades())];
 
-    return ['destacados' => $destacados, 'novedades' => $novedades, 'rubros' => $rubros, 'contadores' => $contadores];
+    return ['destacados' => $destacados, 'novedades' => $novedades, 'rubros' => $rubros, 'familias' => $familias, 'contadores' => $contadores];
 }
 
 /** Precios actuales de los productos del carrito (el carrito vive en el navegador). */

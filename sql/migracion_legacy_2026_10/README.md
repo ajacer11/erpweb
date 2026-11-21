@@ -5,7 +5,7 @@ root sin contraseña), copiando esta carpeta a `C:\mig_legacy\` (algunas rutas d
 
 | Cliente | CUIT | Base legacy | Base local de trabajo | Base en el VPS | PV | Estado |
 |---|---|---|---|---|---|---|
-| COEGO, CLAUDIO | 20211411466 | `coego` | `wst_db_20211411466` | `westit_coego` | 3 | en prueba: **falta el corte** |
+| COEGO, CLAUDIO | 20211411466 | `coego` | `wst_db_20211411466` | `westit_coego` | 3 | **corte hecho el 20/11/2026**; re-actualizar desde legacy: `python actualizar_coego.py` |
 | RUGE SUBIRANA, NADIA | 27326319363 | `kinetica_nadia1` | `wst_db_27326319363` | `westit_nadia` | 5 | **en producción desde el 16/10/2026: NO volver a migrar** |
 | PERAGGINI, PABLO NICOLAS | 20281563859 | `kinetica_nicolas` (el más viejo) | `wst_db_20281563859` | `westit_nicolas` | 3 y 4 | en prueba: **falta el corte** |
 | MENA GROUP SA | 30714902888 | `kinetica_mena` | `wst_db_30714902888` | `westit_mena` | 1 | en prueba desde el 16/10/2026: **falta el corte** |
@@ -100,3 +100,23 @@ westit_sofi sin re-migrarla. Es lo que se usa para NADIA, que ya está en produc
   que no estaban en su plan: se crean (`crearCuentasHuerfanas`, también aplica a COEGO).
   En el backoffice ya existía el cliente: `mena_alta.sql` agregó la fila "MENA GROUP - SISTEMA NUEVO"
   y se deshabilitó la fila del legacy (la web solo ofrece el sistema nuevo; el escritorio usa la base de clientes del otro VPS). No se repite en el corte.
+
+## COEGO: corte del 20/11/2026 y re-actualización desde legacy
+
+`python actualizar_coego.py` (en `C:\mig_legacy`, con XAMPP/MySQL prendido) hace todo de punta a punta:
+descarga el legacy (solo lectura), toma del VPS las actualizaciones del backoffice y la estructura de westit_sofi,
+migra / valida / exporta y, si todo da OK, corre `corte_coego.sh` en el VPS (`/root/migracion_2026_11`):
+backup de `westit_coego`, conserva la configuración de la web (`web_*`, `prod_atributo*`), los logos y los datos
+de la empresa, reemplaza la base y deja la marca `_mig_corte`. Después sincroniza las fotos nuevas o cambiadas
+del FTP de la web vieja, en el VPS (`fotos_sync_coego_vps.py` + `normalizar_foto.php`, en `/root/migracion_2026_11`).
+La clave del FTP está en `/root/migracion_2026_11/.ftp_coego` (root, chmod 600); también se puede correr suelto:
+`python3 fotos_sync_coego_vps.py [--simular]`.
+
+**Protección:** si el sistema nuevo ya tiene movimientos cargados después del último corte (tickets, cajas,
+pedidos, cobros, asientos...), `corte_coego.sh` no reemplaza nada. `--forzar` lo pisa igual (queda backup).
+
+- Si el padrón de ARCA no responde, la migración sigue (`PADRON_OPCIONAL=1`) y el corte repone los datos de la
+  empresa que ya tenía el VPS. Sin esa variable, paso2 se detiene en vez de cargar datos por defecto.
+- `ACTUALIZACIONES_SQL` permite usar el `actualizaciones.sql` del backoffice del VPS (más nuevo que el local).
+- `master_coego_produccion.sql`: deshabilita las filas legacy de COEGO en la maestra, agrega el dominio
+  `pescahermanos.com.ar` en `web_sitios` y el módulo `api_productos`. Ya aplicado; no hace falta repetirlo.

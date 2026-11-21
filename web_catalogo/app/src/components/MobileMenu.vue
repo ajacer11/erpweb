@@ -9,12 +9,12 @@ import AppIcon from './AppIcon.vue'
 const sitio = useSitio()
 const ui = useUi()
 const route = useRoute()
-const rubros = ref<Filtros['rubros']>([])
+const familias = ref<Filtros['familias']>([])
 
 watch(() => route.fullPath, () => { ui.menuAbierto = false })
 onMounted(async () => {
   if (!sitio.verCatalogo) return
-  try { rubros.value = (await api.get<Filtros>('/filtros')).rubros } catch { /* sin rubros */ }
+  try { familias.value = (await api.get<Filtros>('/filtros')).familias } catch { /* sin familias */ }
 })
 </script>
 
@@ -37,11 +37,11 @@ onMounted(async () => {
         <RouterLink :to="{ name: 'contacto' }" class="flex items-center gap-3 px-5 py-3 font-medium hover:bg-slate-50"><AppIcon name="phone" class="text-brand-600" />Contacto</RouterLink>
         <RouterLink v-if="sitio.verCatalogo" :to="{ name: 'imprimir' }" class="flex items-center gap-3 px-5 py-3 font-medium hover:bg-slate-50"><AppIcon name="print" class="text-brand-600" />Lista para imprimir</RouterLink>
 
-        <template v-if="rubros.length">
-          <p class="mt-3 border-t border-slate-100 px-5 pb-1 pt-4 text-xs font-bold uppercase tracking-wider text-slate-400">Rubros</p>
-          <RouterLink v-for="r in rubros" :key="r.nombre" :to="{ name: 'catalogo', query: { rubro: r.nombre } }"
+        <template v-if="familias.length">
+          <p class="mt-3 border-t border-slate-100 px-5 pb-1 pt-4 text-xs font-bold uppercase tracking-wider text-slate-400">Categorías</p>
+          <RouterLink v-for="f in familias" :key="f.id" :to="{ name: 'catalogo', query: { familia: String(f.id) } }"
                       class="flex items-center justify-between px-5 py-2.5 text-sm text-slate-700 hover:bg-slate-50">
-            <span>{{ r.nombre }}</span><span class="text-xs text-slate-400">{{ r.cantidad }}</span>
+            <span>{{ f.nombre }}</span><span class="text-xs text-slate-400">{{ f.cantidad }}</span>
           </RouterLink>
         </template>
       </nav>
