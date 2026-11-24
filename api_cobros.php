@@ -128,7 +128,7 @@ try {
             $stmt = $pdo->prepare($sql);
             $stmt->execute([$idcli]);
 
-            $config = $pdo->query("SELECT imputarcobros FROM configuracion LIMIT 1")->fetch();
+            $config = $pdo->query("SELECT imputarcobros FROM configuracion ORDER BY id DESC LIMIT 1")->fetch();
 
             echo json_encode([
                 'success' => true,

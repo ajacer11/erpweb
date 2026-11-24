@@ -25,7 +25,7 @@ function multidepositoHabilitado(PDO $pdo): bool
 {
     static $cache = null;
     if ($cache === null) {
-        $cache = (bool) $pdo->query('SELECT multidepositohabilitado FROM configuracion LIMIT 1')->fetchColumn();
+        $cache = (bool) $pdo->query('SELECT multidepositohabilitado FROM configuracion ORDER BY id DESC LIMIT 1')->fetchColumn();
     }
     return $cache;
 }
@@ -106,7 +106,7 @@ function datosEmisorFacturacion(PDO $pdo, string $usuario, ?int $idDeposito = nu
 
 function depositoPorDefecto(PDO $pdo): ?int
 {
-    $id = (int) $pdo->query('SELECT deposito_default_id FROM configuracion LIMIT 1')->fetchColumn();
+    $id = (int) $pdo->query('SELECT deposito_default_id FROM configuracion ORDER BY id DESC LIMIT 1')->fetchColumn();
     return $id > 0 ? $id : null;
 }
 
@@ -234,7 +234,7 @@ function validarDeposito(PDO $pdo, int $idDeposito, string $contexto): void
 
 function permiteNegativoEnDeposito(PDO $pdo, int $idDeposito): bool
 {
-    if ((int) $pdo->query('SELECT stocknegativo FROM configuracion LIMIT 1')->fetchColumn() === 1) {
+    if ((int) $pdo->query('SELECT stocknegativo FROM configuracion ORDER BY id DESC LIMIT 1')->fetchColumn() === 1) {
         return true;
     }
     $stmt = $pdo->prepare('SELECT permitenegativo FROM depositos WHERE id = ?');
