@@ -223,6 +223,20 @@ function renderMenuItem($item)
         </span>
     </div>
     <div class="status-actions d-flex align-items-center">
+        <div id="notif-wrap" class="position-relative d-none">
+            <button type="button" id="btn-notif" onclick="toggleNotif(event)"
+                class="btn btn-sm btn-outline-light ms-2 position-relative" title="Novedades de la web (pedidos, altas de clientes, pagos)">
+                <i class="fa-solid fa-bell"></i>
+                <span id="notif-badge" class="notif-badge d-none">0</span>
+            </button>
+            <div id="notif-panel" class="notif-panel d-none" role="dialog" aria-label="Novedades">
+                <div class="notif-head">
+                    <strong><i class="fa-solid fa-bell me-1"></i> Novedades de la web</strong>
+                    <button type="button" class="btn btn-sm btn-link p-0 text-info" id="notif-escritorio" onclick="activarNotifEscritorio()">Avisarme en el escritorio</button>
+                </div>
+                <div id="notif-lista" class="notif-lista"><div class="notif-vacio">Sin novedades.</div></div>
+            </div>
+        </div>
         <button type="button" id="btn-ia-soporte" onclick="abrirChatIA()"
             class="btn btn-sm btn-outline-light ms-2" title="Asistente de soporte">
             <i class="fa-solid fa-robot"></i>
@@ -576,6 +590,140 @@ function renderMenuItem($item)
     checkCajaStatus();
     checkDepositoStatus();
     setInterval(checkCajaStatus, 60000);
+
+    // ---- Notificaciones (campanita): pedidos web, altas de clientes y pagos informados ----
+    // El servidor devuelve lo último que entró; qué es "nuevo" lo lleva cada navegador
+    // (último id visto por tipo, por empresa y usuario) en localStorage. La primera vez se
+    // toma todo lo existente como visto, para no disparar avisos viejos.
+    const NOTIF_KEY = 'notif_vistos_<?= preg_replace('/\D/', '', (string) ($_SESSION['tenant_cuit'] ?? '')) ?>_<?= (int) ($_SESSION['usuario_id'] ?? 0) ?>';
+    const NOTIF_ICONO = { pedido: 'fa-cart-shopping text-success', solicitud: 'fa-user-plus text-warning', aviso: 'fa-money-bill-wave text-info' };
+    let __notifItems = [];
+    let __notifAvisados = null; // ids ya avisados en esta pestaña: {tipo: maxId}
+
+    function notifLeerVistos() {
+        try { return JSON.parse(localStorage.getItem(NOTIF_KEY) || 'null'); } catch (e) { return null; }
+    }
+    function notifGuardarVistos(v) {
+        try { localStorage.setItem(NOTIF_KEY, JSON.stringify(v)); } catch (e) { /* sin storage: solo se pierde el "visto" */ }
+    }
+    function notifMaximos(items) {
+        const m = { pedido: 0, solicitud: 0, aviso: 0 };
+        items.forEach(i => { if (i.id > (m[i.tipo] || 0)) m[i.tipo] = i.id; });
+        return m;
+    }
+    function notifEsc(t) { return $('<div>').text(t ?? '').html(); }
+    function notifFecha(f) {
+        const d = new Date(String(f).replace(' ', 'T'));
+        return isNaN(d) ? '' : d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    }
+    function notifBeep() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            [880, 1175].forEach((hz, i) => {
+                const o = ctx.createOscillator(), g = ctx.createGain();
+                o.frequency.value = hz; o.connect(g); g.connect(ctx.destination);
+                const t = ctx.currentTime + i * 0.18;
+                g.gain.setValueAtTime(0.15, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+                o.start(t); o.stop(t + 0.17);
+            });
+        } catch (e) { /* el navegador puede bloquear el audio hasta el primer clic */ }
+    }
+
+    function notifRender() {
+        const vistos = notifLeerVistos() || {};
+        const nuevos = __notifItems.filter(i => i.id > (vistos[i.tipo] || 0));
+        const badge = document.getElementById('notif-badge');
+        badge.textContent = nuevos.length > 9 ? '9+' : nuevos.length;
+        badge.classList.toggle('d-none', nuevos.length === 0);
+        document.title = document.title.replace(/^\(\d+\+?\) /, '');
+        if (nuevos.length) document.title = `(${nuevos.length}) ` + document.title;
+
+        const lista = document.getElementById('notif-lista');
+        if (!__notifItems.length) { lista.innerHTML = '<div class="notif-vacio">Sin novedades.</div>'; return; }
+        lista.innerHTML = __notifItems.map(i => `
+            <a href="${i.url}" class="notif-item${i.id > (vistos[i.tipo] || 0) ? ' nuevo' : ''}" data-url="${i.url}">
+                <i class="fa-solid ${NOTIF_ICONO[i.tipo] || 'fa-bell'}"></i>
+                <span class="notif-txt"><b>${notifEsc(i.titulo)}</b><small>${notifEsc(i.detalle)}</small></span>
+                <span class="notif-fecha">${notifFecha(i.fecha)}</span>
+            </a>`).join('');
+        const btnEsc = document.getElementById('notif-escritorio');
+        btnEsc.classList.toggle('d-none', !('Notification' in window) || Notification.permission !== 'default');
+    }
+
+    function notifAvisar(nuevos) {
+        if (!nuevos.length) return;
+        notifBeep();
+        const txt = nuevos.length === 1 ? `${nuevos[0].titulo}: ${nuevos[0].detalle}` : `Entraron ${nuevos.length} novedades desde la web.`;
+        // SweetAlert muestra una sola ventana a la vez: si hay un diálogo abierto (ej. confirmar
+        // una factura) el cartel lo cerraría, así que en ese caso queda solo el sonido y el contador.
+        if (window.Swal && !Swal.isVisible()) Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: nuevos.length === 1 ? nuevos[0].titulo : 'Novedades de la web',
+            text: nuevos.length === 1 ? nuevos[0].detalle : txt, showConfirmButton: false, timer: 8000, timerProgressBar: true });
+        if ('Notification' in window && Notification.permission === 'granted' && document.hidden) {
+            try { const n = new Notification('WEST IT - Novedades de la web', { body: txt, icon: 'isotipo.png', tag: 'westit-notif' }); n.onclick = () => { window.focus(); n.close(); }; } catch (e) { }
+        }
+    }
+
+    async function checkNotificaciones() {
+        try {
+            const r = await (await fetch('api_notificaciones.php', { headers: { 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store' })).json();
+            if (!r.success || !r.activo) { document.getElementById('notif-wrap').classList.add('d-none'); return; }
+            document.getElementById('notif-wrap').classList.remove('d-none');
+            __notifItems = r.items || [];
+            let vistos = notifLeerVistos();
+            if (!vistos) { vistos = notifMaximos(__notifItems); notifGuardarVistos(vistos); }
+            // Avisar (sonido + cartel) solo lo que no se avisó todavía en esta pestaña.
+            if (__notifAvisados === null) __notifAvisados = { ...vistos };
+            const aAvisar = __notifItems.filter(i => i.id > Math.max(vistos[i.tipo] || 0, __notifAvisados[i.tipo] || 0));
+            const m = notifMaximos(__notifItems);
+            Object.keys(m).forEach(k => { __notifAvisados[k] = Math.max(__notifAvisados[k] || 0, m[k]); });
+            notifAvisar(aAvisar);
+            notifRender();
+        } catch (e) { /* sin conexión: se reintenta en el próximo ciclo */ }
+    }
+
+    function notifMarcarVistos() {
+        const v = notifLeerVistos() || {};
+        const m = notifMaximos(__notifItems);
+        Object.keys(m).forEach(k => { v[k] = Math.max(v[k] || 0, m[k]); });
+        notifGuardarVistos(v);
+        notifRender();
+    }
+
+    function toggleNotif(ev) {
+        ev.stopPropagation();
+        const p = document.getElementById('notif-panel');
+        const abrir = p.classList.contains('d-none');
+        p.classList.toggle('d-none', !abrir);
+        // Se muestra con los "nuevos" resaltados y recién después se marcan como vistos.
+        if (abrir) setTimeout(notifMarcarVistos, 1500);
+    }
+
+    async function activarNotifEscritorio() {
+        if (!('Notification' in window)) return;
+        await Notification.requestPermission();
+        notifRender();
+    }
+
+    document.addEventListener('click', e => {
+        const p = document.getElementById('notif-panel');
+        if (!p || p.classList.contains('d-none')) return;
+        const item = e.target.closest('.notif-item');
+        if (item) {
+            e.preventDefault();
+            e.stopPropagation();
+            p.classList.add('d-none');
+            notifMarcarVistos();
+            if (typeof loadModule === 'function') { currentUrl = ''; loadModule(item.dataset.url); }
+            return;
+        }
+        if (!e.target.closest('#notif-panel')) p.classList.add('d-none');
+    }, true);
+    // Otra pestaña marcó como visto: actualizar el contador acá también.
+    window.addEventListener('storage', e => { if (e.key === NOTIF_KEY) notifRender(); });
+    window.addEventListener('focus', checkNotificaciones);
+
+    checkNotificaciones();
+    setInterval(checkNotificaciones, 45000);
 
     // ---- Ayuda contextual (botón "?") ----
     let __ayudaData = null;

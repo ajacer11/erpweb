@@ -890,10 +890,12 @@ $puedeEditarDescFacturar = puedeEditarDescripcionFacturar();
 <script>
     // La carga de pedido/presupuesto ocurre en bill.init() leyendo
     // ?pedidoid=/?presupuestoid= de la URL (igual que facturar.js).
-    const NF2_PUEDE_CREAR_CLIENTE = <?php echo $puedeCrearCliente ? 'true' : 'false'; ?>;
-    const NF2_NC_ORIGEN_ID = <?php echo (int) $ncOrigenId; ?>;
-    const NF2_PUEDE_EDITAR_DESC = <?php echo $puedeEditarDescFacturar ? 'true' : 'false'; ?>;
-    const NF2_PUEDE_IMPRIMIR_ENVIOS = <?php echo $puedeImprimirEnvios ? 'true' : 'false'; ?>;
+    // En window (no const): newfactura.js los lee como window.NF2_*, y una const de nivel superior
+    // no se ve ahí; además, al volver a abrir el módulo, redeclarar una const tira error.
+    window.NF2_PUEDE_CREAR_CLIENTE = <?php echo $puedeCrearCliente ? 'true' : 'false'; ?>;
+    window.NF2_NC_ORIGEN_ID = <?php echo (int) $ncOrigenId; ?>;
+    window.NF2_PUEDE_EDITAR_DESC = <?php echo $puedeEditarDescFacturar ? 'true' : 'false'; ?>;
+    window.NF2_PUEDE_IMPRIMIR_ENVIOS = <?php echo $puedeImprimirEnvios ? 'true' : 'false'; ?>;
 </script>
 <script src="facturar_validaciones.js?v=<?php echo time(); ?>"></script>
 <script src="newfactura.js?v=<?php echo time(); ?>"></script>

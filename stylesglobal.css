@@ -861,3 +861,28 @@ label, .form-label-custom {
     color: #212529;
     background-color: #fff;
 }
+
+/* ---- Notificaciones (campanita de la barra superior) ---- */
+.notif-badge {
+    position: absolute; top: -6px; right: -6px; min-width: 17px; height: 17px; padding: 0 4px;
+    border-radius: 9px; background: #dc3545; color: #fff; font-size: 10px; font-weight: 700;
+    line-height: 17px; text-align: center; box-shadow: 0 0 0 2px var(--bg-navbar);
+}
+#btn-notif:has(.notif-badge:not(.d-none)) i { animation: notif-campana 1.2s ease-in-out 2; }
+@keyframes notif-campana { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(18deg); } 75% { transform: rotate(-18deg); } }
+.notif-panel {
+    position: absolute; top: calc(100% + 8px); right: 0; z-index: 3000; width: 360px; max-width: calc(100vw - 24px);
+    background: var(--bg-modal); color: var(--text-main, inherit); border: 1px solid var(--border-color);
+    border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .45); overflow: hidden;
+}
+.notif-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border-color); font-size: 13px; }
+.notif-head .btn-link { font-size: 11px; text-decoration: none; }
+.notif-lista { max-height: 60vh; overflow-y: auto; }
+.notif-vacio { padding: 18px; text-align: center; opacity: .6; font-size: 13px; }
+.notif-item { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--border-color); color: inherit; text-decoration: none; font-size: 12.5px; }
+.notif-item:hover { background: var(--accent-soft); color: inherit; }
+.notif-item > i { margin-top: 3px; width: 16px; text-align: center; }
+.notif-item.nuevo { background: rgba(13, 202, 240, .08); box-shadow: inset 3px 0 0 var(--accent); }
+.notif-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.notif-txt small { opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.notif-fecha { font-size: 10.5px; opacity: .6; white-space: nowrap; }

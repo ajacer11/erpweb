@@ -32,6 +32,33 @@
         "Existen enlaces directos de acceso por empresa (con el CUIT incluido en la dirección) que evitan tener que tipearlo cada vez."
       ],
       "funcionamiento_interno": "El sistema es multiempresa: primero identifica a qué empresa corresponde el CUIT ingresado y a qué base de datos de esa empresa hay que conectarse (puede haber más de una si la empresa tiene varias sucursales o modalidades configuradas). Recién con esa empresa ya elegida valida el usuario y la contraseña contra los datos de esa base específica, y si son correctos abre la sesión de trabajo."
+    },
+    "notificaciones": {
+      "titulo": "Notificaciones (campanita)",
+      "categoria": "Barra superior",
+      "resumen": "La campanita de la barra superior avisa lo que entra desde la web de clientes: pedidos online nuevos, solicitudes de alta de clientes (formulario \"Quiero ser cliente\") y pagos informados por los clientes. Solo aparece si la empresa tiene contratada la web de clientes.",
+      "cuando_usarla": "Siempre que el sistema esté abierto: sirve para enterarse en el momento de que entró un pedido o una solicitud, sin tener que estar revisando las pantallas.",
+      "como_se_usa": [
+        "Cuando entra algo nuevo suena un aviso corto, aparece un cartel arriba a la derecha y la campanita muestra un número rojo con la cantidad de novedades sin ver.",
+        "Hacer clic en la campanita para ver la lista: pedidos web (carrito verde), solicitudes de alta (persona amarilla) y pagos informados (billete celeste). Las novedades sin ver aparecen resaltadas.",
+        "Hacer clic en una novedad para ir directo a la pantalla donde se atiende: Administrar Pedidos, Accesos de Clientes o Pagos Informados.",
+        "Al abrir la lista, las novedades quedan marcadas como vistas y el número rojo desaparece.",
+        "Opcional: tocar \"Avisarme en el escritorio\" y aceptar el permiso del navegador para recibir también un aviso de Windows cuando el sistema está minimizado o en otra pestaña."
+      ],
+      "tips": [
+        "Cada usuario ve solo las novedades de las pantallas a las que tiene acceso (por ejemplo, un usuario sin permiso a Pagos Informados no recibe esos avisos).",
+        "Las solicitudes de alta y los pagos informados siguen apareciendo en la lista mientras estén pendientes; de los pedidos web se muestran los de los últimos 15 días.",
+        "\"Visto\" se guarda en cada computadora y navegador: si el mismo usuario usa dos computadoras, en cada una ve el aviso una vez.",
+        "Si no suena el aviso, hacer un clic en cualquier parte del sistema: los navegadores no reproducen sonidos hasta que el usuario interactúa con la página.",
+        "Los pedidos cargados dentro del sistema (por un vendedor o desde Nuevo Pedido) no generan aviso: solo los que entran desde la web."
+      ],
+      "funcionamiento_interno": "Cada 45 segundos (y al volver a la ventana del sistema) se consulta qué entró desde la web. El navegador recuerda, por empresa y usuario, hasta qué pedido, solicitud y pago ya se vio, y avisa solo lo posterior. La primera vez que se usa en una computadora toma todo lo existente como visto, para no avisar cosas viejas. No modifica pedidos, clientes ni pagos: solo avisa.",
+      "relacionado": [
+        "pedidos_admin.php",
+        "web_accesos.php",
+        "web_avisos_pago.php",
+        "web_config.php"
+      ]
     }
   },
   "vistas": {
@@ -1347,13 +1374,15 @@
       ],
       "tips": [
         "Un pedido ya facturado no se puede editar, solo consultar",
-        "El botón FACTURAR lleva directamente a la pantalla de facturación con los datos del pedido precargados"
+        "El botón FACTURAR lleva directamente a la pantalla de facturación con los datos del pedido precargados",
+        "Los pedidos que los clientes envían desde la web aparecen acá como cualquier otro pedido pendiente, y avisan en la campanita del sistema cuando entran."
       ],
       "funcionamiento_interno": "El sistema filtra los pedidos guardados según los criterios elegidos y calcula, para los pedidos activos, la cantidad total de productos involucrados; al anular o restaurar un pedido solo cambia su estado, sin borrar la información cargada.",
       "relacionado": [
         "pedidos_nuevo.php",
         "newfactura.php",
-        "presupuestos_admin.php"
+        "presupuestos_admin.php",
+        "notificaciones"
       ]
     },
     "pedidos_nuevo.php": {
@@ -3621,6 +3650,102 @@
         "retper_regimenes.php",
         "proveedores_ver_pagos_realizados.php",
         "libro_iva.php"
+      ]
+    },
+    "web_config.php": {
+      "titulo": "Configuración de la Web",
+      "categoria": "Administrador > Web de Clientes > Configuración de la Web",
+      "resumen": "Configura la web de clientes de la empresa: catálogo online, área de clientes y pedidos por internet. Desde acá se define cómo se ve (logo, colores, banners, portada), qué se muestra (productos, precios, stock), los datos de contacto, cómo funcionan los pedidos y las solicitudes de alta, y desde qué casilla salen los mails.",
+      "cuando_usarla": "Al poner en marcha la web y cada vez que se quiera cambiar algo de lo que ve el cliente: una promoción en la barra de anuncio, un banner nuevo, el monto mínimo de pedido, a quién avisar los pedidos, etc.",
+      "como_se_usa": [
+        "Pestaña Sitio: nombre, slogan, descripción para buscadores, logo, ícono, banners de la portada y el texto de \"Quiénes somos\".",
+        "Pestaña Contacto: WhatsApp (con código de país y área, sin 0 ni 15), teléfono, mail de contacto, dirección, horarios, mapa y redes sociales. Se puede mostrar un botón flotante de WhatsApp en toda la web.",
+        "Pestaña Apariencia: color principal, color de acento y color del encabezado, con vista previa.",
+        "Pestaña Portada y Experiencia: animaciones, estilo del encabezado, barra de anuncio, buscador sobre el banner, secciones de la portada y su orden, beneficios, íconos de familias y rubros, y si se puede armar el pedido sin ingresar o usar la vista rápida.",
+        "Pestaña Catálogo: si el catálogo se ve sin iniciar sesión, si se muestran precios al público y con qué lista, precio final o neto, cómo se muestra el stock, el orden, las novedades, los rubros ocultos y los productos destacados de la portada.",
+        "Pestaña Pedidos y Clientes: habilitar los pedidos web, monto mínimo, mails a los que avisar cada pedido nuevo (y al vendedor del cliente), mail de confirmación al cliente, mensaje al confirmar, formulario \"Quiero ser cliente\", avisos de pago y datos para transferencias.",
+        "Pestaña Correo: por defecto los mails salen de una casilla de WEST IT con el nombre de la empresa; opcionalmente se carga una casilla propia (SMTP) y se prueba con \"Enviar prueba\".",
+        "Presionar GUARDAR CAMBIOS. El botón VER MI WEB abre la web en otra pestaña."
+      ],
+      "tips": [
+        "Qué productos se publican, sus fotos, la descripción larga y las características se cargan en cada producto, pestaña Web (\"Mostrar en catálogo\").",
+        "Los clientes que ingresan con su usuario siempre ven los precios de su propia lista, aunque no se muestren precios al público.",
+        "El monto mínimo del pedido se compara contra el total con IVA. 0 = sin mínimo.",
+        "Además de los mails, los pedidos nuevos, las solicitudes de alta y los pagos informados avisan en la campanita del sistema."
+      ],
+      "funcionamiento_interno": "La configuración se guarda por empresa y la web la lee en cada visita, así que los cambios se ven al recargar la web. El dominio de la web lo asigna WEST IT; si todavía no tiene, la pantalla lo indica.",
+      "relacionado": [
+        "web_accesos.php",
+        "web_avisos_pago.php",
+        "web_atributos.php",
+        "productos_add.php",
+        "notificaciones"
+      ]
+    },
+    "web_accesos.php": {
+      "titulo": "Accesos de Clientes",
+      "categoria": "Administrador > Web de Clientes > Accesos de Clientes",
+      "resumen": "Administra quién puede entrar al área de clientes de la web (ver sus precios, hacer pedidos, consultar cuenta corriente, comprobantes y pagos). Acá también llegan las solicitudes del formulario \"Quiero ser cliente\" para aprobarlas o rechazarlas.",
+      "cuando_usarla": "Para darle acceso a la web a un cliente, reenviarle la invitación o el link para cambiar la contraseña, desbloquearlo si se equivocó muchas veces la clave, deshabilitarlo, o atender una solicitud de alta que entró desde la web.",
+      "como_se_usa": [
+        "Para dar acceso: presionar DAR ACCESO A UN CLIENTE, elegir el cliente (tiene que estar dado de alta en Clientes), el usuario y el mail.",
+        "Elegir cómo crea su contraseña: lo recomendado es mandarle una invitación por mail para que la cree él; también se le puede asignar una contraseña y pasársela.",
+        "Solicitudes pendientes: aparecen en un recuadro arriba. Con Aprobar se abre el alta de acceso con los datos de la solicitud (si la empresa todavía no es cliente, primero hay que darla de alta en Clientes > Nuevo cliente); con la X se rechaza.",
+        "En la lista de accesos, el menú Acciones de cada cliente permite reenviar la invitación, mandar el link para cambiar la contraseña, desbloquear, deshabilitar o habilitar."
+      ],
+      "tips": [
+        "El cliente también puede ingresar con su mail en lugar del usuario.",
+        "La lista muestra el último ingreso y la cantidad de pedidos web de cada cliente.",
+        "Las solicitudes nuevas avisan en la campanita del sistema."
+      ],
+      "funcionamiento_interno": "Cada acceso queda asociado a un cliente del sistema: lo que ve en la web (precios de su lista, saldo, comprobantes, pedidos) sale de ese cliente. Las invitaciones y los links de contraseña vencen y se pueden volver a mandar. Tras varios intentos fallidos el acceso se bloquea solo.",
+      "relacionado": [
+        "clientes_alta.php",
+        "web_config.php",
+        "notificaciones"
+      ]
+    },
+    "web_avisos_pago.php": {
+      "titulo": "Pagos Informados",
+      "categoria": "Administrador > Web de Clientes > Pagos Informados",
+      "resumen": "Lista las transferencias y depósitos que los clientes avisaron desde el área de clientes de la web, con el comprobante que adjuntaron. Un aviso no mueve la cuenta corriente: es una alerta para que la empresa verifique el pago y lo cargue.",
+      "cuando_usarla": "Cuando un cliente informa un pago desde la web (llega aviso a la campanita), para controlarlo contra el banco e imputarlo.",
+      "como_se_usa": [
+        "Filtrar por estado: Pendientes, Procesados, Rechazados o Todos.",
+        "Revisar el aviso: fecha de pago, importe, medio y referencia, observaciones, comprobante adjunto y saldo de cuenta corriente del cliente.",
+        "Verificar que el dinero haya entrado y cargar el cobro en Cobrar Facturas, como cualquier cobro.",
+        "Volver a esta pantalla y marcar el aviso como procesado (con el tilde verde), opcionalmente con una nota (ej. número de recibo). Si el pago no corresponde, rechazarlo con la X e indicar el motivo."
+      ],
+      "tips": [
+        "Marcar el aviso como procesado no registra el cobro: el cobro se carga siempre en Cobrar Facturas.",
+        "Los avisos pendientes aparecen en la campanita hasta que se procesan o rechazan."
+      ],
+      "funcionamiento_interno": "El aviso queda guardado con el usuario de la web que lo informó y el archivo adjunto. Al procesarlo o rechazarlo se registra quién y cuándo lo resolvió. No genera movimientos contables ni de cuenta corriente.",
+      "relacionado": [
+        "cobrar_facturas.php",
+        "clientes_cuenta_corriente.php",
+        "notificaciones"
+      ]
+    },
+    "web_atributos.php": {
+      "titulo": "Características de Productos",
+      "categoria": "Administrador > Web de Clientes > Características de Productos",
+      "resumen": "Define la ficha técnica que se muestra en la web para cada producto (como en MercadoLibre): características como Largo en cm, Material con opciones o Sumergible sí/no, y en qué rubros o familias se piden.",
+      "cuando_usarla": "Al armar el catálogo web, para que los productos muestren sus datos técnicos y se pueda filtrar el catálogo por ellos.",
+      "como_se_usa": [
+        "Presionar NUEVA CARACTERÍSTICA.",
+        "Cargar el nombre y el tipo: texto libre, número (con unidad), lista de opciones (una por línea) o sí/no.",
+        "Elegir en qué rubros y/o familias se pide, el orden y si se usa como filtro en el catálogo.",
+        "Guardar. Después, al editar un producto de ese rubro o familia, la característica aparece para completarla en la pestaña Web del producto."
+      ],
+      "tips": [
+        "Las marcadas como filtro aparecen en el catálogo web para filtrar productos.",
+        "Una característica desactivada deja de mostrarse en la web sin perder lo cargado en los productos."
+      ],
+      "funcionamiento_interno": "Las características se guardan una sola vez y se asignan a rubros o familias; cada producto guarda solo sus valores. La web muestra en la ficha del producto las que tienen valor cargado.",
+      "relacionado": [
+        "productos_add.php",
+        "web_config.php"
       ]
     }
   }

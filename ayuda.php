@@ -118,6 +118,7 @@ function renderTocNivel($items, $vistasDisponibles, $nivel = 0)
                             <li><button type="button" class="ayuda-toc-link" data-vista="_intro">Qué es WEST IT y para qué sirve</button></li>
                             <li><button type="button" class="ayuda-toc-link" data-vista="_como_navegar">Recorrido por el menú y las ayudas</button></li>
                             <li><button type="button" class="ayuda-toc-link" data-vista="login.php">Cómo entrar al sistema</button></li>
+                            <li><button type="button" class="ayuda-toc-link" data-vista="notificaciones">Notificaciones (campanita)</button></li>
                         </ul>
                     </details>
                 </li>
@@ -155,6 +156,7 @@ function renderTocNivel($items, $vistasDisponibles, $nivel = 0)
             resumen: 'Además de este manual completo, el sistema tiene ayuda rápida disponible en cada pantalla, y un asistente que responde dudas puntuales sobre cómo usar el sistema.',
             como_se_usa: [
                 'Arriba, junto al nombre de la empresa, hay dos botones: uno con el ícono de robot (asistente de soporte por IA) y uno con el ícono de interrogación (ayuda rápida de la pantalla en la que estás parado).',
+                'Si la empresa tiene la web de clientes, a la izquierda de esos botones aparece una campanita: avisa con un número rojo, un sonido y un cartel cuando entra un pedido web, una solicitud de alta de cliente o un pago informado (ver "Notificaciones (campanita)").',
                 'El botón de interrogación (?) abre un resumen corto de la pantalla actual: para qué sirve, cómo se usa y qué hace el sistema por detrás.',
                 'El botón de robot abre un chat donde podés preguntar en tus palabras cómo hacer algo puntual (por ejemplo "¿cómo cobro por transferencia?"). El asistente solo responde en base a la información de este mismo manual, no tiene acceso a tus datos reales (clientes, ventas, stock, etc.).',
                 'Este manual (Ayuda del Sistema, en el menú de usuario arriba a la derecha) es el lugar para leer con calma toda la documentación, sección por sección, en vez de consultar pantalla por pantalla.'

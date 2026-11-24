@@ -100,6 +100,11 @@ if ($vistaActual !== '' && isset($todasLasVistas[$vistaActual])) {
     }
 }
 
+// La campanita de notificaciones está en todas las pantallas: su ficha va siempre.
+if (isset($todasLasVistas['notificaciones']) && !isset($detalle['notificaciones'])) {
+    $detalle['notificaciones'] = $todasLasVistas['notificaciones'];
+}
+
 // Las capturas de pantalla de la ayuda no le sirven a la IA (son rutas de imágenes).
 foreach ($detalle as &$fichaDetalle) unset($fichaDetalle['capturas']);
 unset($fichaDetalle);
