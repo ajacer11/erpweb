@@ -51,6 +51,7 @@ require_once 'check_access.php';
                 <label class="form-label-custom">MAIL</label>
                 <input type="email" class="form-control mb-3" id="accEmail">
                 <label class="form-label-custom">CÓMO CREA SU CONTRASEÑA</label>
+                <div class="form-check d-none" id="accModoSolBox"><input class="form-check-input" type="radio" name="accModo" id="accModoSol" value="solicitud"><label class="form-check-label" for="accModoSol">Ya la eligió al registrarse: queda activo al aprobar <span class="badge bg-success">recomendado</span></label></div>
                 <div class="form-check"><input class="form-check-input" type="radio" name="accModo" id="accModoInv" value="invitacion" checked><label class="form-check-label" for="accModoInv">Le mandamos una invitación por mail y la crea él <span class="badge bg-info">recomendado</span></label></div>
                 <div class="form-check mb-2"><input class="form-check-input" type="radio" name="accModo" id="accModoMan" value="manual"><label class="form-check-label" for="accModoMan">Le asigno una contraseña ahora y se la paso yo</label></div>
                 <div class="input-group d-none" id="accClaveBox">
@@ -93,7 +94,7 @@ require_once 'check_access.php';
             <td class="small">${fecha(s.fecha)}</td>
             <td class="fw-bold">${esc(s.razon)}${s.contacto ? `<div class="small text-muted">${esc(s.contacto)}</div>` : ''}</td>
             <td>${esc(s.cuit)}</td>
-            <td class="small">${esc(s.email)}<br>${esc(s.telefono)}</td>
+            <td class="small">${esc(s.email)}<br>${esc(s.telefono)}${s.con_clave == 1 ? '<div><span class="badge bg-success">Ya eligió su contraseña</span></div>' : ''}</td>
             <td class="small">${esc(s.localidad)}</td>
             <td class="small" style="max-width:240px">${esc(s.mensaje)}</td>
             <td class="text-end text-nowrap">
@@ -158,7 +159,10 @@ require_once 'check_access.php';
         $('#accCliente').val(null).trigger('change');
         $('#accUsuario').val(sol ? (sol.cuit || '').replace(/\D/g, '') : '');
         $('#accEmail').val(sol ? sol.email : '');
-        $('#accModoInv').prop('checked', true).trigger('change');
+        const conClave = !!sol && sol.con_clave == 1;
+        $('#accModoSolBox').toggleClass('d-none', !conClave);
+        $(conClave ? '#accModoSol' : '#accModoInv').prop('checked', true).trigger('change');
+        $('#accModoInv + label .badge').toggleClass('d-none', conClave);
         $('#accClave').val('');
         modal.show();
     }

@@ -44,7 +44,9 @@ switch ($action) {
                     p.sinivacosto, 
                     p.ivacosto, 
                     p.impint, 
-                    p.preciocosto, 
+                    p.preciocosto,
+                    p.precio,
+                    p.poriva,
                     p.rubro,
                     p.cuentamercaderia
                 FROM alb_productos p 

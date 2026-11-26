@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS web_solicitudes_registro (
     cuit VARCHAR(20) NULL,
     contacto VARCHAR(100) NULL,
     email VARCHAR(100) NOT NULL,
+    password_hash VARCHAR(255) NULL,
     telefono VARCHAR(50) NULL,
     localidad VARCHAR(100) NULL,
     mensaje VARCHAR(1000) NULL,

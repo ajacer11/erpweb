@@ -5,13 +5,17 @@ import { useSitio } from '@/stores'
 import AppIcon from '@/components/AppIcon.vue'
 
 const sitio = useSitio()
-const f = reactive({ razon: '', cuit: '', contacto: '', email: '', telefono: '', localidad: '', mensaje: '', web: '' })
+const f = reactive({ razon: '', cuit: '', contacto: '', email: '', clave: '', telefono: '', localidad: '', mensaje: '', web: '' })
+const clave2 = ref('')
+const verClave = ref(false)
 const enviando = ref(false)
 const listo = ref(false)
 const error = ref('')
 
 async function enviar(): Promise<void> {
   error.value = ''
+  if (f.clave.length < 8) { error.value = 'La contraseña tiene que tener al menos 8 caracteres.'; return }
+  if (f.clave !== clave2.value) { error.value = 'Las contraseñas no coinciden.'; return }
   enviando.value = true
   try { await api.post('/auth/registro', f); listo.value = true; window.scrollTo({ top: 0 }) }
   catch (e) { error.value = (e as ApiError).message }
@@ -25,7 +29,7 @@ async function enviar(): Promise<void> {
     <div v-else-if="listo" class="card animate-fade-up p-8 text-center">
       <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600"><AppIcon name="check" :size="32" :stroke-width="3" /></div>
       <h1 class="mt-4 text-2xl font-extrabold">¡Recibimos tu solicitud!</h1>
-      <p class="mt-2 text-slate-600">La vamos a revisar y te contactamos. Cuando tu acceso esté listo te llega un mail para crear tu contraseña.</p>
+      <p class="mt-2 text-slate-600">La vamos a revisar y, cuando la aprobemos, te avisamos por mail. Desde ese momento ya podés ingresar con tu mail y la contraseña que elegiste.</p>
       <RouterLink :to="{ name: 'catalogo' }" class="btn-primary mt-6">Ver el catálogo</RouterLink>
     </div>
     <template v-else>
@@ -37,6 +41,10 @@ async function enviar(): Promise<void> {
         <div><label class="label" for="ct">Persona de contacto</label><input id="ct" v-model="f.contacto" class="input" maxlength="100" /></div>
         <div><label class="label" for="em">Mail *</label><input id="em" v-model="f.email" type="email" class="input" required autocapitalize="none" /></div>
         <div><label class="label" for="tel">Teléfono / WhatsApp</label><input id="tel" v-model="f.telefono" type="tel" class="input" maxlength="50" /></div>
+        <div><label class="label" for="cl">Elegí una contraseña *</label><input id="cl" v-model="f.clave" :type="verClave ? 'text' : 'password'" class="input" required minlength="8" maxlength="128" autocomplete="new-password" placeholder="Mínimo 8 caracteres" /></div>
+        <div><label class="label" for="cl2">Repetí la contraseña *</label><input id="cl2" v-model="clave2" :type="verClave ? 'text' : 'password'" class="input" required minlength="8" maxlength="128" autocomplete="new-password" /></div>
+        <label class="-mt-2 flex items-center gap-2 text-sm text-slate-600 sm:col-span-2"><input v-model="verClave" type="checkbox" /> Mostrar contraseña</label>
+        <p class="-mt-2 text-sm text-slate-500 sm:col-span-2">Vas a ingresar con tu mail y esta contraseña cuando aprobemos tu solicitud.</p>
         <div class="sm:col-span-2"><label class="label" for="loc">Localidad</label><input id="loc" v-model="f.localidad" class="input" maxlength="100" /></div>
         <div class="sm:col-span-2"><label class="label" for="msg">Contanos sobre tu negocio</label><textarea id="msg" v-model="f.mensaje" rows="4" class="input" maxlength="1000" /></div>
         <input v-model="f.web" type="text" name="web" tabindex="-1" autocomplete="off" class="hidden" aria-hidden="true" />

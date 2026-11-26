@@ -141,7 +141,13 @@ require_once 'check_access.php';
                             <small class="text-muted d-block" style="font-size: 10px;">STK ACTUAL: <span
                                     id="lbl-stk-actual" class="text-white">0</span></small>
                         </div>
-                        <div class="col-md-8">
+                        <div class="col-md-3">
+                            <small class="text-muted d-block" style="font-size: 10px;">VENTA LISTA 1 &middot; NETO: <span
+                                    id="lbl-venta-neto" class="text-white">---</span></small>
+                            <small class="text-muted d-block" style="font-size: 10px;">VENTA LISTA 1 &middot; FINAL: <span
+                                    id="lbl-venta-final" class="text-success fw-bold">---</span></small>
+                        </div>
+                        <div class="col-md-5">
                             <input type="text" id="txt-nota" class="form-control form-control-sm"
                                 placeholder="OBSERVACIONES DE LA LÍNEA...">
                         </div>
@@ -519,6 +525,12 @@ require_once 'check_access.php';
             // descripcion) precargaba siempre 0.00 y pisaba el imp. interno real del producto
             // al guardar el ingreso.
             $('#txt-imp-int').val(parseFloat(data.ImpInt ?? data.impint ?? 0).toFixed(2));
+            // Precio de venta (lista 1): el final es el cargado; el neto se deriva de él (sin IVA ni imp. int.).
+            const fmt = n => '$ ' + n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const vFinal = parseFloat(data.precio || 0);
+            const vNeto = (vFinal - parseFloat(data.ImpInt ?? data.impint ?? 0)) / (1 + (parseFloat(data.poriva) || 0) / 100);
+            $('#lbl-venta-final').text(fmt(vFinal));
+            $('#lbl-venta-neto').text(fmt(vNeto));
             $('#txt-ing').val(1).focus().select();
             calcularCostoLinea();
             $('#btn-agregar').prop('disabled', false);
@@ -659,6 +671,7 @@ require_once 'check_access.php';
             $('#txt-cod, #txt-des, #txt-ing, #txt-costo-neto, #txt-iva, #txt-imp-int, #txt-costo-total, #txt-nota').val('');
             $('#lbl-stk-actual').text('0');
             $('#lbl-prod-actual').text('---');
+            $('#lbl-venta-neto, #lbl-venta-final').text('---');
             $('#chk-bultos').prop('checked', false);
             $('#btn-agregar').prop('disabled', true);
         }

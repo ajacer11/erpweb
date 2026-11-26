@@ -200,6 +200,10 @@ function hRegistro(): array
     $email = trim(mb_strtolower((string) ($in['email'] ?? '')));
     if (mb_strlen($razon) < 2) throw new ApiError('Ingresá el nombre o la razón social.');
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new ApiError('Ingresá un mail válido.');
+    // La contraseña la elige el cliente acá: al aprobar la solicitud el acceso queda activo con ella.
+    // (Sin contraseña = formulario viejo en caché: se aprueba con invitación por mail, como antes.)
+    $clave = (string) ($in['clave'] ?? '');
+    if ($clave !== '') validarClaveNueva($clave);
     if (ipBloqueada()) throw new ApiError('Demasiados intentos. Esperá un rato y volvé a probar.', 429);
 
     $st = $pdo->prepare("SELECT COUNT(*) FROM web_solicitudes_registro WHERE ip = ? AND fecha > DATE_SUB(NOW(), INTERVAL 1 DAY)");
@@ -207,8 +211,9 @@ function hRegistro(): array
     if ((int) $st->fetchColumn() >= 5) throw new ApiError('Ya recibimos tus solicitudes. Te vamos a contactar.', 429);
 
     $corto = fn($k, $n) => mb_substr(trim((string) ($in[$k] ?? '')), 0, $n);
-    $pdo->prepare("INSERT INTO web_solicitudes_registro (razon, cuit, contacto, email, telefono, localidad, mensaje, ip) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
-        ->execute([mb_substr($razon, 0, 150), $corto('cuit', 20), $corto('contacto', 100), $email, $corto('telefono', 50), $corto('localidad', 100), $corto('mensaje', 1000), ipCliente()]);
+    $pdo->prepare("INSERT INTO web_solicitudes_registro (razon, cuit, contacto, email, password_hash, telefono, localidad, mensaje, ip) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        ->execute([mb_substr($razon, 0, 150), $corto('cuit', 20), $corto('contacto', 100), $email, $clave !== '' ? password_hash($clave, PASSWORD_DEFAULT) : null,
+                   $corto('telefono', 50), $corto('localidad', 100), $corto('mensaje', 1000), ipCliente()]);
 
     // Aviso a la empresa (a los mismos destinatarios de los pedidos, o al mail de contacto).
     $destinos = $CFG['pedido_mail_aviso'] ?: $CFG['contacto_email'];

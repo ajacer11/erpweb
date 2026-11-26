@@ -3688,15 +3688,17 @@
       "resumen": "Administra quién puede entrar al área de clientes de la web (ver sus precios, hacer pedidos, consultar cuenta corriente, comprobantes y pagos). Acá también llegan las solicitudes del formulario \"Quiero ser cliente\" para aprobarlas o rechazarlas.",
       "cuando_usarla": "Para darle acceso a la web a un cliente, reenviarle la invitación o el link para cambiar la contraseña, desbloquearlo si se equivocó muchas veces la clave, deshabilitarlo, o atender una solicitud de alta que entró desde la web.",
       "como_se_usa": [
-        "Para dar acceso: presionar DAR ACCESO A UN CLIENTE, elegir el cliente (tiene que estar dado de alta en Clientes), el usuario y el mail.",
-        "Elegir cómo crea su contraseña: lo recomendado es mandarle una invitación por mail para que la cree él; también se le puede asignar una contraseña y pasársela.",
-        "Solicitudes pendientes: aparecen en un recuadro arriba. Con Aprobar se abre el alta de acceso con los datos de la solicitud (si la empresa todavía no es cliente, primero hay que darla de alta en Clientes > Nuevo cliente); con la X se rechaza.",
-        "En la lista de accesos, el menú Acciones de cada cliente permite reenviar la invitación, mandar el link para cambiar la contraseña, desbloquear, deshabilitar o habilitar."
+        "Solicitudes pendientes: aparecen en un recuadro arriba. El cliente ya eligió su contraseña al completar \"Quiero ser cliente\" (lo indica el cartel verde \"Ya eligió su contraseña\").",
+        "Para aprobar: presionar Aprobar, elegir a qué cliente del sistema corresponde (si todavía no es cliente, primero darlo de alta en Clientes > Nuevo cliente), revisar el usuario y presionar Dar acceso. Con la opción \"Ya la eligió al registrarse\" el acceso queda activo en el momento y al cliente le llega un mail avisando que ya puede ingresar con su mail y su contraseña. Con la X se rechaza.",
+        "Para dar acceso a un cliente que no se registró por la web: presionar DAR ACCESO A UN CLIENTE, elegir el cliente, el usuario y el mail, y cómo crea su contraseña: con una invitación por mail para que la cree él, o asignándole una contraseña y pasándosela (por ejemplo por WhatsApp).",
+        "En la lista de accesos, el menú Acciones de cada cliente permite reenviar la invitación, mandar el link para cambiar la contraseña, asignar una contraseña, desbloquear, deshabilitar o habilitar."
       ],
       "tips": [
         "El cliente también puede ingresar con su mail en lugar del usuario.",
         "La lista muestra el último ingreso y la cantidad de pedidos web de cada cliente.",
-        "Las solicitudes nuevas avisan en la campanita del sistema."
+        "Las solicitudes nuevas avisan en la campanita del sistema.",
+        "Con \"Invitación enviada\" el cliente todavía no puede ingresar ni enviar pedidos: tiene que entrar al link del mail y crear su contraseña. Si no le llega (revisar Correo no deseado), usar Acciones > Asignar contraseña y pasársela por WhatsApp.",
+        "Mientras el cliente no tenga acceso activo puede armar el carrito, pero no enviarlo: el pedido recién entra al sistema cuando ingresa y lo envía."
       ],
       "funcionamiento_interno": "Cada acceso queda asociado a un cliente del sistema: lo que ve en la web (precios de su lista, saldo, comprobantes, pedidos) sale de ese cliente. Las invitaciones y los links de contraseña vencen y se pueden volver a mandar. Tras varios intentos fallidos el acceso se bloquea solo.",
       "relacionado": [

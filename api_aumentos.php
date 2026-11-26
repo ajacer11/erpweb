@@ -49,44 +49,37 @@ try {
 
         $whereClause = !empty($filtros) ? "WHERE " . implode(" AND ", $filtros) : "WHERE id > 0";
 
-        // --- CONSTRUCCIÓN DEL UPDATE MASIVO ---
-        // A diferencia del VB que hacía múltiples updates o hardcodeaba el 21%,
-        // aquí usamos el poder de SQL para recalcular todo en una sola pasada de forma precisa.
-        
-        // 1. Actualizar Costos
-        // sinivacosto = sinivacosto * factor
-        // ivacosto = nuevo_sinivacosto * (poriva / 100)
-        // preciocosto = nuevo_sinivacosto + nuevo_ivacosto + ImpInt
-        
-        $sql = "UPDATE alb_productos SET 
-            
-            -- Actualización de Costos
-            sinivacosto = ROUND(sinivacosto * :factor, 2),
-            ivacosto = ROUND((sinivacosto * :factor) * (poriva / 100), 2),
-            preciocosto = ROUND((sinivacosto * :factor) * (1 + (poriva / 100)) + ImpInt, 2),
+        // --- UPDATE MASIVO EN DOS PASOS ---
+        // OJO: en un UPDATE de una sola tabla, MySQL/MariaDB asigna las columnas de izquierda a
+        // derecha y cada expresión ve los valores YA modificados. Si en la misma sentencia se hace
+        // "siniva = siniva * f, precio = siniva * f * (1+iva)", el precio queda aumentado dos veces
+        // (10% -> 21%). Por eso: 1) se aumentan solo los netos; 2) IVA y precio final se recalculan
+        // a partir de los netos nuevos.
+        $netos = ['sinivacosto', 'siniva'];
+        for ($i = 2; $i <= 8; $i++) $netos[] = "siniva{$i}";
 
-            -- Actualización Lista 1 (Campos: siniva, iva1, precio)
-            siniva = ROUND(siniva * :factor, 2),
-            iva1 = ROUND((siniva * :factor) * (poriva / 100), 2),
-            precio = ROUND((siniva * :factor) * (1 + (poriva / 100)) + ImpInt, 2)
-        ";
+        // Impuesto interno: monto fijo por unidad. Solo se aumenta si se pidió (casilla en la pantalla).
+        if (!empty($input['impint'])) $netos[] = 'ImpInt';
+        $sqlNetos = "UPDATE alb_productos SET "
+            . implode(', ', array_map(fn($c) => $c === 'ImpInt' ? "ImpInt = ROUND(IFNULL(ImpInt, 0) * :factor, 2)" : "$c = ROUND($c * :factor, 2)", $netos))
+            . " $whereClause";
 
-        // 2. Actualización de Listas 2 a 8 (Loop para generar SQL)
-        for ($i = 2; $i <= 8; $i++) {
-            $sql .= ", 
-            siniva{$i} = ROUND(siniva{$i} * :factor, 2),
-            iva{$i} = ROUND((siniva{$i} * :factor) * (poriva / 100), 2),
-            precio{$i} = ROUND((siniva{$i} * :factor) * (1 + (poriva / 100)) + ImpInt, 2)";
+        // [neto, iva, final] por cada lista y el costo
+        $grupos = [['sinivacosto', 'ivacosto', 'preciocosto'], ['siniva', 'iva1', 'precio']];
+        for ($i = 2; $i <= 8; $i++) $grupos[] = ["siniva{$i}", "iva{$i}", "precio{$i}"];
+        $sets = [];
+        foreach ($grupos as [$n, $iv, $fin]) {
+            $sets[] = "$iv = ROUND($n * (IFNULL(poriva, 0) / 100), 2)";
+            $sets[] = "$fin = ROUND($n * (1 + IFNULL(poriva, 0) / 100) + IFNULL(ImpInt, 0), 2)";
         }
+        $sqlFinales = "UPDATE alb_productos SET " . implode(', ', $sets) . " $whereClause";
 
-        $sql .= " $whereClause";
-        $params[':factor'] = $factor;
-
-        // Ejecutar
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        
+        $pdo->beginTransaction();
+        $stmt = $pdo->prepare($sqlNetos);
+        $stmt->execute($params + [':factor' => $factor]);
         $afectados = $stmt->rowCount();
+        $pdo->prepare($sqlFinales)->execute($params);
+        $pdo->commit();
 
         echo json_encode([
             'success' => true, 
@@ -96,7 +89,8 @@ try {
         exit;
     }
 
-} catch (Exception $e) {
+} catch (Throwable $e) {
+    if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
     http_response_code(500);
     echo json_encode(['success' => false, 'error' => $e->getMessage()]);
 }

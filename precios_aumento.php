@@ -40,6 +40,11 @@ require_once 'check_access.php';
                                    id="txtPorcentaje" name="aumento" step="0.01" placeholder="0.00" required>
                             <span class="input-group-text bg-dark border-secondary text-white">%</span>
                         </div>
+                        <div class="form-check mt-3">
+                            <input class="form-check-input" type="checkbox" id="chkImpInt">
+                            <label class="form-check-label text-white" for="chkImpInt">Aumentar también el impuesto interno</label>
+                            <div class="small text-muted">Sin tildar, el impuesto interno (monto fijo por unidad) queda igual y el precio final de esos productos sube algo menos que el %.</div>
+                        </div>
                     </div>
 
                     <hr class="border-secondary my-4">
@@ -188,6 +193,7 @@ require_once 'check_access.php';
             const data = {
                 aumento: p,
                 todos: todos,
+                impint: document.getElementById('chkImpInt').checked,
                 proveedor: todos ? null : $('#cmbProv').val(),
                 rubro: todos ? null : $('#cmbRub').val(),
                 familia: todos ? null : $('#cmbFam').val(),
@@ -202,7 +208,7 @@ require_once 'check_access.php';
 
             const confirm = await Swal.fire({
                 title: '¿Confirmar Aumento?',
-                text: `Se aplicará un ${p}% a los productos seleccionados. Esta acción modificará costos y precios de venta.`,
+                text: `Se aplicará un ${p}% a los productos seleccionados${data.impint ? ', incluido el impuesto interno' : ''}. Esta acción modificará costos y precios de venta.`,
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#00ffff',

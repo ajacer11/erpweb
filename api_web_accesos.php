@@ -3,7 +3,8 @@
  * api_web_accesos.php - Accesos de clientes al área de clientes de la web (web_usuarios)
  * y solicitudes de registro hechas desde la web (web_solicitudes_registro).
  *
- * Un acceso se puede dar de dos formas:
+ * Un acceso se puede dar de tres formas:
+ *  - Solicitud: el cliente eligió su contraseña en "Quiero ser cliente"; al aprobar queda activo.
  *  - Invitación: se manda un mail con un link para que el cliente cree su contraseña (72 hs).
  *  - Manual: se le asigna una contraseña desde acá y se le pasa por otro medio.
  * El cliente entra con su usuario o con su mail.
@@ -28,8 +29,8 @@ function validarClave(string $clave): void
     if (mb_strlen($clave) < 8) throw new Exception('La contraseña debe tener al menos 8 caracteres.');
 }
 
-/** Crea el acceso y devuelve su id. */
-function crearAcceso(PDO $pdo, int $clienteId, string $nombreUsuario, string $email, ?string $clave, string $usuarioAlta): int
+/** Crea el acceso y devuelve su id. $hashListo: contraseña ya cifrada (la que eligió el cliente al registrarse). */
+function crearAcceso(PDO $pdo, int $clienteId, string $nombreUsuario, string $email, ?string $clave, string $usuarioAlta, ?string $hashListo = null): int
 {
     $nombreUsuario = trim($nombreUsuario);
     $email = trim(mb_strtolower($email));
@@ -52,7 +53,7 @@ function crearAcceso(PDO $pdo, int $clienteId, string $nombreUsuario, string $em
     }
 
     // Sin contraseña (invitación): un hash imposible de adivinar hasta que el cliente cree la suya.
-    $hash = $clave !== null ? password_hash($clave, PASSWORD_DEFAULT) : '!' . bin2hex(random_bytes(16));
+    $hash = $hashListo ?? ($clave !== null ? password_hash($clave, PASSWORD_DEFAULT) : '!' . bin2hex(random_bytes(16)));
     $pdo->prepare("INSERT INTO web_usuarios (cliente_id, nombre_usuario, password_hash, email, rol, activo, fecha_alta, usuario_alta)
                    VALUES (?, ?, ?, ?, 'cliente', 1, NOW(), ?)")
         ->execute([$clienteId, $nombreUsuario, $hash, $email ?: null, $usuarioAlta]);
@@ -76,7 +77,10 @@ try {
                 FROM web_usuarios w
                 LEFT JOIN alb_clientes c ON c.id = w.cliente_id
                 ORDER BY c.razon, w.nombre_usuario")->fetchAll(PDO::FETCH_ASSOC);
-            $solicitudes = $pdo->query("SELECT * FROM web_solicitudes_registro WHERE estado = 'pendiente' ORDER BY fecha DESC")->fetchAll(PDO::FETCH_ASSOC);
+            // La contraseña cifrada no sale de acá: solo si el cliente ya eligió una.
+            $solicitudes = $pdo->query("SELECT id, fecha, razon, cuit, contacto, email, telefono, localidad, mensaje,
+                                               (password_hash IS NOT NULL AND password_hash <> '') AS con_clave
+                                        FROM web_solicitudes_registro WHERE estado = 'pendiente' ORDER BY fecha DESC")->fetchAll(PDO::FETCH_ASSOC);
             echo json_encode([
                 'success' => true,
                 'data' => $accesos,
@@ -98,22 +102,33 @@ try {
             $in = jsonIn();
             $modo = $in['modo'] ?? 'invitacion';
             $clave = null;
-            if ($modo === 'manual') {
+            $hashSolicitud = null;
+            if ($modo === 'solicitud') {
+                // Aprobación con la contraseña que el cliente eligió al registrarse: queda activo ya.
+                $st = $pdo->prepare("SELECT password_hash FROM web_solicitudes_registro WHERE id = ? AND estado = 'pendiente'");
+                $st->execute([(int) ($in['solicitud_id'] ?? 0)]);
+                $hashSolicitud = (string) $st->fetchColumn();
+                if ($hashSolicitud === '') throw new Exception('Esta solicitud no tiene contraseña elegida por el cliente: elegí otra forma de crear la contraseña.');
+            } elseif ($modo === 'manual') {
                 $clave = (string) ($in['clave'] ?? '');
                 validarClave($clave);
             } elseif (!filter_var($in['email'] ?? '', FILTER_VALIDATE_EMAIL)) {
                 throw new Exception('Para mandar la invitación hace falta un mail válido.');
             }
             $pdo->beginTransaction();
-            $id = crearAcceso($pdo, (int) ($in['cliente_id'] ?? 0), (string) ($in['usuario'] ?? ''), (string) ($in['email'] ?? ''), $clave, $usuario);
+            $id = crearAcceso($pdo, (int) ($in['cliente_id'] ?? 0), (string) ($in['usuario'] ?? ''), (string) ($in['email'] ?? ''), $clave, $usuario, $hashSolicitud ?: null);
             if (!empty($in['solicitud_id'])) {
-                $pdo->prepare("UPDATE web_solicitudes_registro SET estado = 'aprobada', cliente_id = ?, fecha_resolucion = NOW(), usuario_resolucion = ? WHERE id = ? AND estado = 'pendiente'")
+                $pdo->prepare("UPDATE web_solicitudes_registro SET estado = 'aprobada', cliente_id = ?, password_hash = NULL, fecha_resolucion = NOW(), usuario_resolucion = ? WHERE id = ? AND estado = 'pendiente'")
                     ->execute([(int) $in['cliente_id'], $usuario, (int) $in['solicitud_id']]);
             }
             $pdo->commit();
 
             $msg = 'Acceso creado.';
-            if ($modo !== 'manual') {
+            if ($modo === 'solicitud') {
+                [$ok, $err] = webEnviarAprobacion($pdo, $pdo_master, $cuit, $dbId, $id);
+                $msg = $ok ? 'Acceso creado y activo: ya puede ingresar con su mail y la contraseña que eligió. Le avisamos por mail.'
+                           : "Acceso creado y activo: ya puede ingresar con su mail y la contraseña que eligió. No se pudo mandar el mail de aviso ($err): avisale por WhatsApp.";
+            } elseif ($modo !== 'manual') {
                 [$ok, $err] = webEnviarInvitacion($pdo, $pdo_master, $cuit, $dbId, $id);
                 $msg = $ok ? 'Acceso creado. Le mandamos la invitación por mail.' : "Acceso creado, pero no se pudo mandar la invitación: $err";
             }
@@ -160,7 +175,7 @@ try {
 
         case 'rechazar_solicitud':
             $id = (int) (jsonIn()['id'] ?? 0);
-            $pdo->prepare("UPDATE web_solicitudes_registro SET estado = 'rechazada', fecha_resolucion = NOW(), usuario_resolucion = ? WHERE id = ? AND estado = 'pendiente'")
+            $pdo->prepare("UPDATE web_solicitudes_registro SET estado = 'rechazada', password_hash = NULL, fecha_resolucion = NOW(), usuario_resolucion = ? WHERE id = ? AND estado = 'pendiente'")
                 ->execute([$usuario, $id]);
             echo json_encode(['success' => true, 'message' => 'Solicitud rechazada.']);
             break;

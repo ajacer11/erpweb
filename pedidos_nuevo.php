@@ -322,7 +322,7 @@ $puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) 
                 <div class="table-responsive">
                     <table class="table table-dark table-hover table-sm small mb-0">
                         <thead class="sticky-top bg-black">
-                            <tr><th class="text-start ps-3">CÓDIGO</th><th>DESCRIPCIÓN</th><th>RUBRO</th><th class="text-end">PRECIO</th><th></th></tr>
+                            <tr><th class="text-start ps-3">CÓDIGO</th><th>DESCRIPCIÓN</th><th>RUBRO</th><th class="text-end">PRECIO S/IVA</th><th class="text-end pe-3">PRECIO FINAL</th><th></th></tr>
                         </thead>
                         <tbody id="tbodyResultadosProd"></tbody>
                     </table>
@@ -912,7 +912,10 @@ $puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) 
             res.data.forEach(p => {
                 const key = (lista === 1) ? 'siniva' : 'siniva' + lista;
                 const precio = parseFloat(p[key] || 0);
-                
+                // Precio final de la lista tal como está cargado en el producto (IVA + imp. internos incluidos).
+                const keyFinal = (lista === 1) ? 'precio' : 'precio' + lista;
+                const final = p[keyFinal] != null ? parseFloat(p[keyFinal]) : precio * (1 + (parseFloat(p.poriva) || 0) / 100) + (parseFloat(p.ImpInt) || 0);
+
                 const tr = document.createElement('tr');
                 tr.className = 'cursor-pointer';
                 tr.dataset.codigo = p.codigo;
@@ -922,7 +925,8 @@ $puedeEditarDescPedidos = ((int) ($configRow['permitireditardescripcion'] ?? 0) 
                 tr.innerHTML = `<td class="text-white fw-bold ps-3">${p.codigo}</td>
                                 <td class="text-white-50">${p.descripcion}</td>
                                 <td>${p.rubro}</td>
-                                <td class="text-end text-info pe-3">$ ${formatMoney(precio)}</td>
+                                <td class="text-end text-info">$ ${formatMoney(precio)}</td>
+                                <td class="text-end text-success fw-bold pe-3">$ ${formatMoney(final)}</td>
                                 <td class="text-center"><i class="fas fa-plus text-success"></i></td>`;
                 tb.append(tr);
             });

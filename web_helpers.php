@@ -370,3 +370,29 @@ function webEnviarInvitacion(PDO $pdo, PDO $pdo_master, string $cuit, int $dbId,
         . "<p style=\"color:#64748b;font-size:13px\">El link vence en 72 horas. Si no lo pediste, ignorá este mail.</p>";
     return webEnviarMail($pdo, $u['email'], "Tu acceso a $empresaTxt", $html, $cfg);
 }
+
+/** Avisa al cliente que su solicitud se aprobó y ya puede ingresar con la contraseña que eligió al registrarse. */
+function webEnviarAprobacion(PDO $pdo, PDO $pdo_master, string $cuit, int $dbId, int $webUsuarioId): array
+{
+    $st = $pdo->prepare("SELECT w.nombre_usuario, w.email, c.razon FROM web_usuarios w LEFT JOIN alb_clientes c ON c.id = w.cliente_id WHERE w.id = ?");
+    $st->execute([$webUsuarioId]);
+    $u = $st->fetch(PDO::FETCH_ASSOC);
+    if (!$u) return [false, 'Acceso no encontrado'];
+    if (!filter_var($u['email'], FILTER_VALIDATE_EMAIL)) return [false, 'El acceso no tiene un mail válido'];
+
+    $base = webUrlBase(webDominioDeEmpresa($pdo_master, $cuit, $dbId));
+    if (!$base) return [false, 'La web todavía no tiene un dominio asignado. Pedíselo a WEST IT.'];
+
+    $cfg = webConfigLeer($pdo);
+    $empresaTxt = webNombreEmpresa($pdo, $cfg);
+    $empresa = htmlspecialchars($empresaTxt);
+    $razon = htmlspecialchars((string) $u['razon']);
+    $email = htmlspecialchars($u['email']);
+    $usuario = htmlspecialchars($u['nombre_usuario']);
+    $html = "<p>Hola <b>$razon</b>,</p>
+        <p>¡Tu solicitud fue aprobada! Ya tenés acceso al <b>área de clientes</b> de $empresa: vas a poder ver tus precios, hacer pedidos y consultar tu cuenta corriente y tus facturas.</p>
+        <p>Ingresá con tu mail <b>$email</b> (o con el usuario <b>$usuario</b>) y la contraseña que elegiste al registrarte.</p>"
+        . webMailBoton($base . '/ingresar', 'Ingresar', $cfg['color_primario'])
+        . "<p style=\"color:#64748b;font-size:13px\">¿No te acordás la contraseña? En la pantalla de ingreso tocá \"¿Olvidaste tu contraseña?\".</p>";
+    return webEnviarMail($pdo, $u['email'], "Tu acceso a $empresaTxt está listo", $html, $cfg);
+}

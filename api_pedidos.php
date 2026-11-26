@@ -39,8 +39,10 @@ try {
 
         case 'buscar_productos':
             $q = $_GET['q'] ?? '';
-            $sql = "SELECT id, codigo, descripcion, marca, rubro, poriva, ImpInt, " . sqlNetosListas() . " 
-                    FROM alb_productos 
+            // precio..precio8 = precio final de cada lista (para la columna PRECIO FINAL del buscador).
+            $sql = "SELECT id, codigo, descripcion, marca, rubro, poriva, ImpInt, " . sqlNetosListas() . ",
+                           precio, precio2, precio3, precio4, precio5, precio6, precio7, precio8
+                    FROM alb_productos
                     WHERE habilitado = 1 " . (!empty($q) ? "AND (codigo LIKE ? OR descripcion LIKE ?)" : "") . " 
                     ORDER BY descripcion ASC LIMIT 50";
             $stmt = $pdo->prepare($sql);
